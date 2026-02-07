@@ -26,9 +26,9 @@ const translations = {
     "features.secrets.title": "Secure Secrets",
     "features.secrets.desc":
       "API keys stored in macOS Keychain or Windows DPAPI. Never written to plaintext config files.",
-    "features.skill.title": "Skill Hot Reload",
+    "features.skill.title": "Visual Permission Control",
     "features.skill.desc":
-      "Action bundle rules automatically materialize as SKILL.md files that OpenClaw picks up in milliseconds.",
+      "Set granular access rules for folders and files without editing complex configuration files.",
     "features.update.title": "Auto-Updates",
     "features.update.desc":
       "Built-in update checker notifies you when a new version is available. One-click download.",
@@ -69,9 +69,9 @@ const translations = {
     "features.secrets.title": "安全密钥存储",
     "features.secrets.desc":
       "API 密钥存储在 macOS 钥匙串或 Windows DPAPI 中，绝不以明文写入配置文件。",
-    "features.skill.title": "技能热重载",
+    "features.skill.title": "可视化权限控制",
     "features.skill.desc":
-      "动作包规则自动生成 SKILL.md 文件，OpenClaw 在毫秒内加载。",
+      "可视化设置文件夹和文件的精细访问权限，无需编辑复杂的配置文件。",
     "features.update.title": "自动更新",
     "features.update.desc":
       "内置更新检查器，新版本可用时通知您，一键下载。",
@@ -112,9 +112,9 @@ const translations = {
     "features.secrets.title": "セキュアなシークレット管理",
     "features.secrets.desc":
       "API キーは macOS キーチェーンまたは Windows DPAPI に保存。平文の設定ファイルには書き込まれません。",
-    "features.skill.title": "スキルホットリロード",
+    "features.skill.title": "ビジュアル権限管理",
     "features.skill.desc":
-      "アクションバンドルルールが自動的に SKILL.md を生成し、OpenClaw がミリ秒で読み込みます。",
+      "複雑な設定ファイルを編集せずに、フォルダやファイルのきめ細かいアクセスルールを設定できます。",
     "features.update.title": "自動アップデート",
     "features.update.desc":
       "内蔵のアップデートチェッカーが新バージョンを通知。ワンクリックでダウンロード。",
@@ -155,9 +155,9 @@ const translations = {
     "features.secrets.title": "Secrets sécurisés",
     "features.secrets.desc":
       "Les clés API sont stockées dans le trousseau macOS ou Windows DPAPI. Jamais écrites en clair dans les fichiers de configuration.",
-    "features.skill.title": "Rechargement à chaud des compétences",
+    "features.skill.title": "Contrôle visuel des permissions",
     "features.skill.desc":
-      "Les règles de bundles d'actions génèrent automatiquement des fichiers SKILL.md qu'OpenClaw charge en millisecondes.",
+      "Définissez des règles d'accès granulaires pour les dossiers et fichiers sans éditer de fichiers de configuration complexes.",
     "features.update.title": "Mises à jour automatiques",
     "features.update.desc":
       "Vérificateur de mises à jour intégré qui vous notifie quand une nouvelle version est disponible. Téléchargement en un clic.",
@@ -198,9 +198,9 @@ const translations = {
     "features.secrets.title": "Sichere Schlüssel",
     "features.secrets.desc":
       "API-Schlüssel werden im macOS-Schlüsselbund oder Windows DPAPI gespeichert. Niemals im Klartext in Konfigurationsdateien.",
-    "features.skill.title": "Skill-Hot-Reload",
+    "features.skill.title": "Visuelle Berechtigungskontrolle",
     "features.skill.desc":
-      "Aktionsbündel-Regeln generieren automatisch SKILL.md-Dateien, die OpenClaw in Millisekunden lädt.",
+      "Legen Sie granulare Zugriffsregeln für Ordner und Dateien fest, ohne komplexe Konfigurationsdateien zu bearbeiten.",
     "features.update.title": "Automatische Updates",
     "features.update.desc":
       "Integrierter Update-Checker benachrichtigt Sie bei neuen Versionen. Download mit einem Klick.",
@@ -241,9 +241,9 @@ const translations = {
     "features.secrets.title": "Secretos seguros",
     "features.secrets.desc":
       "Las claves API se almacenan en el llavero de macOS o Windows DPAPI. Nunca se escriben en texto plano en archivos de configuración.",
-    "features.skill.title": "Recarga en caliente de habilidades",
+    "features.skill.title": "Control visual de permisos",
     "features.skill.desc":
-      "Las reglas de paquetes de acciones generan automáticamente archivos SKILL.md que OpenClaw carga en milisegundos.",
+      "Configure reglas de acceso granulares para carpetas y archivos sin editar archivos de configuración complejos.",
     "features.update.title": "Actualizaciones automáticas",
     "features.update.desc":
       "Verificador de actualizaciones integrado que te notifica cuando hay una nueva versión. Descarga con un clic.",
@@ -284,9 +284,9 @@ const translations = {
     "features.secrets.title": "ความลับที่ปลอดภัย",
     "features.secrets.desc":
       "คีย์ API เก็บใน macOS Keychain หรือ Windows DPAPI ไม่เขียนเป็นข้อความธรรมดาในไฟล์กำหนดค่า",
-    "features.skill.title": "โหลดทักษะใหม่ทันที",
+    "features.skill.title": "การควบคุมสิทธิ์แบบภาพ",
     "features.skill.desc":
-      "กฎชุดการกระทำสร้างไฟล์ SKILL.md โดยอัตโนมัติ ซึ่ง OpenClaw โหลดได้ในมิลลิวินาที",
+      "ตั้งค่ากฎการเข้าถึงแบบละเอียดสำหรับโฟลเดอร์และไฟล์โดยไม่ต้องแก้ไขไฟล์กำหนดค่าที่ซับซ้อน",
     "features.update.title": "อัปเดตอัตโนมัติ",
     "features.update.desc":
       "ตัวตรวจสอบอัปเดตในตัวแจ้งเตือนเมื่อมีเวอร์ชันใหม่ ดาวน์โหลดได้ในคลิกเดียว",
@@ -327,9 +327,9 @@ const translations = {
     "features.secrets.title": "보안 시크릿",
     "features.secrets.desc":
       "API 키는 macOS 키체인 또는 Windows DPAPI에 저장됩니다. 일반 텍스트 설정 파일에 기록되지 않습니다.",
-    "features.skill.title": "스킬 핫 리로드",
+    "features.skill.title": "시각적 권한 제어",
     "features.skill.desc":
-      "액션 번들 규칙이 자동으로 SKILL.md 파일을 생성하며, OpenClaw가 밀리초 내에 로드합니다.",
+      "복잡한 구성 파일을 편집하지 않고도 폴더와 파일에 대한 세밀한 접근 규칙을 설정할 수 있습니다.",
     "features.update.title": "자동 업데이트",
     "features.update.desc":
       "내장 업데이트 체커가 새 버전을 알려줍니다. 원클릭 다운로드.",
@@ -370,9 +370,9 @@ const translations = {
     "features.secrets.title": "Segredos seguros",
     "features.secrets.desc":
       "Chaves de API armazenadas no Keychain do macOS ou Windows DPAPI. Nunca escritas em texto simples nos arquivos de configuração.",
-    "features.skill.title": "Recarga automática de habilidades",
+    "features.skill.title": "Controle visual de permissões",
     "features.skill.desc":
-      "Regras de pacotes de ações geram automaticamente arquivos SKILL.md que o OpenClaw carrega em milissegundos.",
+      "Defina regras de acesso granulares para pastas e arquivos sem editar arquivos de configuração complexos.",
     "features.update.title": "Atualizações automáticas",
     "features.update.desc":
       "Verificador de atualizações integrado notifica quando uma nova versão está disponível. Download com um clique.",
@@ -413,9 +413,9 @@ const translations = {
     "features.secrets.title": "Безопасные секреты",
     "features.secrets.desc":
       "API-ключи хранятся в Keychain macOS или Windows DPAPI. Никогда не записываются в открытом виде в файлы конфигурации.",
-    "features.skill.title": "Горячая перезагрузка навыков",
+    "features.skill.title": "Визуальный контроль прав доступа",
     "features.skill.desc":
-      "Правила пакетов действий автоматически создают файлы SKILL.md, которые OpenClaw загружает за миллисекунды.",
+      "Задавайте детальные правила доступа к папкам и файлам без редактирования сложных конфигурационных файлов.",
     "features.update.title": "Автоматические обновления",
     "features.update.desc":
       "Встроенная проверка обновлений уведомляет о новых версиях. Загрузка в один клик.",
@@ -456,9 +456,9 @@ const translations = {
     "features.secrets.title": "أسرار آمنة",
     "features.secrets.desc":
       "مفاتيح API مخزنة في سلسلة مفاتيح macOS أو Windows DPAPI. لا تُكتب أبداً كنص عادي في ملفات التكوين.",
-    "features.skill.title": "إعادة تحميل المهارات الفوري",
+    "features.skill.title": "التحكم المرئي في الأذونات",
     "features.skill.desc":
-      "قواعد حزم الإجراءات تنشئ تلقائياً ملفات SKILL.md التي يحملها OpenClaw في أجزاء من الثانية.",
+      "قم بتعيين قواعد وصول دقيقة للمجلدات والملفات دون تحرير ملفات تكوين معقدة.",
     "features.update.title": "تحديثات تلقائية",
     "features.update.desc":
       "مدقق تحديثات مدمج يُعلمك عند توفر إصدار جديد. تحميل بنقرة واحدة.",
@@ -499,9 +499,9 @@ const translations = {
     "features.secrets.title": "Segreti sicuri",
     "features.secrets.desc":
       "Le chiavi API sono archiviate nel Portachiavi macOS o Windows DPAPI. Mai scritte in chiaro nei file di configurazione.",
-    "features.skill.title": "Ricaricamento rapido delle skill",
+    "features.skill.title": "Controllo visivo dei permessi",
     "features.skill.desc":
-      "Le regole dei pacchetti di azioni generano automaticamente file SKILL.md che OpenClaw carica in millisecondi.",
+      "Imposta regole di accesso granulari per cartelle e file senza modificare file di configurazione complessi.",
     "features.update.title": "Aggiornamenti automatici",
     "features.update.desc":
       "Controllo aggiornamenti integrato che ti avvisa quando è disponibile una nuova versione. Download con un clic.",
@@ -542,9 +542,9 @@ const translations = {
     "features.secrets.title": "Güvenli sırlar",
     "features.secrets.desc":
       "API anahtarları macOS Anahtar Zinciri veya Windows DPAPI'de saklanır. Yapılandırma dosyalarına asla düz metin olarak yazılmaz.",
-    "features.skill.title": "Beceri anında yenileme",
+    "features.skill.title": "Görsel izin kontrolü",
     "features.skill.desc":
-      "Eylem paketi kuralları otomatik olarak SKILL.md dosyaları oluşturur ve OpenClaw bunları milisaniyeler içinde yükler.",
+      "Karmaşık yapılandırma dosyalarını düzenlemeden klasörler ve dosyalar için ayrıntılı erişim kuralları belirleyin.",
     "features.update.title": "Otomatik güncellemeler",
     "features.update.desc":
       "Yerleşik güncelleme denetleyicisi yeni sürüm mevcut olduğunda bildirir. Tek tıkla indirme.",
