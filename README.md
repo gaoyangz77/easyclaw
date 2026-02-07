@@ -2,7 +2,17 @@
   <img src="website/site/assets/LOGO_EN_COMPACT.png" width="600" alt="EasyClaw">
 </p>
 
-Desktop runtime manager for [OpenClaw](https://github.com/nicejudy/openclaw). A system-tray Electron app that launches and manages an OpenClaw gateway, exposes a local management panel for configuring rules, providers, channels, and permissions, and ships with auto-update support.
+<p align="center">
+  English | <a href="README.zh-CN.md">中文</a>
+</p>
+
+## Why EasyClaw?
+
+[OpenClaw](https://github.com/openclaw/openclaw) is a powerful agent runtime — but it's built for engineers. Setting it up means editing config files, managing processes, and juggling API keys from the terminal. For non-programmers (designers, operators, small business owners), that barrier is too high.
+
+EasyClaw wraps OpenClaw into a desktop app that **anyone can use**: install, launch from the system tray, and manage everything through a local web panel. Write rules in plain language instead of code, configure LLM providers and messaging channels with a few clicks, and let the agent learn your preferences over time. No terminal required.
+
+**In short:** OpenClaw is the engine; EasyClaw is the cockpit.
 
 ## Prerequisites
 
