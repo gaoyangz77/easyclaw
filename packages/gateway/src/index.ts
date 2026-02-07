@@ -29,3 +29,9 @@ export {
   resolveSecretEnv,
   buildGatewayEnv,
 } from "./secret-injector.js";
+export {
+  resolveSkillsDir,
+  ensureSkillsDir,
+  watchSkillsDir,
+  isSkillFile,
+} from "./skill-reload.js";
