@@ -108,7 +108,7 @@ info "Dummy certificate removed."
 
 # ---- Step 4: Request real certificate from Let's Encrypt ----
 info "Requesting Let's Encrypt certificate for: $DOMAIN $DOMAIN_SANS ..."
-$COMPOSE_CMD run --rm certbot certonly \
+$COMPOSE_CMD run --rm --entrypoint "" certbot certbot certonly \
   --webroot \
   --webroot-path=/var/www/certbot \
   $STAGING_ARG \
