@@ -1,162 +1,224 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="EasyClaw is a desktop runtime manager for OpenClaw. Download for macOS and Windows.">
-  <title>EasyClaw &mdash; Desktop Runtime Manager for OpenClaw</title>
-  <link rel="stylesheet" href="/style.css">
-</head>
-<body>
-
-  <!-- Header -->
-  <header class="header">
-    <div class="container header-inner">
-      <a href="/" class="logo">EasyClaw</a>
-      <nav class="nav">
-        <a href="#features" data-i18n="nav.features">Features</a>
-        <a href="#download" data-i18n="nav.download">Download</a>
-        <a href="#requirements" data-i18n="nav.requirements">Requirements</a>
-        <a href="https://github.com/nickclaw/easyclaw" class="nav-github" target="_blank" rel="noopener noreferrer">GitHub</a>
-        <span class="lang-switcher">
-          <button class="lang-btn" data-lang="en">EN</button>
-          <button class="lang-btn" data-lang="zh">中文</button>
-          <button class="lang-btn" data-lang="ja">日本語</button>
-        </span>
-      </nav>
-    </div>
-  </header>
-
-  <!-- Hero -->
-  <section class="hero">
-    <div class="container hero-inner">
-      <h1 data-i18n="hero.title">Desktop Runtime Manager<br>for OpenClaw</h1>
-      <p class="hero-subtitle" data-i18n="hero.subtitle">
-        EasyClaw gives you a local tray app to manage your OpenClaw gateway,
-        configure rules and permissions, and keep everything running smoothly
-        &mdash; without touching the command line.
-      </p>
-      <div class="hero-actions">
-        <a href="#download" class="btn btn-primary" data-i18n="hero.download">Download Now</a>
-        <a href="https://github.com/nickclaw/easyclaw" class="btn btn-secondary" target="_blank" rel="noopener noreferrer" data-i18n="hero.github">View on GitHub</a>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="EasyClaw is a desktop runtime manager for OpenClaw. Download for macOS and Windows."
+    />
+    <title>EasyClaw &mdash; Desktop Runtime Manager for OpenClaw</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <!-- Header -->
+    <header class="header">
+      <div class="container header-inner">
+        <a href="/" class="logo">EasyClaw</a>
+        <nav class="nav">
+          <a href="#features" data-i18n="nav.features">Features</a>
+          <a href="#download" data-i18n="nav.download">Download</a>
+          <a href="#requirements" data-i18n="nav.requirements">Requirements</a>
+          <a
+            href="https://github.com/gaoyangz77/easyclaw"
+            class="nav-github"
+            target="_blank"
+            rel="noopener noreferrer"
+            >GitHub</a
+          >
+          <span class="lang-switcher">
+            <button class="lang-btn" data-lang="en">EN</button>
+            <button class="lang-btn" data-lang="zh">中文</button>
+            <button class="lang-btn" data-lang="ja">日本語</button>
+          </span>
+        </nav>
       </div>
-    </div>
-  </section>
+    </header>
 
-  <!-- Features -->
-  <section id="features" class="features">
-    <div class="container">
-      <h2 data-i18n="features.title">Features</h2>
-      <div class="feature-grid">
-        <div class="feature-card">
-          <h3 data-i18n="features.tray.title">Tray App Control</h3>
-          <p data-i18n="features.tray.desc">Start, stop, and restart your OpenClaw gateway from the system tray. No terminal required.</p>
-        </div>
-        <div class="feature-card">
-          <h3 data-i18n="features.panel.title">Local Management Panel</h3>
-          <p data-i18n="features.panel.desc">A browser-based panel running on localhost for configuring rules, channels, and permissions.</p>
-        </div>
-        <div class="feature-card">
-          <h3 data-i18n="features.rules.title">Rules &amp; Guards</h3>
-          <p data-i18n="features.rules.desc">Define policies and guards that take effect immediately &mdash; no gateway restart needed.</p>
-        </div>
-        <div class="feature-card">
-          <h3 data-i18n="features.secrets.title">Secure Secrets</h3>
-          <p data-i18n="features.secrets.desc">API keys stored in macOS Keychain or Windows DPAPI. Never written to plaintext config files.</p>
-        </div>
-        <div class="feature-card">
-          <h3 data-i18n="features.skill.title">Skill Hot Reload</h3>
-          <p data-i18n="features.skill.desc">Action bundle rules automatically materialize as SKILL.md files that OpenClaw picks up in milliseconds.</p>
-        </div>
-        <div class="feature-card">
-          <h3 data-i18n="features.update.title">Auto-Updates</h3>
-          <p data-i18n="features.update.desc">Built-in update checker notifies you when a new version is available. One-click download.</p>
+    <!-- Hero -->
+    <section class="hero">
+      <div class="container hero-inner">
+        <h1 data-i18n="hero.title">
+          Desktop Runtime Manager<br />for OpenClaw
+        </h1>
+        <p class="hero-subtitle" data-i18n="hero.subtitle">
+          EasyClaw gives you a local tray app to manage your OpenClaw gateway,
+          configure rules and permissions, and keep everything running smoothly
+          &mdash; without touching the command line.
+        </p>
+        <div class="hero-actions">
+          <a href="#download" class="btn btn-primary" data-i18n="hero.download"
+            >Download Now</a
+          >
+          <a
+            href="https://github.com/gaoyangz77/easyclaw"
+            class="btn btn-secondary"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-i18n="hero.github"
+            >View on GitHub</a
+          >
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- Download -->
-  <section id="download" class="download">
-    <div class="container">
-      <h2 data-i18n="download.title">Download EasyClaw</h2>
-      <p class="download-subtitle"><span data-i18n="download.version">Version</span> <span class="version">0.1.0</span></p>
-
-      <div class="download-grid">
-
-        <!-- macOS -->
-        <div class="download-card">
-          <div class="download-os">macOS</div>
-          <a href="/releases/EasyClaw-0.1.0.dmg" class="btn btn-download" data-i18n="download.mac.btn">
-            Download .dmg
-          </a>
-          <div class="download-meta">
-            <p class="download-version">v0.1.0</p>
-            <p class="download-hash">
-              <span class="hash-label">SHA-256:</span>
-              <code class="hash-value">placeholder-sha256-hash</code>
+    <!-- Features -->
+    <section id="features" class="features">
+      <div class="container">
+        <h2 data-i18n="features.title">Features</h2>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h3 data-i18n="features.tray.title">Tray App Control</h3>
+            <p data-i18n="features.tray.desc">
+              Start, stop, and restart your OpenClaw gateway from the system
+              tray. No terminal required.
+            </p>
+          </div>
+          <div class="feature-card">
+            <h3 data-i18n="features.panel.title">Local Management Panel</h3>
+            <p data-i18n="features.panel.desc">
+              A browser-based panel running on localhost for configuring rules,
+              channels, and permissions.
+            </p>
+          </div>
+          <div class="feature-card">
+            <h3 data-i18n="features.rules.title">Rules &amp; Guards</h3>
+            <p data-i18n="features.rules.desc">
+              Define policies and guards that take effect immediately &mdash; no
+              gateway restart needed.
+            </p>
+          </div>
+          <div class="feature-card">
+            <h3 data-i18n="features.secrets.title">Secure Secrets</h3>
+            <p data-i18n="features.secrets.desc">
+              API keys stored in macOS Keychain or Windows DPAPI. Never written
+              to plaintext config files.
+            </p>
+          </div>
+          <div class="feature-card">
+            <h3 data-i18n="features.skill.title">Skill Hot Reload</h3>
+            <p data-i18n="features.skill.desc">
+              Action bundle rules automatically materialize as SKILL.md files
+              that OpenClaw picks up in milliseconds.
+            </p>
+          </div>
+          <div class="feature-card">
+            <h3 data-i18n="features.update.title">Auto-Updates</h3>
+            <p data-i18n="features.update.desc">
+              Built-in update checker notifies you when a new version is
+              available. One-click download.
             </p>
           </div>
         </div>
+      </div>
+    </section>
 
-        <!-- Windows -->
-        <div class="download-card">
-          <div class="download-os">Windows</div>
-          <a href="/releases/EasyClaw-Setup-0.1.0.exe" class="btn btn-download" data-i18n="download.win.btn">
-            Download .exe
-          </a>
-          <div class="download-meta">
-            <p class="download-version">v0.1.0</p>
-            <p class="download-hash">
-              <span class="hash-label">SHA-256:</span>
-              <code class="hash-value">placeholder-sha256-hash</code>
-            </p>
+    <!-- Download -->
+    <section id="download" class="download">
+      <div class="container">
+        <h2 data-i18n="download.title">Download EasyClaw</h2>
+        <p class="download-subtitle">
+          <span data-i18n="download.version">Version</span>
+          <span class="version">0.1.0</span>
+        </p>
+
+        <div class="download-grid">
+          <!-- macOS -->
+          <div class="download-card">
+            <div class="download-os">macOS</div>
+            <a
+              href="/releases/EasyClaw-0.1.0-universal.dmg"
+              class="btn btn-download"
+              data-i18n="download.mac.btn"
+            >
+              Download .dmg
+            </a>
+            <div class="download-meta">
+              <p class="download-version">v0.1.0</p>
+              <p class="download-hash">
+                <span class="hash-label">SHA-256:</span>
+                <code class="hash-value">bac8dd26e019c467e6f3172c532ce1a661c85b7eac800316e51bb6dec57408bb</code>
+              </p>
+            </div>
+          </div>
+
+          <!-- Windows -->
+          <div class="download-card">
+            <div class="download-os">Windows</div>
+            <a
+              href="/releases/EasyClaw%20Setup%200.1.0.exe"
+              class="btn btn-download"
+              data-i18n="download.win.btn"
+            >
+              Download .exe
+            </a>
+            <div class="download-meta">
+              <p class="download-version">v0.1.0</p>
+              <p class="download-hash">
+                <span class="hash-label">SHA-256:</span>
+                <code class="hash-value">78d3f922b56e531cf967675c8c56c10723d4b88a320911b4d8d673565d167128</code>
+              </p>
+            </div>
           </div>
         </div>
 
+        <p class="download-note" data-i18n="download.note">
+          Verify your download by comparing the SHA-256 hash above with the
+          output of
+          <code>shasum -a 256</code> (macOS/Linux) or
+          <code>Get-FileHash</code> (PowerShell).
+        </p>
       </div>
+    </section>
 
-      <p class="download-note" data-i18n="download.note">
-        Verify your download by comparing the SHA-256 hash above with the output of
-        <code>shasum -a 256</code> (macOS/Linux) or <code>Get-FileHash</code> (PowerShell).
-      </p>
-    </div>
-  </section>
-
-  <!-- System Requirements -->
-  <section id="requirements" class="requirements">
-    <div class="container">
-      <h2 data-i18n="requirements.title">System Requirements</h2>
-      <div class="requirements-grid">
-        <div class="requirements-card">
-          <h3>macOS</h3>
-          <ul>
-            <li data-i18n="requirements.mac.os">macOS 12 (Monterey) or later</li>
-            <li data-i18n="requirements.mac.arch">Apple Silicon (M1+) or Intel</li>
-            <li data-i18n="requirements.mac.disk">200 MB disk space</li>
-          </ul>
-        </div>
-        <div class="requirements-card">
-          <h3>Windows</h3>
-          <ul>
-            <li data-i18n="requirements.win.os">Windows 10 (version 1903+) or later</li>
-            <li data-i18n="requirements.win.arch">x64 architecture</li>
-            <li data-i18n="requirements.win.disk">200 MB disk space</li>
-          </ul>
+    <!-- System Requirements -->
+    <section id="requirements" class="requirements">
+      <div class="container">
+        <h2 data-i18n="requirements.title">System Requirements</h2>
+        <div class="requirements-grid">
+          <div class="requirements-card">
+            <h3>macOS</h3>
+            <ul>
+              <li data-i18n="requirements.mac.os">
+                macOS 12 (Monterey) or later
+              </li>
+              <li data-i18n="requirements.mac.arch">
+                Apple Silicon (M1+) or Intel
+              </li>
+              <li data-i18n="requirements.mac.disk">200 MB disk space</li>
+            </ul>
+          </div>
+          <div class="requirements-card">
+            <h3>Windows</h3>
+            <ul>
+              <li data-i18n="requirements.win.os">
+                Windows 10 (version 1903+) or later
+              </li>
+              <li data-i18n="requirements.win.arch">x64 architecture</li>
+              <li data-i18n="requirements.win.disk">200 MB disk space</li>
+            </ul>
+          </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
-  <!-- Footer -->
-  <footer class="footer">
-    <div class="container footer-inner">
-      <p><span data-i18n="footer.text">&copy; 2026 EasyClaw. Open source on</span>
-        <a href="https://github.com/nickclaw/easyclaw" target="_blank" rel="noopener noreferrer">GitHub</a>.
-      </p>
-    </div>
-  </footer>
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container footer-inner">
+        <p>
+          <span data-i18n="footer.text"
+            >&copy; 2026 EasyClaw. Open source on</span
+          >
+          <a
+            href="https://github.com/gaoyangz77/easyclaw"
+            target="_blank"
+            rel="noopener noreferrer"
+            >GitHub</a
+          >.
+        </p>
+      </div>
+    </footer>
 
-  <script src="/i18n.js"></script>
-</body>
+    <script src="/i18n.js"></script>
+  </body>
 </html>

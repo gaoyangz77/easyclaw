@@ -1,17 +1,17 @@
 {
   "latestVersion": "0.1.0",
-  "releaseDate": "2026-02-07T00:00:00Z",
+  "releaseDate": "2026-02-07T10:59:13Z",
   "releaseNotes": "Initial release of EasyClaw.",
   "downloads": {
     "mac": {
-      "url": "https://www.easy-claw.com/releases/EasyClaw-0.1.0.dmg",
-      "sha256": "placeholder-sha256-hash",
-      "size": 0
+      "url": "https://www.easy-claw.com/releases/EasyClaw-0.1.0-universal.dmg",
+      "sha256": "bac8dd26e019c467e6f3172c532ce1a661c85b7eac800316e51bb6dec57408bb",
+      "size": 198394599
     },
     "win": {
-      "url": "https://www.easy-claw.com/releases/EasyClaw-Setup-0.1.0.exe",
-      "sha256": "placeholder-sha256-hash",
-      "size": 0
+      "url": "https://www.easy-claw.com/releases/EasyClaw%20Setup%200.1.0.exe",
+      "sha256": "78d3f922b56e531cf967675c8c56c10723d4b88a320911b4d8d673565d167128",
+      "size": 89110808
     }
   }
 }

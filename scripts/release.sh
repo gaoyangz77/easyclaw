@@ -80,8 +80,8 @@ info "Building Windows installer (NSIS + portable) ..."
 # ---- Step 5: Find built artifacts and compute hashes ----
 info "Computing SHA-256 hashes ..."
 
-DMG_FILE=$(ls "$RELEASE_DIR"/*.dmg 2>/dev/null | head -1 || true)
-EXE_FILE=$(ls "$RELEASE_DIR"/*Setup*.exe 2>/dev/null | head -1 || true)
+DMG_FILE=$(find "$RELEASE_DIR" -maxdepth 1 -name "*.dmg" -print -quit 2>/dev/null || true)
+EXE_FILE=$(find "$RELEASE_DIR" -maxdepth 1 -name "*Setup*.exe" -print -quit 2>/dev/null || true)
 
 if [ -z "$DMG_FILE" ]; then
   warn "No .dmg file found in $RELEASE_DIR"
@@ -127,72 +127,73 @@ if [ -n "$EXE_FILE" ]; then
   info "  Copied $EXE_NAME"
 fi
 
-# ---- Step 7: Update update-manifest.json ----
-info "Updating update-manifest.json ..."
+# ---- Step 7: Update manifest + HTML via Node (handles filenames with spaces) ----
+info "Updating update-manifest.json and index.html ..."
 MANIFEST="$WEBSITE_DIR/update-manifest.json"
+HTML="$WEBSITE_DIR/index.html"
 RELEASE_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-node -e "
-  const fs = require('fs');
-  const manifest = JSON.parse(fs.readFileSync('$MANIFEST', 'utf-8'));
-  manifest.latestVersion = '$VERSION';
-  manifest.releaseDate = '$RELEASE_DATE';
-  if ('$DMG_HASH') {
-    manifest.downloads.mac.url = 'https://www.easy-claw.com/releases/$DMG_NAME';
-    manifest.downloads.mac.sha256 = '$DMG_HASH';
-    manifest.downloads.mac.size = $DMG_SIZE;
+R_VERSION="$VERSION" \
+R_DATE="$RELEASE_DATE" \
+R_DMG_NAME="$DMG_NAME" \
+R_DMG_HASH="$DMG_HASH" \
+R_DMG_SIZE="$DMG_SIZE" \
+R_EXE_NAME="$EXE_NAME" \
+R_EXE_HASH="$EXE_HASH" \
+R_EXE_SIZE="$EXE_SIZE" \
+R_MANIFEST="$MANIFEST" \
+R_HTML="$HTML" \
+node -e '
+  const fs = require("fs");
+  const e = process.env;
+  const enc = (n) => n.split("/").map(encodeURIComponent).join("/");
+
+  // --- Update manifest ---
+  const manifest = JSON.parse(fs.readFileSync(e.R_MANIFEST, "utf-8"));
+  manifest.latestVersion = e.R_VERSION;
+  manifest.releaseDate = e.R_DATE;
+  if (e.R_DMG_HASH) {
+    manifest.downloads.mac.url = "https://www.easy-claw.com/releases/" + enc(e.R_DMG_NAME);
+    manifest.downloads.mac.sha256 = e.R_DMG_HASH;
+    manifest.downloads.mac.size = Number(e.R_DMG_SIZE);
   }
-  if ('$EXE_HASH') {
-    manifest.downloads.win.url = 'https://www.easy-claw.com/releases/$EXE_NAME';
-    manifest.downloads.win.sha256 = '$EXE_HASH';
-    manifest.downloads.win.size = $EXE_SIZE;
+  if (e.R_EXE_HASH) {
+    manifest.downloads.win.url = "https://www.easy-claw.com/releases/" + enc(e.R_EXE_NAME);
+    manifest.downloads.win.sha256 = e.R_EXE_HASH;
+    manifest.downloads.win.size = Number(e.R_EXE_SIZE);
   }
-  fs.writeFileSync('$MANIFEST', JSON.stringify(manifest, null, 2) + '\n');
-"
-info "Manifest updated."
+  fs.writeFileSync(e.R_MANIFEST, JSON.stringify(manifest, null, 2) + "\n");
 
-# ---- Step 8: Update index.html hashes and download links ----
-info "Updating index.html ..."
-HTML="$WEBSITE_DIR/index.html"
+  // --- Update index.html ---
+  let html = fs.readFileSync(e.R_HTML, "utf-8");
 
-if [ -n "$DMG_HASH" ]; then
-  # Update macOS download link href
-  sed -i.bak "s|/releases/EasyClaw-[^\"]*\.dmg|/releases/$DMG_NAME|g" "$HTML"
-  # Update macOS hash — first hash-value code block
-  node -e "
-    let html = require('fs').readFileSync('$HTML', 'utf-8');
-    // Replace first placeholder/old hash in the macOS card
+  if (e.R_DMG_HASH) {
     html = html.replace(
-      /(<!-- macOS -->[\s\S]*?<code class=\"hash-value\">)[^<]*/,
-      '\$1$DMG_HASH'
+      /href="\/releases\/[^"]*\.dmg"/,
+      "href=\"/releases/" + enc(e.R_DMG_NAME) + "\""
     );
-    require('fs').writeFileSync('$HTML', html);
-  "
-fi
-
-if [ -n "$EXE_HASH" ]; then
-  # Update Windows download link href
-  sed -i.bak "s|/releases/EasyClaw-Setup-[^\"]*\.exe|/releases/$EXE_NAME|g" "$HTML"
-  # Update Windows hash — second hash-value code block
-  node -e "
-    let html = require('fs').readFileSync('$HTML', 'utf-8');
-    // Replace hash in the Windows card
     html = html.replace(
-      /(<!-- Windows -->[\s\S]*?<code class=\"hash-value\">)[^<]*/,
-      '\$1$EXE_HASH'
+      /(<!-- macOS -->[\s\S]*?<code class="hash-value">)[^<]*/,
+      "$1" + e.R_DMG_HASH
     );
-    require('fs').writeFileSync('$HTML', html);
-  "
-fi
+  }
+  if (e.R_EXE_HASH) {
+    html = html.replace(
+      /href="\/releases\/[^"]*\.exe"/,
+      "href=\"/releases/" + enc(e.R_EXE_NAME) + "\""
+    );
+    html = html.replace(
+      /(<!-- Windows -->[\s\S]*?<code class="hash-value">)[^<]*/,
+      "$1" + e.R_EXE_HASH
+    );
+  }
+  const v = e.R_VERSION;
+  html = html.replace(/<span class="version">[^<]*/g, "<span class=\"version\">" + v);
+  html = html.replace(/<p class="download-version">v[^<]*/g, "<p class=\"download-version\">v" + v);
+  fs.writeFileSync(e.R_HTML, html);
+'
 
-# Update version strings in index.html
-sed -i.bak "s|<span class=\"version\">[^<]*|<span class=\"version\">$VERSION|g" "$HTML"
-sed -i.bak "s|<p class=\"download-version\">v[^<]*|<p class=\"download-version\">v$VERSION|g" "$HTML"
-
-# Clean up sed backup files
-rm -f "$HTML.bak"
-
-info "index.html updated."
+info "Manifest and index.html updated."
 
 # ---- Done ----
 echo ""

@@ -5,9 +5,8 @@
 extends: electron-builder.yml
 
 win:
-  # Windows application icon (must be .ico format, 256x256 minimum)
-  icon: build/icon.ico
-  publisherName: "EasyClaw"
+  # To use a custom icon, place build/icon.ico (256x256 minimum) and uncomment:
+  # icon: build/icon.ico
   # Code signing via environment variables:
   #   CSC_LINK  — path or URL to the .pfx / .p12 certificate
   #   CSC_KEY_PASSWORD — certificate password
@@ -25,17 +24,7 @@ win:
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
-  # Installer icon (optional, falls back to win.icon if omitted)
-  installerIcon: build/icon.ico
-  # Uninstaller icon (optional, falls back to win.icon if omitted)
-  uninstallerIcon: build/icon.ico
-  # Display name shown in Add/Remove Programs
   uninstallDisplayName: "EasyClaw"
-  # Create desktop shortcut during install
   createDesktopShortcut: true
-  # Create start-menu shortcut during install
   createStartMenuShortcut: true
   shortcutName: "EasyClaw"
-
-# No file associations for now
-# fileAssociations: []
