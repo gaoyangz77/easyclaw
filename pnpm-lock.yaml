@@ -42,6 +42,9 @@ importers:
       '@easyclaw/storage':
         specifier: workspace:*
         version: link:../../packages/storage
+      '@easyclaw/telemetry':
+        specifier: workspace:*
+        version: link:../../packages/telemetry
     devDependencies:
       electron:
         specifier: ^35.1.2
@@ -239,6 +242,13 @@ importers:
         version: 4.0.18(@types/node@22.19.9)
 
   packages/stt:
+    dependencies:
+      '@easyclaw/core':
+        specifier: workspace:*
+        version: link:../core
+      '@easyclaw/logger':
+        specifier: workspace:*
+        version: link:../logger
     devDependencies:
       oxlint:
         specifier: ^1.43.0
@@ -246,8 +256,15 @@ importers:
       tsdown:
         specifier: ^0.20.3
         version: 0.20.3(typescript@5.9.3)
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@types/node@22.19.9)
 
   packages/telemetry:
+    dependencies:
+      '@easyclaw/logger':
+        specifier: workspace:*
+        version: link:../logger
     devDependencies:
       oxlint:
         specifier: ^1.43.0
@@ -255,6 +272,9 @@ importers:
       tsdown:
         specifier: ^0.20.3
         version: 0.20.3(typescript@5.9.3)
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@types/node@22.19.9)
 
   packages/updater:
     devDependencies:

@@ -111,3 +111,45 @@ export interface GatewayStatus {
 export async function fetchStatus(): Promise<GatewayStatus> {
   return fetchJson<GatewayStatus>("/status");
 }
+
+// --- Usage ---
+
+export interface UsageSummary {
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalTokens: number;
+  totalEstimatedCostUsd: number;
+  recordCount: number;
+  byModel: Record<
+    string,
+    {
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      estimatedCostUsd: number;
+      count: number;
+    }
+  >;
+  byProvider: Record<
+    string,
+    {
+      inputTokens: number;
+      outputTokens: number;
+      totalTokens: number;
+      estimatedCostUsd: number;
+      count: number;
+    }
+  >;
+}
+
+export async function fetchUsage(
+  filter?: { since?: string; until?: string; model?: string; provider?: string },
+): Promise<UsageSummary> {
+  const params = new URLSearchParams();
+  if (filter?.since) params.set("since", filter.since);
+  if (filter?.until) params.set("until", filter.until);
+  if (filter?.model) params.set("model", filter.model);
+  if (filter?.provider) params.set("provider", filter.provider);
+  const query = params.toString();
+  return fetchJson<UsageSummary>("/usage" + (query ? "?" + query : ""));
+}

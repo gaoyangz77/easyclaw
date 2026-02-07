@@ -13,9 +13,14 @@
   },
   "scripts": {
     "build": "tsdown",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@easyclaw/logger": "workspace:*"
   },
   "devDependencies": {
+    "vitest": "^4.0.18",
     "tsdown": "^0.20.3",
     "oxlint": "^1.43.0"
   }

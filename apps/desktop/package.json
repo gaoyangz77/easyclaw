@@ -14,7 +14,8 @@
     "@easyclaw/core": "workspace:*",
     "@easyclaw/logger": "workspace:*",
     "@easyclaw/gateway": "workspace:*",
-    "@easyclaw/storage": "workspace:*"
+    "@easyclaw/storage": "workspace:*",
+    "@easyclaw/telemetry": "workspace:*"
   },
   "devDependencies": {
     "electron": "^35.1.2",

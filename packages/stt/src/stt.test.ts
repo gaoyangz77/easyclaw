@@ -1,0 +1,385 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { selectSttProvider } from "./region.js";
+import { createSttProvider } from "./factory.js";
+import { GroqSttProvider } from "./groq.js";
+import { VolcengineSttProvider } from "./volcengine.js";
+import type { SttConfig } from "./types.js";
+
+// ─── selectSttProvider ──────────────────────────────────────────────────────
+
+describe("selectSttProvider", () => {
+  it("returns 'volcengine' for cn region", () => {
+    expect(selectSttProvider("cn")).toBe("volcengine");
+  });
+
+  it("returns 'groq' for us region", () => {
+    expect(selectSttProvider("us")).toBe("groq");
+  });
+
+  it("returns 'groq' for eu region", () => {
+    expect(selectSttProvider("eu")).toBe("groq");
+  });
+
+  it("returns 'groq' for empty string region", () => {
+    expect(selectSttProvider("")).toBe("groq");
+  });
+
+  it("returns 'groq' for any non-cn region", () => {
+    expect(selectSttProvider("jp")).toBe("groq");
+    expect(selectSttProvider("global")).toBe("groq");
+  });
+});
+
+// ─── createSttProvider factory ──────────────────────────────────────────────
+
+describe("createSttProvider", () => {
+  it("returns a GroqSttProvider for groq config", () => {
+    const config: SttConfig = {
+      provider: "groq",
+      groq: { apiKey: "test-key" },
+    };
+    const provider = createSttProvider(config);
+    expect(provider).toBeInstanceOf(GroqSttProvider);
+    expect(provider.name).toBe("groq");
+  });
+
+  it("returns a VolcengineSttProvider for volcengine config", () => {
+    const config: SttConfig = {
+      provider: "volcengine",
+      volcengine: { appKey: "app-123", accessKey: "access-456" },
+    };
+    const provider = createSttProvider(config);
+    expect(provider).toBeInstanceOf(VolcengineSttProvider);
+    expect(provider.name).toBe("volcengine");
+  });
+
+  it("throws when groq config is missing", () => {
+    const config: SttConfig = { provider: "groq" };
+    expect(() => createSttProvider(config)).toThrow(
+      "Groq STT requires groq config",
+    );
+  });
+
+  it("throws when groq apiKey is empty", () => {
+    const config: SttConfig = {
+      provider: "groq",
+      groq: { apiKey: "" },
+    };
+    expect(() => createSttProvider(config)).toThrow(
+      "Groq STT requires an apiKey",
+    );
+  });
+
+  it("throws when volcengine config is missing", () => {
+    const config: SttConfig = { provider: "volcengine" };
+    expect(() => createSttProvider(config)).toThrow(
+      "Volcengine STT requires volcengine config",
+    );
+  });
+
+  it("throws when volcengine appKey is empty", () => {
+    const config: SttConfig = {
+      provider: "volcengine",
+      volcengine: { appKey: "", accessKey: "key" },
+    };
+    expect(() => createSttProvider(config)).toThrow(
+      "Volcengine STT requires both appKey and accessKey",
+    );
+  });
+
+  it("throws when volcengine accessKey is empty", () => {
+    const config: SttConfig = {
+      provider: "volcengine",
+      volcengine: { appKey: "key", accessKey: "" },
+    };
+    expect(() => createSttProvider(config)).toThrow(
+      "Volcengine STT requires both appKey and accessKey",
+    );
+  });
+});
+
+// ─── GroqSttProvider ────────────────────────────────────────────────────────
+
+describe("GroqSttProvider", () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.useRealTimers();
+  });
+
+  it("sends correct multipart request and returns parsed text", async () => {
+    const mockResponse = {
+      ok: true,
+      status: 200,
+      json: async () => ({ text: "Hello, world!" }),
+      text: async () => "",
+    } as unknown as Response;
+
+    const fetchMock = vi.fn().mockResolvedValue(mockResponse);
+    globalThis.fetch = fetchMock;
+
+    const provider = new GroqSttProvider("test-api-key");
+    const audio = Buffer.from("fake audio data");
+    const result = await provider.transcribe(audio, "wav");
+
+    expect(result.text).toBe("Hello, world!");
+    expect(result.provider).toBe("groq");
+    expect(result.durationMs).toBeTypeOf("number");
+
+    // Verify fetch was called correctly
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("https://api.groq.com/openai/v1/audio/transcriptions");
+    expect(options.method).toBe("POST");
+    expect(
+      (options.headers as Record<string, string>)["Authorization"],
+    ).toBe("Bearer test-api-key");
+
+    // Verify body is FormData
+    expect(options.body).toBeInstanceOf(FormData);
+    const formData = options.body as FormData;
+    expect(formData.get("model")).toBe("whisper-large-v3-turbo");
+    expect(formData.get("response_format")).toBe("json");
+    expect(formData.get("file")).toBeInstanceOf(Blob);
+  });
+
+  it("throws on unsupported audio format", async () => {
+    const provider = new GroqSttProvider("test-api-key");
+    const audio = Buffer.from("fake");
+    await expect(provider.transcribe(audio, "aac")).rejects.toThrow(
+      'Unsupported audio format "aac"',
+    );
+  });
+
+  it("throws when audio file exceeds 25 MB", async () => {
+    const provider = new GroqSttProvider("test-api-key");
+    const bigAudio = Buffer.alloc(26 * 1024 * 1024); // 26 MB
+    await expect(provider.transcribe(bigAudio, "wav")).rejects.toThrow(
+      "Audio file too large",
+    );
+  });
+
+  it("throws on HTTP error from Groq API", async () => {
+    const mockResponse = {
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+      text: async () => "Unauthorized",
+    } as unknown as Response;
+
+    globalThis.fetch = vi.fn().mockResolvedValue(mockResponse);
+
+    const provider = new GroqSttProvider("bad-key");
+    const audio = Buffer.from("fake audio");
+    await expect(provider.transcribe(audio, "mp3")).rejects.toThrow(
+      "Groq transcription failed: HTTP 401",
+    );
+  });
+});
+
+// ─── VolcengineSttProvider ──────────────────────────────────────────────────
+
+describe("VolcengineSttProvider", () => {
+  const originalFetch = globalThis.fetch;
+
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.useRealTimers();
+  });
+
+  it("submits audio and polls until completion, returning text", async () => {
+    let callIndex = 0;
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      callIndex++;
+      if (url.includes("submit")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            resp: { code: 0, msg: "ok", id: "task-123" },
+          }),
+          text: async () => "",
+        } as unknown as Response;
+      }
+      // First query: still processing
+      if (callIndex === 2) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            resp: { code: 1000, msg: "processing" },
+          }),
+          text: async () => "",
+        } as unknown as Response;
+      }
+      // Second query: done
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          resp: { code: 0, msg: "ok", text: "Transcribed text from Volcengine" },
+        }),
+        text: async () => "",
+      } as unknown as Response;
+    });
+
+    globalThis.fetch = fetchMock;
+
+    const provider = new VolcengineSttProvider("app-key", "access-key");
+    const audio = Buffer.from("fake audio data");
+    const result = await provider.transcribe(audio, "wav");
+
+    expect(result.text).toBe("Transcribed text from Volcengine");
+    expect(result.provider).toBe("volcengine");
+    expect(result.durationMs).toBeTypeOf("number");
+
+    // Verify submit call
+    expect(fetchMock).toHaveBeenCalledTimes(3); // submit + 2 queries
+    const [submitUrl, submitOptions] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(submitUrl).toBe(
+      "https://openspeech.bytedance.com/api/v3/auc/bigmodel/idle/submit",
+    );
+    expect(submitOptions.method).toBe("POST");
+    const submitHeaders = submitOptions.headers as Record<string, string>;
+    expect(submitHeaders["X-Api-App-Key"]).toBe("app-key");
+    expect(submitHeaders["X-Api-Access-Key"]).toBe("access-key");
+    expect(submitHeaders["X-Api-Resource-Id"]).toBe("volc.bigasr.auc_idle");
+
+    // Verify body contains data URL
+    const submitBody = JSON.parse(submitOptions.body as string);
+    expect(submitBody.audio.url).toMatch(/^data:audio\/wav;base64,/);
+    expect(submitBody.request.model_name).toBe("bigmodel");
+  });
+
+  it("returns concatenated utterances when text field is absent", async () => {
+    const fetchMock = vi.fn().mockImplementation(async (url: string) => {
+      if (url.includes("submit")) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            resp: { code: 0, msg: "ok", id: "task-456" },
+          }),
+          text: async () => "",
+        } as unknown as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          resp: {
+            code: 0,
+            msg: "ok",
+            utterances: [{ text: "Hello " }, { text: "world" }],
+          },
+        }),
+        text: async () => "",
+      } as unknown as Response;
+    });
+
+    globalThis.fetch = fetchMock;
+
+    const provider = new VolcengineSttProvider("app", "key");
+    const result = await provider.transcribe(Buffer.from("audio"), "mp3");
+    expect(result.text).toBe("Hello world");
+  });
+
+  it("throws on submit HTTP error", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({}),
+      text: async () => "Internal Server Error",
+    } as unknown as Response);
+
+    const provider = new VolcengineSttProvider("app", "key");
+    await expect(
+      provider.transcribe(Buffer.from("audio"), "wav"),
+    ).rejects.toThrow("Volcengine submit failed: HTTP 500");
+  });
+
+  it("throws on submit API error (non-zero code)", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        resp: { code: 1001, msg: "Invalid request" },
+      }),
+      text: async () => "",
+    } as unknown as Response);
+
+    const provider = new VolcengineSttProvider("app", "key");
+    await expect(
+      provider.transcribe(Buffer.from("audio"), "wav"),
+    ).rejects.toThrow("Volcengine submit error: code=1001");
+  });
+
+  it("throws on query HTTP error", async () => {
+    let callIndex = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      callIndex++;
+      if (callIndex === 1) {
+        // submit succeeds
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            resp: { code: 0, msg: "ok", id: "task-789" },
+          }),
+          text: async () => "",
+        } as unknown as Response;
+      }
+      // query fails
+      return {
+        ok: false,
+        status: 503,
+        json: async () => ({}),
+        text: async () => "Service Unavailable",
+      } as unknown as Response;
+    });
+
+    const provider = new VolcengineSttProvider("app", "key");
+    await expect(
+      provider.transcribe(Buffer.from("audio"), "wav"),
+    ).rejects.toThrow("Volcengine query failed: HTTP 503");
+  });
+
+  it("throws on query API error (unexpected code)", async () => {
+    let callIndex = 0;
+    globalThis.fetch = vi.fn().mockImplementation(async () => {
+      callIndex++;
+      if (callIndex === 1) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            resp: { code: 0, msg: "ok", id: "task-err" },
+          }),
+          text: async () => "",
+        } as unknown as Response;
+      }
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          resp: { code: 2000, msg: "Processing failed" },
+        }),
+        text: async () => "",
+      } as unknown as Response;
+    });
+
+    const provider = new VolcengineSttProvider("app", "key");
+    await expect(
+      provider.transcribe(Buffer.from("audio"), "wav"),
+    ).rejects.toThrow("Volcengine query error: code=2000");
+  });
+});

@@ -6,6 +6,8 @@ import { randomUUID } from "node:crypto";
 import { createLogger } from "@easyclaw/logger";
 import type { Storage } from "@easyclaw/storage";
 import type { ArtifactStatus, ArtifactType } from "@easyclaw/core";
+import { UsageCollector, InMemoryUsageStore } from "@easyclaw/telemetry";
+import type { UsageFilter } from "@easyclaw/telemetry";
 
 const log = createLogger("panel-server");
 
@@ -61,6 +63,7 @@ export function startPanelServer(options: PanelServerOptions): Server {
   const port = options.port ?? 3210;
   const distDir = resolve(options.panelDistDir);
   const { storage, onRuleChange } = options;
+  const usageCollector = new UsageCollector(new InMemoryUsageStore());
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
@@ -80,7 +83,7 @@ export function startPanelServer(options: PanelServerOptions): Server {
     // API routes
     if (pathname.startsWith("/api/")) {
       try {
-        await handleApiRoute(req, res, pathname, storage, onRuleChange);
+        await handleApiRoute(req, res, url, pathname, storage, usageCollector, onRuleChange);
       } catch (err) {
         log.error("API error:", err);
         sendJson(res, 500, { error: "Internal server error" });
@@ -113,8 +116,10 @@ function extractIdFromPath(pathname: string, prefix: string): string | null {
 async function handleApiRoute(
   req: IncomingMessage,
   res: ServerResponse,
+  url: URL,
   pathname: string,
   storage: Storage,
+  usageCollector: UsageCollector,
   onRuleChange?: (action: "created" | "updated" | "deleted", ruleId: string) => void,
 ): Promise<void> {
   // --- Status ---
@@ -241,6 +246,55 @@ async function handleApiRoute(
       writePaths: body.writePaths ?? [],
     });
     sendJson(res, 200, { permissions });
+    return;
+  }
+
+  // --- Usage ---
+  if (pathname === "/api/usage" && req.method === "GET") {
+    const filter: UsageFilter = {};
+    const since = url.searchParams.get("since");
+    const until = url.searchParams.get("until");
+    const model = url.searchParams.get("model");
+    const provider = url.searchParams.get("provider");
+    if (since) filter.since = since;
+    if (until) filter.until = until;
+    if (model) filter.model = model;
+    if (provider) filter.provider = provider;
+    const summary = usageCollector.summarize(filter);
+    sendJson(res, 200, summary);
+    return;
+  }
+
+  if (pathname === "/api/usage" && req.method === "POST") {
+    const body = (await parseBody(req)) as {
+      model?: string;
+      provider?: string;
+      inputTokens?: number;
+      outputTokens?: number;
+      totalTokens?: number;
+      sessionId?: string;
+    };
+    if (
+      !body.model ||
+      !body.provider ||
+      typeof body.inputTokens !== "number" ||
+      typeof body.outputTokens !== "number" ||
+      typeof body.totalTokens !== "number"
+    ) {
+      sendJson(res, 400, {
+        error: "Missing required fields: model, provider, inputTokens, outputTokens, totalTokens",
+      });
+      return;
+    }
+    const record = usageCollector.record({
+      model: body.model,
+      provider: body.provider,
+      inputTokens: body.inputTokens,
+      outputTokens: body.outputTokens,
+      totalTokens: body.totalTokens,
+      sessionId: body.sessionId,
+    });
+    sendJson(res, 201, record);
     return;
   }
 
