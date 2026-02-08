@@ -1,10 +1,46 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { createLogger } from "@easyclaw/logger";
+import { generateAudioConfig, mergeAudioConfig } from "./audio-config-writer.js";
 
 const log = createLogger("gateway:config");
+
+/**
+ * Find the monorepo root by looking for pnpm-workspace.yaml
+ */
+function findMonorepoRoot(startDir: string = process.cwd()): string | null {
+  let currentDir = resolve(startDir);
+  const root = resolve("/");
+
+  while (currentDir !== root) {
+    const workspaceFile = join(currentDir, "pnpm-workspace.yaml");
+    if (existsSync(workspaceFile)) {
+      return currentDir;
+    }
+    currentDir = dirname(currentDir);
+  }
+
+  return null;
+}
+
+/**
+ * Resolve the absolute path to the file permissions plugin.
+ * This plugin is built as part of the EasyClaw monorepo.
+ *
+ * Note: The desktop app bundles all dependencies into a single file,
+ * so we cannot rely on import.meta.url. Instead, we find the monorepo root.
+ */
+function resolveFilePermissionsPluginPath(): string {
+  const monorepoRoot = findMonorepoRoot();
+  if (!monorepoRoot) {
+    // Fallback: assume we're in the monorepo root
+    return resolve(process.cwd(), "packages", "file-permissions-plugin", "dist", "index.mjs");
+  }
+  return resolve(monorepoRoot, "packages", "file-permissions-plugin", "dist", "index.mjs");
+}
 
 /** Generate a random hex token for gateway auth. */
 export function generateGatewayToken(): string {
@@ -25,9 +61,24 @@ export interface OpenClawGatewayConfig {
       model?: {
         primary?: string;
       };
+      tools?: {
+        exec?: {
+          host?: string;
+          security?: string;
+          ask?: string;
+        };
+        elevated?: {
+          enabled?: boolean;
+        };
+      };
     };
   };
-  plugins?: Record<string, unknown>;
+  plugins?: {
+    load?: {
+      paths?: string[];
+    };
+    entries?: Record<string, unknown>;
+  };
   skills?: {
     load?: {
       extraDirs?: string[];
@@ -87,12 +138,27 @@ export interface WriteGatewayConfigOptions {
   /** Default model configuration (provider + model ID). */
   defaultModel?: { provider: string; modelId: string };
   /** Plugin configuration object for OpenClaw. */
-  plugins?: Record<string, unknown>;
+  plugins?: {
+    load?: {
+      paths?: string[];
+    };
+    entries?: Record<string, unknown>;
+  };
   /** Array of extra skill directories for OpenClaw to load. */
   extraSkillDirs?: string[];
   /** Enable the OpenAI-compatible /v1/chat/completions endpoint (disabled by default in OpenClaw). */
   enableChatCompletions?: boolean;
+  /** Enable commands.restart so SIGUSR1 graceful reload is authorized. */
+  commandsRestart?: boolean;
+  /** STT (Speech-to-Text) configuration. */
+  stt?: {
+    enabled: boolean;
+    provider: "groq" | "volcengine";
+  };
+  /** Enable file permissions plugin. */
+  enableFilePermissions?: boolean;
 }
+
 
 /**
  * Write the OpenClaw gateway config file.
@@ -171,6 +237,18 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
     };
   }
 
+  // Enable commands.restart for SIGUSR1 graceful reload
+  if (options.commandsRestart !== undefined) {
+    const existingCommands =
+      typeof config.commands === "object" && config.commands !== null
+        ? (config.commands as Record<string, unknown>)
+        : {};
+    config.commands = {
+      ...existingCommands,
+      restart: options.commandsRestart,
+    };
+  }
+
   // Default model selection → agents.defaults.model.primary
   if (options.defaultModel !== undefined) {
     const existingAgents =
@@ -197,9 +275,61 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
     };
   }
 
-  // Plugins (EasyClaw owns this object entirely)
-  if (options.plugins !== undefined) {
-    config.plugins = options.plugins;
+  // Plugins configuration
+  if (options.plugins !== undefined || options.enableFilePermissions !== undefined) {
+    const existingPlugins =
+      typeof config.plugins === "object" && config.plugins !== null
+        ? (config.plugins as Record<string, unknown>)
+        : {};
+
+    const merged: Record<string, unknown> = { ...existingPlugins };
+
+    // Merge plugin load paths
+    if (options.plugins?.load?.paths !== undefined) {
+      const existingLoad =
+        typeof existingPlugins.load === "object" && existingPlugins.load !== null
+          ? (existingPlugins.load as Record<string, unknown>)
+          : {};
+      merged.load = {
+        ...existingLoad,
+        paths: options.plugins.load.paths,
+      };
+    }
+
+    // Merge plugin entries
+    if (options.plugins?.entries !== undefined) {
+      merged.entries = options.plugins.entries;
+    }
+
+    // Add file permissions plugin if enabled
+    if (options.enableFilePermissions !== undefined) {
+      const pluginPath = resolveFilePermissionsPluginPath();
+      const existingLoad =
+        typeof merged.load === "object" && merged.load !== null
+          ? (merged.load as Record<string, unknown>)
+          : {};
+      const existingPaths = Array.isArray(existingLoad.paths) ? existingLoad.paths : [];
+
+      // Add plugin path if not already present
+      if (!existingPaths.includes(pluginPath)) {
+        merged.load = {
+          ...existingLoad,
+          paths: [...existingPaths, pluginPath],
+        };
+      }
+
+      // Enable the plugin in entries
+      const existingEntries =
+        typeof merged.entries === "object" && merged.entries !== null
+          ? (merged.entries as Record<string, unknown>)
+          : {};
+      merged.entries = {
+        ...existingEntries,
+        "easyclaw-file-permissions": { enabled: options.enableFilePermissions },
+      };
+    }
+
+    config.plugins = merged;
   }
 
   // Skills extra dirs
@@ -221,6 +351,13 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
     };
   }
 
+  // STT configuration via OpenClaw's tools.media.audio
+  if (options.stt !== undefined) {
+    // Generate OpenClaw tools.media.audio configuration
+    const audioConfig = generateAudioConfig(options.stt.enabled, options.stt.provider);
+    mergeAudioConfig(config, audioConfig);
+  }
+
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
   log.info(`Gateway config written to ${configPath}`);
 
@@ -238,6 +375,7 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
 export function ensureGatewayConfig(options?: {
   configPath?: string;
   gatewayPort?: number;
+  enableFilePermissions?: boolean;
 }): string {
   const configPath = options?.configPath ?? resolveOpenClawConfigPath();
 
@@ -247,8 +385,12 @@ export function ensureGatewayConfig(options?: {
       gatewayPort: options?.gatewayPort ?? DEFAULT_GATEWAY_PORT,
       gatewayToken: generateGatewayToken(),
       enableChatCompletions: true,
-      plugins: {},
+      commandsRestart: true,
+      plugins: {
+        entries: {},
+      },
       extraSkillDirs: [],
+      enableFilePermissions: options?.enableFilePermissions ?? true, // Enable by default
     });
   }
 

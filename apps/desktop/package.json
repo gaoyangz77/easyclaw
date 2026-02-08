@@ -18,10 +18,14 @@
     "@easyclaw/core": "workspace:*",
     "@easyclaw/gateway": "workspace:*",
     "@easyclaw/logger": "workspace:*",
+    "@easyclaw/proxy-router": "workspace:*",
     "@easyclaw/rules": "workspace:*",
     "@easyclaw/secrets": "workspace:*",
     "@easyclaw/storage": "workspace:*",
-    "better-sqlite3": "^11.9.1"
+    "@easyclaw/stt": "workspace:*",
+    "@easyclaw/telemetry": "workspace:*",
+    "better-sqlite3": "^11.9.1",
+    "undici": "^7.2.0"
   },
   "devDependencies": {
     "@electron/notarize": "^3.0.0",

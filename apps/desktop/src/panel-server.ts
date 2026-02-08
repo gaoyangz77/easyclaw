@@ -1,16 +1,19 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse, Server } from "node:http";
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, existsSync, statSync, watch } from "node:fs";
 import { join, extname, resolve, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createLogger } from "@easyclaw/logger";
 import type { Storage } from "@easyclaw/storage";
 import type { SecretStore } from "@easyclaw/secrets";
 import type { ArtifactStatus, ArtifactType, LLMProvider } from "@easyclaw/core";
-import { PROVIDER_BASE_URLS, getDefaultModelForProvider, providerSecretKey } from "@easyclaw/core";
-import { readFullModelCatalog, resolveOpenClawConfigPath, readExistingConfig, resolveOpenClawStateDir } from "@easyclaw/gateway";
+import { PROVIDER_BASE_URLS, getDefaultModelForProvider, providerSecretKey, parseProxyUrl, reconstructProxyUrl } from "@easyclaw/core";
+import { readFullModelCatalog, resolveOpenClawConfigPath, readExistingConfig, resolveOpenClawStateDir, GatewayRpcClient, writeChannelAccount, removeChannelAccount, syncPermissions } from "@easyclaw/gateway";
 import { loadCostUsageSummary, discoverAllSessions, loadSessionCostSummary } from "../../../vendor/openclaw/src/infra/session-cost-usage.js";
 import type { CostUsageSummary, SessionCostSummary } from "../../../vendor/openclaw/src/infra/session-cost-usage.js";
+import type { ChannelsStatusSnapshot } from "@easyclaw/core";
+import { promises as fs } from "node:fs";
+import { homedir } from "node:os";
 
 const log = createLogger("panel-server");
 
@@ -72,6 +75,72 @@ function getCachedUsage(cacheKey: string): UsageSummary | null {
 
 function setCachedUsage(cacheKey: string, data: UsageSummary): void {
   usageCache.set(cacheKey, { data, expiresAt: Date.now() + CACHE_TTL_MS });
+}
+
+// --- Pairing Store Helpers ---
+
+interface PairingRequest {
+  id: string;
+  code: string;
+  createdAt: string;
+  lastSeenAt: string;
+  meta?: Record<string, string>;
+}
+
+interface PairingStore {
+  version: number;
+  requests: PairingRequest[];
+}
+
+interface AllowFromStore {
+  version: number;
+  allowFrom: string[];
+}
+
+function resolvePairingPath(channelId: string): string {
+  const stateDir = resolveOpenClawStateDir();
+  return join(stateDir, "credentials", `${channelId}-pairing.json`);
+}
+
+function resolveAllowFromPath(channelId: string): string {
+  const stateDir = resolveOpenClawStateDir();
+  return join(stateDir, "credentials", `${channelId}-allowFrom.json`);
+}
+
+async function readPairingRequests(channelId: string): Promise<PairingRequest[]> {
+  try {
+    const filePath = resolvePairingPath(channelId);
+    const content = await fs.readFile(filePath, "utf-8");
+    const data: PairingStore = JSON.parse(content);
+    return Array.isArray(data.requests) ? data.requests : [];
+  } catch (err: any) {
+    if (err.code === "ENOENT") return [];
+    throw err;
+  }
+}
+
+async function writePairingRequests(channelId: string, requests: PairingRequest[]): Promise<void> {
+  const filePath = resolvePairingPath(channelId);
+  const data: PairingStore = { version: 1, requests };
+  await fs.writeFile(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8");
+}
+
+async function readAllowFromList(channelId: string): Promise<string[]> {
+  try {
+    const filePath = resolveAllowFromPath(channelId);
+    const content = await fs.readFile(filePath, "utf-8");
+    const data: AllowFromStore = JSON.parse(content);
+    return Array.isArray(data.allowFrom) ? data.allowFrom : [];
+  } catch (err: any) {
+    if (err.code === "ENOENT") return [];
+    throw err;
+  }
+}
+
+async function writeAllowFromList(channelId: string, allowFrom: string[]): Promise<void> {
+  const filePath = resolveAllowFromPath(channelId);
+  const data: AllowFromStore = { version: 1, allowFrom };
+  await fs.writeFile(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8");
 }
 
 function transformToUsageSummary(
@@ -158,6 +227,313 @@ function emptyUsageSummary(): UsageSummary {
   };
 }
 
+// --- Channel Message Senders ---
+
+/**
+ * Read the first account config for a channel from the OpenClaw config.
+ * Returns { accountId, config } or null.
+ */
+function resolveFirstChannelAccount(channelId: string): { accountId: string; config: Record<string, unknown> } | null {
+  try {
+    const configPath = resolveOpenClawConfigPath();
+    const fullConfig = readExistingConfig(configPath);
+    const channels = (fullConfig.channels ?? {}) as Record<string, unknown>;
+    const channel = (channels[channelId] ?? {}) as Record<string, unknown>;
+    const accounts = (channel.accounts ?? {}) as Record<string, Record<string, unknown>>;
+    for (const [accountId, config] of Object.entries(accounts)) {
+      if (config && typeof config === "object") {
+        return { accountId, config };
+      }
+    }
+  } catch (err) {
+    log.error(`Failed to resolve ${channelId} account config:`, err);
+  }
+  return null;
+}
+
+// Telegram: POST https://api.telegram.org/bot{token}/sendMessage
+async function sendTelegramMessage(chatId: string, text: string): Promise<boolean> {
+  const account = resolveFirstChannelAccount("telegram");
+  const botToken = account?.config.botToken;
+  if (!botToken || typeof botToken !== "string") {
+    log.error("Telegram: no bot token found");
+    return false;
+  }
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      log.error(`Telegram sendMessage failed: ${res.status} ${body.slice(0, 200)}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    log.error("Telegram sendMessage error:", err);
+    return false;
+  }
+}
+
+// Feishu: Get tenant_access_token, then POST to /im/v1/messages
+const feishuTokenCache: { token?: string; expiresAt?: number } = {};
+
+async function getFeishuTenantToken(appId: string, appSecret: string, domain: string): Promise<string | null> {
+  if (feishuTokenCache.token && feishuTokenCache.expiresAt && Date.now() < feishuTokenCache.expiresAt) {
+    return feishuTokenCache.token;
+  }
+  const host = domain === "lark" ? "open.larksuite.com" : "open.feishu.cn";
+  try {
+    const res = await fetch(`https://${host}/open-apis/auth/v3/tenant_access_token/internal`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { tenant_access_token?: string; expire?: number };
+    if (!data.tenant_access_token) return null;
+    feishuTokenCache.token = data.tenant_access_token;
+    feishuTokenCache.expiresAt = Date.now() + ((data.expire ?? 7200) - 60) * 1000;
+    return data.tenant_access_token;
+  } catch (err) {
+    log.error("Feishu tenant token error:", err);
+    return null;
+  }
+}
+
+async function sendFeishuMessage(chatId: string, text: string): Promise<boolean> {
+  const account = resolveFirstChannelAccount("feishu");
+  if (!account) return false;
+  const appId = account.config.appId as string;
+  const appSecret = account.config.appSecret as string;
+  const domain = (account.config.domain as string) ?? "feishu";
+  if (!appId || !appSecret) {
+    log.error("Feishu: missing appId or appSecret");
+    return false;
+  }
+  const token = await getFeishuTenantToken(appId, appSecret, domain);
+  if (!token) return false;
+  const host = domain === "lark" ? "open.larksuite.com" : "open.feishu.cn";
+  try {
+    const res = await fetch(`https://${host}/open-apis/im/v1/messages?receive_id_type=open_id`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        receive_id: chatId,
+        msg_type: "text",
+        content: JSON.stringify({ text }),
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      log.error(`Feishu sendMessage failed: ${res.status} ${body.slice(0, 200)}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    log.error("Feishu sendMessage error:", err);
+    return false;
+  }
+}
+
+// LINE: POST https://api.line.me/v2/bot/message/push
+async function sendLineMessage(chatId: string, text: string): Promise<boolean> {
+  const account = resolveFirstChannelAccount("line");
+  const token = account?.config.channelAccessToken;
+  if (!token || typeof token !== "string") {
+    log.error("LINE: no channel access token found");
+    return false;
+  }
+  try {
+    const res = await fetch("https://api.line.me/v2/bot/message/push", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        to: chatId,
+        messages: [{ type: "text", text }],
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      log.error(`LINE sendMessage failed: ${res.status} ${body.slice(0, 200)}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    log.error("LINE sendMessage error:", err);
+    return false;
+  }
+}
+
+// Mattermost: Create DM channel, then POST message
+async function sendMattermostMessage(userId: string, text: string): Promise<boolean> {
+  const account = resolveFirstChannelAccount("mattermost");
+  const botToken = account?.config.botToken as string | undefined;
+  const baseUrl = account?.config.baseUrl as string | undefined;
+  if (!botToken || !baseUrl) {
+    log.error("Mattermost: missing botToken or baseUrl");
+    return false;
+  }
+  const headers = {
+    "Content-Type": "application/json",
+    "Authorization": `Bearer ${botToken}`,
+  };
+  try {
+    // Get bot's own user ID
+    const meRes = await fetch(`${baseUrl}/api/v4/users/me`, { headers });
+    if (!meRes.ok) return false;
+    const me = await meRes.json() as { id: string };
+
+    // Create/get DM channel
+    const dmRes = await fetch(`${baseUrl}/api/v4/channels/direct`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify([me.id, userId]),
+    });
+    if (!dmRes.ok) return false;
+    const dm = await dmRes.json() as { id: string };
+
+    // Post message
+    const res = await fetch(`${baseUrl}/api/v4/posts`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ channel_id: dm.id, message: text }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      log.error(`Mattermost sendMessage failed: ${res.status} ${body.slice(0, 200)}`);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    log.error("Mattermost sendMessage error:", err);
+    return false;
+  }
+}
+
+/**
+ * Send a message to a user on the given channel.
+ * Returns true if successfully sent, false otherwise.
+ */
+async function sendChannelMessage(channelId: string, userId: string, text: string): Promise<boolean> {
+  switch (channelId) {
+    case "telegram": return sendTelegramMessage(userId, text);
+    case "feishu": return sendFeishuMessage(userId, text);
+    case "line": return sendLineMessage(userId, text);
+    case "mattermost": return sendMattermostMessage(userId, text);
+    default:
+      log.info(`Channel ${channelId}: message sending not supported yet`);
+      return false;
+  }
+}
+
+/**
+ * Watch pairing request files for ALL channels and send follow-up messages
+ * when new pairing requests are created by OpenClaw.
+ */
+function startPairingNotifier(): { stop: () => void } {
+  const credentialsDir = join(resolveOpenClawStateDir(), "credentials");
+  // Track known codes per channel to avoid duplicate notifications
+  const knownCodes = new Set<string>();
+  let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Initialize known codes from all existing pairing files
+  async function initKnownCodes() {
+    try {
+      const files = await fs.readdir(credentialsDir).catch(() => [] as string[]);
+      for (const file of files) {
+        if (!file.endsWith("-pairing.json")) continue;
+        try {
+          const content = await fs.readFile(join(credentialsDir, file), "utf-8");
+          const data = JSON.parse(content) as PairingStore;
+          if (Array.isArray(data.requests)) {
+            for (const req of data.requests) {
+              if (req.code) knownCodes.add(req.code);
+            }
+          }
+        } catch {
+          // Ignore per-file errors
+        }
+      }
+    } catch {
+      // Directory may not exist yet
+    }
+  }
+
+  async function checkForNewRequests() {
+    try {
+      const files = await fs.readdir(credentialsDir).catch(() => [] as string[]);
+      for (const file of files) {
+        if (!file.endsWith("-pairing.json")) continue;
+        const channelId = file.replace("-pairing.json", "");
+
+        const content = await fs.readFile(join(credentialsDir, file), "utf-8").catch(() => "");
+        if (!content) continue;
+
+        const data = JSON.parse(content) as PairingStore;
+        if (!Array.isArray(data.requests)) continue;
+
+        for (const req of data.requests) {
+          if (!req.code || knownCodes.has(req.code)) continue;
+          knownCodes.add(req.code);
+
+          const message = [
+            "💡 [EasyClaw] 您的配对请求已收到。",
+            "",
+            "管理员将通过 EasyClaw 管理面板审核您的请求，请耐心等待。",
+            "",
+            "Your pairing request has been received. The administrator will review it shortly.",
+          ].join("\n");
+
+          log.info(`Sending pairing follow-up to ${channelId} user ${req.id}`);
+          sendChannelMessage(channelId, req.id, message);
+        }
+      }
+    } catch (err) {
+      log.error("Pairing notifier check failed:", err);
+    }
+  }
+
+  // Initialize
+  initKnownCodes();
+
+  // Watch for file changes
+  let watcher: ReturnType<typeof watch> | null = null;
+  try {
+    fs.mkdir(credentialsDir, { recursive: true }).then(() => {
+      try {
+        watcher = watch(credentialsDir, (_eventType, filename) => {
+          if (!filename?.endsWith("-pairing.json")) return;
+
+          // Debounce rapid changes
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(checkForNewRequests, 500);
+        });
+        log.info("Pairing notifier watching:", credentialsDir);
+      } catch (err) {
+        log.error("Failed to start pairing file watcher:", err);
+      }
+    });
+  } catch (err) {
+    log.error("Failed to create credentials directory:", err);
+  }
+
+  return {
+    stop: () => {
+      if (watcher) watcher.close();
+      if (debounceTimer) clearTimeout(debounceTimer);
+    },
+  };
+}
+
 export interface PanelServerOptions {
   /** Port to listen on. Default: 3210 */
   port?: number;
@@ -167,12 +543,33 @@ export interface PanelServerOptions {
   storage: Storage;
   /** Secret store for API keys (Keychain on macOS, encrypted file elsewhere). */
   secretStore: SecretStore;
+  /** Gateway RPC client getter (returns null if gateway not connected) */
+  getRpcClient?: () => GatewayRpcClient | null;
   /** Callback fired when a rule is created, updated, or deleted. */
   onRuleChange?: (action: "created" | "updated" | "deleted", ruleId: string) => void;
-  /** Callback fired when provider settings change (API key added/removed or default changed). */
-  onProviderChange?: () => void;
+  /**
+   * Callback fired when provider settings change.
+   * @param hint.configOnly - true if only the config file changed (e.g. model switch).
+   *   When true, the gateway can be reloaded via SIGUSR1 instead of a full restart.
+   * @param hint.keyOnly - true if only an API key changed (add/activate/delete).
+   *   When true, only auth-profiles.json needs syncing — no restart at all.
+   */
+  onProviderChange?: (hint?: { configOnly?: boolean; keyOnly?: boolean }) => void;
   /** Callback to open a native file/directory picker dialog. Returns the selected path or null. */
   onOpenFileDialog?: () => Promise<string | null>;
+  /** STT manager instance for voice transcription (optional). */
+  sttManager?: {
+    transcribe(audio: Buffer, format: string): Promise<string | null>;
+    isEnabled(): boolean;
+    getProvider(): string | null;
+    initialize(): Promise<void>;
+  };
+  /** Callback fired when STT settings change. */
+  onSttChange?: () => void;
+  /** Callback fired when file permissions change. Requires gateway restart to apply env vars. */
+  onPermissionsChange?: () => void;
+  /** Callback fired when a channel account is created or updated. */
+  onChannelConfigured?: (channelId: string) => void;
 }
 
 /**
@@ -201,6 +598,7 @@ function parseBody(req: IncomingMessage): Promise<unknown> {
 async function validateProviderApiKey(
   provider: string,
   apiKey: string,
+  proxyUrl?: string,
 ): Promise<{ valid: boolean; error?: string }> {
   const baseUrl = PROVIDER_BASE_URLS[provider as LLMProvider];
   if (!baseUrl) {
@@ -214,6 +612,14 @@ async function validateProviderApiKey(
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
+
+  // Set up proxy if provided (to prevent IP pollution/bans)
+  let dispatcher: import("undici").Dispatcher | undefined;
+  if (proxyUrl) {
+    const { ProxyAgent } = await import("undici");
+    dispatcher = new ProxyAgent(proxyUrl);
+    log.info(`Using proxy for validation: ${proxyUrl.replace(/\/\/[^:]+:[^@]+@/, '//*****:*****@')}`);
+  }
 
   try {
     let res: Response;
@@ -253,6 +659,7 @@ async function validateProviderApiKey(
         headers,
         body: JSON.stringify(body),
         signal: controller.signal,
+        ...(dispatcher && { dispatcher }),
       });
     } else {
       // OpenAI-compatible providers: GET /models
@@ -260,6 +667,7 @@ async function validateProviderApiKey(
       res = await fetch(`${baseUrl}/models`, {
         headers: { Authorization: `Bearer ${apiKey}` },
         signal: controller.signal,
+        ...(dispatcher && { dispatcher }),
       });
     }
 
@@ -339,7 +747,10 @@ async function syncActiveKey(
 export function startPanelServer(options: PanelServerOptions): Server {
   const port = options.port ?? 3210;
   const distDir = resolve(options.panelDistDir);
-  const { storage, secretStore, onRuleChange, onProviderChange, onOpenFileDialog } = options;
+  const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured } = options;
+
+  // Start pairing notifier to send follow-up messages to Telegram users
+  const pairingNotifier = startPairingNotifier();
 
   const server = createServer(async (req, res) => {
     const url = new URL(req.url ?? "/", `http://127.0.0.1:${port}`);
@@ -359,7 +770,7 @@ export function startPanelServer(options: PanelServerOptions): Server {
     // API routes
     if (pathname.startsWith("/api/")) {
       try {
-        await handleApiRoute(req, res, url, pathname, storage, secretStore, onRuleChange, onProviderChange, onOpenFileDialog);
+        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured);
       } catch (err) {
         log.error("API error:", err);
         sendJson(res, 500, { error: "Internal server error" });
@@ -374,6 +785,8 @@ export function startPanelServer(options: PanelServerOptions): Server {
   server.listen(port, "127.0.0.1", () => {
     log.info("Panel server listening on http://127.0.0.1:" + port);
   });
+
+  server.on("close", () => pairingNotifier.stop());
 
   return server;
 }
@@ -396,9 +809,18 @@ async function handleApiRoute(
   pathname: string,
   storage: Storage,
   secretStore: SecretStore,
+  getRpcClient?: () => GatewayRpcClient | null,
   onRuleChange?: (action: "created" | "updated" | "deleted", ruleId: string) => void,
-  onProviderChange?: () => void,
+  onProviderChange?: (hint?: { configOnly?: boolean; keyOnly?: boolean }) => void,
   onOpenFileDialog?: () => Promise<string | null>,
+  sttManager?: {
+    transcribe(audio: Buffer, format: string): Promise<string | null>;
+    isEnabled(): boolean;
+    getProvider(): string | null;
+  },
+  onSttChange?: () => void,
+  onPermissionsChange?: () => void,
+  onChannelConfigured?: (channelId: string) => void,
 ): Promise<void> {
   // --- Status ---
   if (pathname === "/api/status" && req.method === "GET") {
@@ -509,19 +931,39 @@ async function handleApiRoute(
   }
 
   if (pathname === "/api/settings/validate-key" && req.method === "POST") {
-    const body = (await parseBody(req)) as { provider?: string; apiKey?: string };
+    const body = (await parseBody(req)) as { provider?: string; apiKey?: string; proxyUrl?: string };
     if (!body.provider || !body.apiKey) {
       sendJson(res, 400, { valid: false, error: "Missing provider or apiKey" });
       return;
     }
-    const result = await validateProviderApiKey(body.provider, body.apiKey);
+    const result = await validateProviderApiKey(body.provider, body.apiKey, body.proxyUrl);
     sendJson(res, 200, result);
+    return;
+  }
+
+  // --- Telemetry Settings ---
+  if (pathname === "/api/settings/telemetry" && req.method === "GET") {
+    const enabledStr = storage.settings.get("telemetry_enabled");
+    const enabled = enabledStr === "true";
+    sendJson(res, 200, { enabled });
+    return;
+  }
+
+  if (pathname === "/api/settings/telemetry" && req.method === "PUT") {
+    const body = (await parseBody(req)) as { enabled?: boolean };
+    if (typeof body.enabled !== "boolean") {
+      sendJson(res, 400, { error: "Missing required field: enabled (boolean)" });
+      return;
+    }
+    storage.settings.set("telemetry_enabled", body.enabled ? "true" : "false");
+    sendJson(res, 200, { ok: true });
     return;
   }
 
   if (pathname === "/api/settings" && req.method === "PUT") {
     const body = (await parseBody(req)) as Record<string, string>;
     let providerChanged = false;
+    let sttChanged = false;
     for (const [key, value] of Object.entries(body)) {
       if (typeof key === "string" && typeof value === "string") {
         if (key.endsWith("-api-key")) {
@@ -538,6 +980,9 @@ async function handleApiRoute(
           if (key === "llm-provider") {
             providerChanged = true;
           }
+          if (key === "stt.enabled" || key === "stt.provider") {
+            sttChanged = true;
+          }
         }
       }
     }
@@ -545,13 +990,144 @@ async function handleApiRoute(
     if (providerChanged) {
       onProviderChange?.();
     }
+    if (sttChanged) {
+      onSttChange?.();
+    }
+    return;
+  }
+
+  // --- STT Credentials Status ---
+  if (pathname === "/api/stt/credentials" && req.method === "GET") {
+    try {
+      const hasGroqKey = !!(await secretStore.get("stt-groq-apikey"));
+      const hasVolcengineAppKey = !!(await secretStore.get("stt-volcengine-appkey"));
+      const hasVolcengineAccessKey = !!(await secretStore.get("stt-volcengine-accesskey"));
+
+      sendJson(res, 200, {
+        groq: hasGroqKey,
+        volcengine: hasVolcengineAppKey && hasVolcengineAccessKey,
+      });
+      return;
+    } catch (err) {
+      log.error("Failed to check STT credentials", err);
+      sendJson(res, 500, { error: "Failed to check credentials" });
+      return;
+    }
+  }
+
+  // --- STT Credentials ---
+  if (pathname === "/api/stt/credentials" && req.method === "PUT") {
+    const body = (await parseBody(req)) as {
+      provider?: string;
+      apiKey?: string;
+      appKey?: string;
+      accessKey?: string;
+    };
+
+    if (!body.provider) {
+      sendJson(res, 400, { error: "Missing provider" });
+      return;
+    }
+
+    try {
+      if (body.provider === "groq") {
+        if (!body.apiKey) {
+          sendJson(res, 400, { error: "Missing apiKey for Groq provider" });
+          return;
+        }
+        await secretStore.set("stt-groq-apikey", body.apiKey);
+      } else if (body.provider === "volcengine") {
+        if (!body.appKey || !body.accessKey) {
+          sendJson(res, 400, { error: "Missing appKey or accessKey for Volcengine provider" });
+          return;
+        }
+        await secretStore.set("stt-volcengine-appkey", body.appKey);
+        await secretStore.set("stt-volcengine-accesskey", body.accessKey);
+      } else {
+        sendJson(res, 400, { error: "Unknown provider" });
+        return;
+      }
+
+      sendJson(res, 200, { ok: true });
+      // Reinitialize STT manager with new credentials
+      onSttChange?.();
+      return;
+    } catch (err) {
+      log.error("Failed to save STT credentials", err);
+      sendJson(res, 500, { error: "Failed to save credentials" });
+      return;
+    }
+  }
+
+  // --- STT Transcribe ---
+  if (pathname === "/api/stt/transcribe" && req.method === "POST") {
+    if (!sttManager || !sttManager.isEnabled()) {
+      sendJson(res, 503, { error: "STT service not enabled or not configured" });
+      return;
+    }
+
+    const body = (await parseBody(req)) as {
+      audio?: string; // Base64-encoded audio
+      format?: string; // Audio format (e.g., "wav", "mp3", "ogg")
+    };
+
+    if (!body.audio || !body.format) {
+      sendJson(res, 400, { error: "Missing audio or format" });
+      return;
+    }
+
+    try {
+      // Decode base64 audio
+      const audioBuffer = Buffer.from(body.audio, "base64");
+
+      // Transcribe
+      const text = await sttManager.transcribe(audioBuffer, body.format);
+
+      if (text === null) {
+        sendJson(res, 500, { error: "Transcription failed" });
+        return;
+      }
+
+      sendJson(res, 200, {
+        text,
+        provider: sttManager.getProvider(),
+      });
+      return;
+    } catch (err) {
+      log.error("STT transcription error", err);
+      sendJson(res, 500, { error: "Transcription failed: " + String(err) });
+      return;
+    }
+  }
+
+  // --- STT Status ---
+  if (pathname === "/api/stt/status" && req.method === "GET") {
+    const enabled = sttManager?.isEnabled() ?? false;
+    const provider = sttManager?.getProvider() ?? null;
+    sendJson(res, 200, { enabled, provider });
     return;
   }
 
   // --- Provider Keys ---
   if (pathname === "/api/provider-keys" && req.method === "GET") {
     const keys = storage.providerKeys.getAll();
-    sendJson(res, 200, { keys });
+
+    // Reconstruct full proxy URLs (base URL + credentials from keychain)
+    const keysWithProxy = await Promise.all(
+      keys.map(async (key) => {
+        if (!key.proxyBaseUrl) {
+          return key;
+        }
+
+        // Try to get credentials from keychain
+        const credentials = await secretStore.get(`proxy-auth-${key.id}`);
+        const proxyUrl = credentials ? reconstructProxyUrl(key.proxyBaseUrl, credentials) : key.proxyBaseUrl;
+
+        return { ...key, proxyUrl };
+      })
+    );
+
+    sendJson(res, 200, { keys: keysWithProxy });
     return;
   }
 
@@ -561,6 +1137,7 @@ async function handleApiRoute(
       label?: string;
       model?: string;
       apiKey?: string;
+      proxyUrl?: string;
     };
     if (!body.provider || !body.apiKey) {
       sendJson(res, 400, { error: "Missing required fields: provider, apiKey" });
@@ -578,6 +1155,23 @@ async function handleApiRoute(
     const model = body.model || getDefaultModelForProvider(body.provider as LLMProvider).modelId;
     const label = body.label || "Default";
 
+    // Parse proxy URL if provided (Option B: smart split)
+    let proxyBaseUrl: string | null = null;
+    if (body.proxyUrl?.trim()) {
+      try {
+        const proxyConfig = parseProxyUrl(body.proxyUrl.trim());
+        proxyBaseUrl = proxyConfig.baseUrl;
+
+        // If proxy has authentication, store credentials in keychain
+        if (proxyConfig.hasAuth && proxyConfig.credentials) {
+          await secretStore.set(`proxy-auth-${id}`, proxyConfig.credentials);
+        }
+      } catch (error) {
+        sendJson(res, 400, { error: `Invalid proxy URL: ${error instanceof Error ? error.message : String(error)}` });
+        return;
+      }
+    }
+
     // Check if this is the first key for this provider
     const existingKeys = storage.providerKeys.getByProvider(body.provider);
     const isFirst = existingKeys.length === 0;
@@ -588,6 +1182,7 @@ async function handleApiRoute(
       label,
       model,
       isDefault: isFirst,
+      proxyBaseUrl,
       createdAt: "",
       updatedAt: "",
     });
@@ -605,7 +1200,9 @@ async function handleApiRoute(
 
     // Sync the active key to canonical slot
     await syncActiveKey(body.provider, storage, secretStore);
-    onProviderChange?.();
+
+    // First key for provider needs config update (default model), others just need auth profile sync
+    onProviderChange?.(isFirst ? { configOnly: true } : { keyOnly: true });
 
     sendJson(res, 201, entry);
     return;
@@ -620,9 +1217,21 @@ async function handleApiRoute(
       return;
     }
 
+    // Check if model changes (must compare BEFORE setDefault overwrites)
+    const oldDefault = storage.providerKeys.getDefault(entry.provider);
+    const modelChanged = oldDefault?.model !== entry.model;
+    const activeProvider = storage.settings.get("llm-provider");
+
     storage.providerKeys.setDefault(id);
     await syncActiveKey(entry.provider, storage, secretStore);
-    onProviderChange?.();
+
+    // If model changed on the active provider → config update + SIGUSR1
+    // If same model (e.g. key rotation) → just sync auth profile, zero disruption
+    if (modelChanged && entry.provider === activeProvider) {
+      onProviderChange?.({ configOnly: true });
+    } else {
+      onProviderChange?.({ keyOnly: true });
+    }
 
     sendJson(res, 200, { ok: true });
     return;
@@ -634,22 +1243,52 @@ async function handleApiRoute(
     // Skip if contains slash (handled by activate above)
     if (!id.includes("/")) {
       if (req.method === "PUT") {
-        const body = (await parseBody(req)) as { label?: string; model?: string };
+        const body = (await parseBody(req)) as { label?: string; model?: string; proxyUrl?: string };
         const existing = storage.providerKeys.getById(id);
         if (!existing) {
           sendJson(res, 404, { error: "Key not found" });
           return;
         }
 
+        // Handle proxy URL update if provided
+        let proxyBaseUrl: string | null | undefined = undefined;
+        if (body.proxyUrl !== undefined) {
+          if (body.proxyUrl === "" || body.proxyUrl === null) {
+            // Clear proxy
+            proxyBaseUrl = null;
+            await secretStore.delete(`proxy-auth-${id}`);
+          } else {
+            // Update proxy
+            try {
+              const proxyConfig = parseProxyUrl(body.proxyUrl.trim());
+              proxyBaseUrl = proxyConfig.baseUrl;
+
+              // Update or clear credentials in keychain
+              if (proxyConfig.hasAuth && proxyConfig.credentials) {
+                await secretStore.set(`proxy-auth-${id}`, proxyConfig.credentials);
+              } else {
+                await secretStore.delete(`proxy-auth-${id}`);
+              }
+            } catch (error) {
+              sendJson(res, 400, { error: `Invalid proxy URL: ${error instanceof Error ? error.message : String(error)}` });
+              return;
+            }
+          }
+        }
+
         const updated = storage.providerKeys.update(id, {
           label: body.label,
           model: body.model,
+          proxyBaseUrl,
         });
 
-        // If model changed on the active key of the active provider, trigger gateway update
+        // If model or proxy changed on the active key of the active provider, trigger gateway update
         const activeProvider = storage.settings.get("llm-provider");
-        if (existing.isDefault && existing.provider === activeProvider && body.model && body.model !== existing.model) {
-          onProviderChange?.();
+        const modelChanged = body.model && body.model !== existing.model;
+        const proxyChanged = proxyBaseUrl !== undefined && proxyBaseUrl !== existing.proxyBaseUrl;
+        if (existing.isDefault && existing.provider === activeProvider && (modelChanged || proxyChanged)) {
+          // Model-only change can use SIGUSR1 reload (config file only, no env var change)
+          onProviderChange?.({ configOnly: modelChanged && !proxyChanged });
         }
 
         sendJson(res, 200, updated);
@@ -666,18 +1305,27 @@ async function handleApiRoute(
         // Delete from DB and secret store
         storage.providerKeys.delete(id);
         await secretStore.delete(`provider-key-${id}`);
+        // Also delete proxy credentials if they exist
+        await secretStore.delete(`proxy-auth-${id}`);
 
         // If was default, promote next key for same provider
+        let promotedModel: string | undefined;
         if (existing.isDefault) {
           const remaining = storage.providerKeys.getByProvider(existing.provider);
           if (remaining.length > 0) {
             storage.providerKeys.setDefault(remaining[0].id);
+            promotedModel = remaining[0].model;
           }
         }
 
-        // Sync active key
+        // Sync active key (may have promoted a new default or removed the profile)
         await syncActiveKey(existing.provider, storage, secretStore);
-        onProviderChange?.();
+
+        // If the promoted key has a different model (or last key removed), config needs updating
+        const activeProvider = storage.settings.get("llm-provider");
+        const modelChanged = existing.isDefault && existing.provider === activeProvider
+          && promotedModel !== existing.model;
+        onProviderChange?.(modelChanged ? { configOnly: true } : { keyOnly: true });
 
         sendJson(res, 200, { ok: true });
         return;
@@ -693,6 +1341,375 @@ async function handleApiRoute(
   }
 
   // --- Channels ---
+
+  // GET /api/channels/status - Get real-time channel status from OpenClaw gateway
+  if (pathname === "/api/channels/status" && req.method === "GET") {
+    const rpcClient = getRpcClient?.();
+
+    if (!rpcClient || !rpcClient.isConnected()) {
+      sendJson(res, 503, {
+        error: "Gateway not connected",
+        snapshot: null
+      });
+      return;
+    }
+
+    try {
+      const probe = url.searchParams.get("probe") === "true";
+      const timeoutMs = 8000;
+
+      const snapshot = await rpcClient.request<ChannelsStatusSnapshot>(
+        "channels.status",
+        { probe, timeoutMs },
+        timeoutMs + 2000 // Add 2s buffer for request timeout
+      );
+
+      sendJson(res, 200, { snapshot });
+    } catch (err) {
+      log.error("Failed to fetch channels status:", err);
+      sendJson(res, 500, {
+        error: String(err),
+        snapshot: null
+      });
+    }
+    return;
+  }
+
+  // POST /api/channels/accounts - Add new channel account
+  if (pathname === "/api/channels/accounts" && req.method === "POST") {
+    const body = (await parseBody(req)) as {
+      channelId?: string;
+      accountId?: string;
+      name?: string;
+      config?: Record<string, unknown>;
+      secrets?: Record<string, string>;
+    };
+
+    if (!body.channelId || !body.accountId) {
+      sendJson(res, 400, { error: "Missing required fields: channelId, accountId" });
+      return;
+    }
+
+    if (!body.config || typeof body.config !== "object") {
+      sendJson(res, 400, { error: "Missing required field: config" });
+      return;
+    }
+
+    try {
+      const configPath = resolveOpenClawConfigPath();
+
+      // Prepare the account config (including secrets)
+      const accountConfig: Record<string, unknown> = {
+        ...body.config,
+        enabled: body.config.enabled ?? true,
+      };
+
+      // Add name if provided
+      if (body.name) {
+        accountConfig.name = body.name;
+      }
+
+      // Store secrets in both Keychain AND config file
+      // OpenClaw reads secrets from config file, not Keychain
+      if (body.secrets && typeof body.secrets === "object") {
+        for (const [secretKey, secretValue] of Object.entries(body.secrets)) {
+          if (secretValue) {
+            // Store in Keychain for backup/UI display
+            const storeKey = `channel-${body.channelId}-${body.accountId}-${secretKey}`;
+            await secretStore.set(storeKey, secretValue);
+            log.info(`Stored secret for ${body.channelId}/${body.accountId}: ${secretKey}`);
+
+            // ALSO write to config file (OpenClaw expects secrets here)
+            accountConfig[secretKey] = secretValue;
+          }
+        }
+      }
+
+      // Write the account config to OpenClaw config.json
+      writeChannelAccount({
+        configPath,
+        channelId: body.channelId,
+        accountId: body.accountId,
+        config: accountConfig,
+      });
+
+      sendJson(res, 201, {
+        ok: true,
+        channelId: body.channelId,
+        accountId: body.accountId,
+      });
+
+      // Notify gateway to reload config (config-only change, no env vars)
+      onProviderChange?.({ configOnly: true });
+
+      // Track channel configuration
+      onChannelConfigured?.(body.channelId);
+    } catch (err) {
+      log.error("Failed to create channel account:", err);
+      sendJson(res, 500, { error: String(err) });
+    }
+    return;
+  }
+
+  // PUT /api/channels/accounts/:channelId/:accountId - Update channel account
+  if (pathname.startsWith("/api/channels/accounts/") && req.method === "PUT") {
+    const parts = pathname.slice("/api/channels/accounts/".length).split("/");
+    if (parts.length !== 2) {
+      sendJson(res, 400, { error: "Invalid path format. Expected: /api/channels/accounts/:channelId/:accountId" });
+      return;
+    }
+
+    const [channelId, accountId] = parts;
+    const body = (await parseBody(req)) as {
+      name?: string;
+      config?: Record<string, unknown>;
+      secrets?: Record<string, string>;
+    };
+
+    if (!body.config || typeof body.config !== "object") {
+      sendJson(res, 400, { error: "Missing required field: config" });
+      return;
+    }
+
+    try {
+      const configPath = resolveOpenClawConfigPath();
+
+      // Read existing account config so we can merge (preserves secrets not re-sent)
+      const existingFullConfig = readExistingConfig(configPath);
+      const existingChannels = (existingFullConfig.channels ?? {}) as Record<string, unknown>;
+      const existingChannel = (existingChannels[channelId] ?? {}) as Record<string, unknown>;
+      const existingAccounts = (existingChannel.accounts ?? {}) as Record<string, unknown>;
+      const existingAccountConfig = (existingAccounts[accountId] ?? {}) as Record<string, unknown>;
+
+      // Merge: start with existing config, overlay new config on top
+      const accountConfig: Record<string, unknown> = { ...existingAccountConfig, ...body.config };
+
+      // Add name if provided
+      if (body.name !== undefined) {
+        accountConfig.name = body.name;
+      }
+
+      // Update secrets in both Keychain AND config file
+      // OpenClaw reads secrets from config file, not Keychain
+      if (body.secrets && typeof body.secrets === "object") {
+        for (const [secretKey, secretValue] of Object.entries(body.secrets)) {
+          const storeKey = `channel-${channelId}-${accountId}-${secretKey}`;
+          if (secretValue) {
+            // Update in Keychain
+            await secretStore.set(storeKey, secretValue);
+            log.info(`Updated secret for ${channelId}/${accountId}: ${secretKey}`);
+
+            // ALSO write to config file (OpenClaw expects secrets here)
+            accountConfig[secretKey] = secretValue;
+          } else {
+            // Empty value means delete the secret
+            await secretStore.delete(storeKey);
+            log.info(`Deleted secret for ${channelId}/${accountId}: ${secretKey}`);
+            // Don't add to config when deleting
+          }
+        }
+      }
+
+      // Write the updated account config
+      writeChannelAccount({
+        configPath,
+        channelId,
+        accountId,
+        config: accountConfig,
+      });
+
+      sendJson(res, 200, {
+        ok: true,
+        channelId,
+        accountId,
+      });
+
+      // Notify gateway to reload config
+      onProviderChange?.({ configOnly: true });
+
+      // Track channel configuration
+      onChannelConfigured?.(channelId);
+    } catch (err) {
+      log.error("Failed to update channel account:", err);
+      sendJson(res, 500, { error: String(err) });
+    }
+    return;
+  }
+
+  // DELETE /api/channels/accounts/:channelId/:accountId - Remove channel account
+  if (pathname.startsWith("/api/channels/accounts/") && req.method === "DELETE") {
+    const parts = pathname.slice("/api/channels/accounts/".length).split("/");
+    if (parts.length !== 2) {
+      sendJson(res, 400, { error: "Invalid path format. Expected: /api/channels/accounts/:channelId/:accountId" });
+      return;
+    }
+
+    const [channelId, accountId] = parts;
+
+    try {
+      const configPath = resolveOpenClawConfigPath();
+
+      // Remove all secrets for this account
+      const allSecretKeys = await secretStore.listKeys();
+      const accountSecretPrefix = `channel-${channelId}-${accountId}-`;
+      for (const key of allSecretKeys) {
+        if (key.startsWith(accountSecretPrefix)) {
+          await secretStore.delete(key);
+          log.info(`Deleted secret: ${key}`);
+        }
+      }
+
+      // Remove the account from config
+      removeChannelAccount({
+        configPath,
+        channelId,
+        accountId,
+      });
+
+      sendJson(res, 200, {
+        ok: true,
+        channelId,
+        accountId,
+      });
+
+      // Notify gateway to reload config
+      onProviderChange?.({ configOnly: true });
+    } catch (err) {
+      log.error("Failed to delete channel account:", err);
+      sendJson(res, 500, { error: String(err) });
+    }
+    return;
+  }
+
+  // GET /api/pairing/requests/:channelId - Get pending pairing requests
+  if (pathname.startsWith("/api/pairing/requests/") && req.method === "GET") {
+    const channelId = pathname.slice("/api/pairing/requests/".length);
+    if (!channelId) {
+      sendJson(res, 400, { error: "Channel ID is required" });
+      return;
+    }
+
+    try {
+      const requests = await readPairingRequests(channelId);
+      sendJson(res, 200, { requests });
+    } catch (err) {
+      log.error(`Failed to list pairing requests for ${channelId}:`, err);
+      sendJson(res, 500, { error: String(err) });
+    }
+    return;
+  }
+
+  // GET /api/pairing/allowlist/:channelId - Get current allowlist
+  if (pathname.startsWith("/api/pairing/allowlist/") && req.method === "GET") {
+    const channelId = pathname.slice("/api/pairing/allowlist/".length).split("/")[0];
+    if (!channelId) {
+      sendJson(res, 400, { error: "Channel ID is required" });
+      return;
+    }
+
+    try {
+      const allowlist = await readAllowFromList(channelId);
+      sendJson(res, 200, { allowlist });
+    } catch (err) {
+      log.error(`Failed to read allowlist for ${channelId}:`, err);
+      sendJson(res, 500, { error: String(err) });
+    }
+    return;
+  }
+
+  // POST /api/pairing/approve - Approve a pairing code
+  if (pathname === "/api/pairing/approve" && req.method === "POST") {
+    const body = (await parseBody(req)) as {
+      channelId?: string;
+      code?: string;
+    };
+
+    if (!body.channelId || !body.code) {
+      sendJson(res, 400, { error: "Missing required fields: channelId, code" });
+      return;
+    }
+
+    try {
+      const requests = await readPairingRequests(body.channelId);
+      const codeUpper = body.code.trim().toUpperCase();
+      const requestIndex = requests.findIndex(r => r.code.toUpperCase() === codeUpper);
+
+      if (requestIndex < 0) {
+        sendJson(res, 404, { error: "Pairing code not found or expired" });
+        return;
+      }
+
+      const request = requests[requestIndex];
+
+      // Remove from pending requests
+      requests.splice(requestIndex, 1);
+      await writePairingRequests(body.channelId, requests);
+
+      // Add to allowlist
+      const allowlist = await readAllowFromList(body.channelId);
+      if (!allowlist.includes(request.id)) {
+        allowlist.push(request.id);
+        await writeAllowFromList(body.channelId, allowlist);
+      }
+
+      sendJson(res, 200, {
+        ok: true,
+        id: request.id,
+        entry: request,
+      });
+
+      log.info(`Approved pairing for ${body.channelId}: ${request.id}`);
+
+      // Send approval confirmation to the user via their channel
+      const confirmMsg = [
+        "✅ [EasyClaw] 您的访问已获批准！",
+        "",
+        "现在可以开始和我对话了。",
+        "",
+        "Your access has been approved! You can start chatting now.",
+      ].join("\n");
+      sendChannelMessage(body.channelId, request.id, confirmMsg).then(ok => {
+        if (ok) log.info(`Sent approval confirmation to ${body.channelId} user ${request.id}`);
+      });
+    } catch (err) {
+      log.error("Failed to approve pairing:", err);
+      sendJson(res, 500, { error: String(err) });
+    }
+    return;
+  }
+
+  // DELETE /api/pairing/allowlist/:channelId/:entry - Remove from allowlist
+  if (pathname.startsWith("/api/pairing/allowlist/") && req.method === "DELETE") {
+    const parts = pathname.slice("/api/pairing/allowlist/".length).split("/");
+    if (parts.length !== 2) {
+      sendJson(res, 400, { error: "Invalid path format. Expected: /api/pairing/allowlist/:channelId/:entry" });
+      return;
+    }
+
+    const [channelId, entry] = parts.map(decodeURIComponent);
+
+    try {
+      const allowlist = await readAllowFromList(channelId);
+      const filtered = allowlist.filter(e => e !== entry);
+      const changed = filtered.length !== allowlist.length;
+
+      if (changed) {
+        await writeAllowFromList(channelId, filtered);
+        log.info(`Removed from ${channelId} allowlist: ${entry}`);
+      }
+
+      sendJson(res, 200, {
+        ok: true,
+        changed,
+        allowFrom: filtered,
+      });
+    } catch (err) {
+      log.error("Failed to remove from allowlist:", err);
+      sendJson(res, 500, { error: String(err) });
+    }
+    return;
+  }
+
   if (pathname === "/api/channels" && req.method === "GET") {
     const channels = storage.channels.getAll();
     sendJson(res, 200, { channels });
@@ -744,7 +1761,31 @@ async function handleApiRoute(
       readPaths: body.readPaths ?? [],
       writePaths: body.writePaths ?? [],
     });
+
+    // Sync permissions to OpenClaw config (docker bind mounts)
+    try {
+      syncPermissions(permissions);
+      log.info("Synced filesystem permissions to OpenClaw config");
+
+      // Trigger gateway restart for permissions change
+      // Note: Permissions require environment variable update (EASYCLAW_FILE_PERMISSIONS),
+      // which requires a full gateway restart to apply the updated env vars.
+      onPermissionsChange?.();
+    } catch (err) {
+      log.error("Failed to sync permissions to OpenClaw:", err);
+      // Still return success to the client since permissions were saved to SQLite
+    }
+
     sendJson(res, 200, { permissions });
+    return;
+  }
+
+  // --- Workspace Path ---
+  if (pathname === "/api/workspace" && req.method === "GET") {
+    // Return the OpenClaw workspace path (where the gateway process is running)
+    // This is typically the directory where EasyClaw desktop app is running
+    const workspacePath = process.cwd();
+    sendJson(res, 200, { workspacePath });
     return;
   }
 

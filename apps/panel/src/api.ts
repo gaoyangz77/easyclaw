@@ -62,10 +62,11 @@ export async function updateSettings(settings: Record<string, string>): Promise<
 export async function validateApiKey(
   provider: string,
   apiKey: string,
+  proxyUrl?: string,
 ): Promise<{ valid: boolean; error?: string }> {
   return fetchJson("/settings/validate-key", {
     method: "POST",
-    body: JSON.stringify({ provider, apiKey }),
+    body: JSON.stringify({ provider, apiKey, proxyUrl }),
   });
 }
 
@@ -77,6 +78,7 @@ export interface ProviderKeyEntry {
   label: string;
   model: string;
   isDefault: boolean;
+  proxyUrl?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -91,6 +93,7 @@ export async function createProviderKey(data: {
   label: string;
   model: string;
   apiKey: string;
+  proxyUrl?: string;
 }): Promise<ProviderKeyEntry> {
   return fetchJson<ProviderKeyEntry>("/provider-keys", {
     method: "POST",
@@ -100,7 +103,7 @@ export async function createProviderKey(data: {
 
 export async function updateProviderKey(
   id: string,
-  fields: { label?: string; model?: string },
+  fields: { label?: string; model?: string; proxyUrl?: string },
 ): Promise<ProviderKeyEntry> {
   return fetchJson<ProviderKeyEntry>("/provider-keys/" + id, {
     method: "PUT",
@@ -135,6 +138,10 @@ export async function fetchModelCatalog(): Promise<Record<string, CatalogModelEn
 
 // --- Channels ---
 
+/**
+ * Legacy channel interface (SQLite-backed, not used in Phase 1)
+ * @deprecated Use fetchChannelStatus instead
+ */
 export interface Channel {
   id: string;
   channelType: string;
@@ -143,11 +150,63 @@ export interface Channel {
   settings: Record<string, unknown>;
 }
 
+/**
+ * OpenClaw channels status snapshot types
+ */
+export interface ChannelAccountSnapshot {
+  accountId: string;
+  name?: string | null;
+  enabled?: boolean | null;
+  configured?: boolean | null;
+  linked?: boolean | null;
+  running?: boolean | null;
+  connected?: boolean | null;
+  lastError?: string | null;
+  lastInboundAt?: number | null;
+  lastOutboundAt?: number | null;
+  mode?: string | null;
+  dmPolicy?: string | null;
+  groupPolicy?: string | null;
+  streamMode?: string | null;
+  webhookUrl?: string | null;
+  probe?: unknown;
+}
+
+export interface ChannelsStatusSnapshot {
+  ts: number;
+  channelOrder: string[];
+  channelLabels: Record<string, string>;
+  channelMeta?: Array<{ id: string; label: string; detailLabel: string }>;
+  channels: Record<string, unknown>;
+  channelAccounts: Record<string, ChannelAccountSnapshot[]>;
+  channelDefaultAccountId: Record<string, string>;
+}
+
+/**
+ * Fetch real-time channel status from OpenClaw gateway via RPC.
+ * @param probe - If true, trigger health checks for all channels
+ */
+export async function fetchChannelStatus(probe = false): Promise<ChannelsStatusSnapshot | null> {
+  const data = await fetchJson<{ snapshot: ChannelsStatusSnapshot | null; error?: string }>(
+    `/channels/status?probe=${probe}`
+  );
+  if (data.error) {
+    console.warn("Failed to fetch channel status:", data.error);
+  }
+  return data.snapshot;
+}
+
+/**
+ * @deprecated Legacy SQLite-backed channels (Phase 0). Use fetchChannelStatus instead.
+ */
 export async function fetchChannels(): Promise<Channel[]> {
   const data = await fetchJson<{ channels: Channel[] }>("/channels");
   return data.channels;
 }
 
+/**
+ * @deprecated Legacy SQLite-backed channels (Phase 0). Use OpenClaw config instead.
+ */
 export async function createChannel(channel: Omit<Channel, "id">): Promise<Channel> {
   return fetchJson<Channel>("/channels", {
     method: "POST",
@@ -155,8 +214,57 @@ export async function createChannel(channel: Omit<Channel, "id">): Promise<Chann
   });
 }
 
+/**
+ * @deprecated Legacy SQLite-backed channels (Phase 0). Use OpenClaw config instead.
+ */
 export async function deleteChannel(id: string): Promise<void> {
   await fetchJson("/channels/" + id, { method: "DELETE" });
+}
+
+/**
+ * Create a new channel account in OpenClaw config.
+ */
+export async function createChannelAccount(data: {
+  channelId: string;
+  accountId: string;
+  name?: string;
+  config: Record<string, unknown>;
+  secrets?: Record<string, string>;
+}): Promise<{ ok: boolean; channelId: string; accountId: string }> {
+  return fetchJson("/channels/accounts", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Update an existing channel account in OpenClaw config.
+ */
+export async function updateChannelAccount(
+  channelId: string,
+  accountId: string,
+  data: {
+    name?: string;
+    config: Record<string, unknown>;
+    secrets?: Record<string, string>;
+  }
+): Promise<{ ok: boolean; channelId: string; accountId: string }> {
+  return fetchJson(`/channels/accounts/${channelId}/${accountId}`, {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
+/**
+ * Delete a channel account from OpenClaw config.
+ */
+export async function deleteChannelAccount(
+  channelId: string,
+  accountId: string
+): Promise<{ ok: boolean; channelId: string; accountId: string }> {
+  return fetchJson(`/channels/accounts/${channelId}/${accountId}`, {
+    method: "DELETE",
+  });
 }
 
 // --- Permissions ---
@@ -176,6 +284,11 @@ export async function updatePermissions(permissions: Permissions): Promise<void>
     method: "PUT",
     body: JSON.stringify(permissions),
   });
+}
+
+export async function fetchWorkspacePath(): Promise<string> {
+  const data = await fetchJson<{ workspacePath: string }>("/workspace");
+  return data.workspacePath;
 }
 
 // --- File Dialog ---
@@ -239,4 +352,52 @@ export async function fetchUsage(
   if (filter?.provider) params.set("provider", filter.provider);
   const query = params.toString();
   return fetchJson<UsageSummary>("/usage" + (query ? "?" + query : ""));
+}
+
+// --- Telemetry Settings ---
+
+export async function fetchTelemetrySetting(): Promise<boolean> {
+  const data = await fetchJson<{ enabled: boolean }>("/settings/telemetry");
+  return data.enabled;
+}
+
+export async function updateTelemetrySetting(enabled: boolean): Promise<void> {
+  await fetchJson("/settings/telemetry", {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+// --- Pairing ---
+
+export interface PairingRequest {
+  id: string;
+  code: string;
+  createdAt: string;
+  lastSeenAt: string;
+  meta?: Record<string, string>;
+}
+
+export async function fetchPairingRequests(channelId: string): Promise<PairingRequest[]> {
+  const data = await fetchJson<{ requests: PairingRequest[] }>(`/pairing/requests/${channelId}`);
+  return data.requests;
+}
+
+export async function fetchAllowlist(channelId: string): Promise<string[]> {
+  const data = await fetchJson<{ allowlist: string[] }>(`/pairing/allowlist/${channelId}`);
+  return data.allowlist;
+}
+
+export async function approvePairing(channelId: string, code: string): Promise<{ id: string }> {
+  const data = await fetchJson<{ id: string }>("/pairing/approve", {
+    method: "POST",
+    body: JSON.stringify({ channelId, code }),
+  });
+  return data;
+}
+
+export async function removeFromAllowlist(channelId: string, entry: string): Promise<void> {
+  await fetchJson(`/pairing/allowlist/${channelId}/${encodeURIComponent(entry)}`, {
+    method: "DELETE",
+  });
 }

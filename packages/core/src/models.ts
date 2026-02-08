@@ -86,7 +86,7 @@ export const PROVIDER_URLS: Record<LLMProvider, string> = {
 export const PROVIDER_ENV_VARS: Record<LLMProvider, string> = {
   openai: "OPENAI_API_KEY",
   anthropic: "ANTHROPIC_API_KEY",
-  google: "GOOGLE_API_KEY",
+  google: "GEMINI_API_KEY", // OpenClaw expects GEMINI_API_KEY for google provider
   deepseek: "DEEPSEEK_API_KEY",
   zhipu: "ZHIPU_API_KEY",
   moonshot: "MOONSHOT_API_KEY",

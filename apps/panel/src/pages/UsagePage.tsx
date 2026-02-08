@@ -100,25 +100,17 @@ export function UsagePage() {
             Last updated: {lastRefresh.toLocaleTimeString()}
           </span>
           <button
+            className="btn btn-secondary"
             onClick={handleManualRefresh}
             disabled={loading}
-            style={{
-              padding: "6px 16px",
-              borderRadius: 4,
-              border: "1px solid #ccc",
-              backgroundColor: "#fff",
-              color: "#333",
-              cursor: loading ? "not-allowed" : "pointer",
-              opacity: loading ? 0.6 : 1,
-            }}
           >
-            🔄 Refresh
+            ↻ Refresh
           </button>
         </div>
       </div>
 
       {error && (
-        <div style={{ color: "red", marginBottom: 16 }}>{t(error.key)}{error.detail ?? ""}</div>
+        <div className="error-alert">{t(error.key)}{error.detail ?? ""}</div>
       )}
 
       {loading && <p style={{ color: "#888" }}>{t("usage.loadingData")}</p>}
@@ -157,17 +149,12 @@ export function UsagePage() {
           </div>
 
           {/* By Model */}
-          <h2 style={{ fontSize: 18, marginBottom: 12 }}>{t("usage.byModel")}</h2>
+          <div className="section-card">
+          <h3>{t("usage.byModel")}</h3>
           {Object.keys(summary.byModel).length === 0 ? (
             <p style={{ color: "#888" }}>{t("usage.noData")}</p>
           ) : (
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                marginBottom: 32,
-              }}
-            >
+            <table>
               <thead>
                 <tr>
                   <Th>{t("usage.model")}</Th>
@@ -180,7 +167,7 @@ export function UsagePage() {
               </thead>
               <tbody>
                 {Object.entries(summary.byModel).map(([model, data]) => (
-                  <tr key={model}>
+                  <tr key={model} className="table-hover-row">
                     <Td>{model}</Td>
                     <Td>{data.count}</Td>
                     <Td>{formatTokens(data.inputTokens)}</Td>
@@ -192,19 +179,15 @@ export function UsagePage() {
               </tbody>
             </table>
           )}
+          </div>
 
           {/* By Provider */}
-          <h2 style={{ fontSize: 18, marginBottom: 12 }}>{t("usage.byProvider")}</h2>
+          <div className="section-card">
+          <h3>{t("usage.byProvider")}</h3>
           {Object.keys(summary.byProvider).length === 0 ? (
             <p style={{ color: "#888" }}>{t("usage.noData")}</p>
           ) : (
-            <table
-              style={{
-                width: "100%",
-                borderCollapse: "collapse",
-                marginBottom: 32,
-              }}
-            >
+            <table>
               <thead>
                 <tr>
                   <Th>{t("usage.provider")}</Th>
@@ -218,7 +201,7 @@ export function UsagePage() {
               <tbody>
                 {Object.entries(summary.byProvider).map(
                   ([provider, data]) => (
-                    <tr key={provider}>
+                    <tr key={provider} className="table-hover-row">
                       <Td>{provider}</Td>
                       <Td>{data.count}</Td>
                       <Td>{formatTokens(data.inputTokens)}</Td>
@@ -231,6 +214,7 @@ export function UsagePage() {
               </tbody>
             </table>
           )}
+          </div>
         </>
       )}
 
@@ -258,6 +242,7 @@ export function UsagePage() {
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
     <div
+      className="card"
       style={{
         padding: 16,
         border: "1px solid #e0e0e0",
@@ -274,32 +259,9 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
 }
 
 function Th({ children }: { children: React.ReactNode }) {
-  return (
-    <th
-      style={{
-        textAlign: "left",
-        padding: "8px 12px",
-        borderBottom: "2px solid #e0e0e0",
-        fontSize: 13,
-        fontWeight: 600,
-        color: "#555",
-      }}
-    >
-      {children}
-    </th>
-  );
+  return <th>{children}</th>;
 }
 
 function Td({ children }: { children: React.ReactNode }) {
-  return (
-    <td
-      style={{
-        padding: "8px 12px",
-        borderBottom: "1px solid #f0f0f0",
-        fontSize: 14,
-      }}
-    >
-      {children}
-    </td>
-  );
+  return <td>{children}</td>;
 }

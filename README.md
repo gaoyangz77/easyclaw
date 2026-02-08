@@ -14,6 +14,30 @@ EasyClaw wraps OpenClaw into a desktop app that **anyone can use**: install, lau
 
 **In short:** OpenClaw is the engine; EasyClaw is the cockpit.
 
+## Features
+
+- **Natural Language Rules**: Write rules in plain language—they compile to policy, guards, or skills and take effect immediately (no restart)
+- **Multi-Provider LLM Support**: 15+ providers (OpenAI, Anthropic, DeepSeek, Zhipu, Moonshot, Qwen, etc.) with multi-key management and region-aware defaults
+- **Per-Provider Proxy Support**: Configure HTTP/SOCKS5 proxies per LLM provider or API key, with automatic routing and hot reload—essential for restricted regions
+- **Multi-Account Channels**: Configure Telegram, Discord, Slack, WhatsApp, etc. through UI with secure secret storage (Keychain/DPAPI)
+- **Token Usage Tracking**: Real-time statistics by model and provider, auto-refreshed from OpenClaw session files
+- **Speech-to-Text**: Region-aware STT integration for voice messages
+- **Visual Permissions**: Control file read/write access through UI
+- **Zero-Restart Updates**: API key and proxy changes apply instantly via hot reload—no gateway restart needed
+- **Local-First & Private**: All data stays on your machine; secrets never stored in plaintext
+- **Auto-Update**: Client update checker with static manifest hosting
+
+### How File Permissions Work
+
+EasyClaw enforces file access permissions through an OpenClaw plugin that intercepts tool calls *before* they execute. Here's what's protected:
+
+- **File access tools** (`read`, `write`, `edit`, `image`, `apply-patch`): Fully protected—paths are validated against your configured permissions
+- **Command execution** (`exec`, `process`): Working directory is validated, but paths *inside* command strings (like `cat /etc/passwd`) cannot be inspected
+
+**Coverage**: ~85-90% of file access scenarios. For maximum security, consider restricting or disabling `exec` tools through Rules.
+
+**Technical note**: The file permissions plugin uses OpenClaw's `before_tool_call` hook—no vendor source code modifications needed, so EasyClaw can cleanly pull upstream OpenClaw updates.
+
 ## Prerequisites
 
 | Tool    | Version    |

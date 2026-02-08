@@ -64,4 +64,11 @@ export const migrations: Migration[] = [
       );
     `,
   },
+  {
+    id: 3,
+    name: "add_proxy_support_to_provider_keys",
+    sql: `
+      ALTER TABLE provider_keys ADD COLUMN proxy_base_url TEXT DEFAULT NULL;
+    `,
+  },
 ];

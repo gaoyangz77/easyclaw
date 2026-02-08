@@ -91,6 +91,24 @@ export class GatewayLauncher extends EventEmitter<GatewayEvents> {
     this.spawnProcess();
   }
 
+  /**
+   * Send SIGUSR1 to trigger OpenClaw's in-process graceful restart.
+   * The gateway re-reads its config file without exiting the process.
+   * Note: env vars stay the same — only use for config-file-only changes.
+   * Falls back to hard stop+start if the process isn't running.
+   */
+  async reload(): Promise<void> {
+    if (!this.process?.pid || this.state !== "running") {
+      log.warn("Gateway not running, falling back to stop+start for reload");
+      await this.stop();
+      await this.start();
+      return;
+    }
+
+    log.info(`Sending SIGUSR1 to gateway (PID ${this.process.pid}) for graceful reload`);
+    this.process.kill("SIGUSR1");
+  }
+
   /** Gracefully stop the gateway process. */
   async stop(): Promise<void> {
     this.stopRequested = true;

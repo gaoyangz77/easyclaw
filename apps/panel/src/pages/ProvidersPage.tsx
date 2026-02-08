@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { ALL_PROVIDERS, PROVIDER_URLS, getDefaultModelForProvider } from "@easyclaw/core";
+import { PROVIDER_URLS, getDefaultModelForProvider } from "@easyclaw/core";
 import type { LLMProvider } from "@easyclaw/core";
 import {
   fetchSettings,
@@ -10,38 +10,25 @@ import {
   updateProviderKey,
   activateProviderKey,
   deleteProviderKey,
+  validateApiKey,
 } from "../api.js";
 import type { ProviderKeyEntry } from "../api.js";
 import { ModelSelect } from "../components/ModelSelect.js";
+import { ProviderSelect } from "../components/ProviderSelect.js";
 
-const tableStyle: React.CSSProperties = {
-  width: "100%",
-  maxWidth: 800,
-  borderCollapse: "collapse",
-};
-const thStyle: React.CSSProperties = {
-  textAlign: "left",
-  padding: "10px 12px",
-  borderBottom: "2px solid #e0e0e0",
-  fontSize: 13,
-  color: "#5f6368",
-  fontWeight: 600,
-};
-const tdStyle: React.CSSProperties = {
-  padding: "10px 12px",
-  borderBottom: "1px solid #f0f0f0",
-  fontSize: 14,
-};
 
 export function ProvidersPage() {
   const { t } = useTranslation();
   const [keys, setKeys] = useState<ProviderKeyEntry[]>([]);
   const [defaultProvider, setDefaultProvider] = useState<string>("");
-  const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
+  const [newProvider, setNewProvider] = useState("openai");
   const [expandedKeyId, setExpandedKeyId] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [newLabel, setNewLabel] = useState("");
   const [newModel, setNewModel] = useState("");
+  const [newProxyUrl, setNewProxyUrl] = useState("");
+  const [editProxyUrl, setEditProxyUrl] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [saving, setSaving] = useState(false);
   const [validating, setValidating] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(null);
@@ -69,11 +56,21 @@ export function ProvidersPage() {
     setValidating(true);
     setError(null);
     try {
+      // Validate API key (with proxy if configured) to prevent IP pollution/bans
+      const proxyUrl = newProxyUrl.trim() || undefined;
+      const validation = await validateApiKey(provider, apiKey.trim(), proxyUrl);
+      if (!validation.valid) {
+        setError({ key: "providers.invalidKey", detail: validation.error });
+        setValidating(false);
+        return;
+      }
+
       const entry = await createProviderKey({
         provider,
         label: newLabel.trim() || t("providers.labelDefault"),
         model: newModel || getDefaultModelForProvider(provider as LLMProvider).modelId,
         apiKey: apiKey.trim(),
+        proxyUrl,
       });
 
       // If first key overall, set as active provider
@@ -85,7 +82,8 @@ export function ProvidersPage() {
       setApiKey("");
       setNewLabel("");
       setNewModel("");
-      setExpandedProvider(null);
+      setNewProxyUrl("");
+      setShowAdvanced(false);
       setSavedId(entry.id);
       setTimeout(() => setSavedId(null), 2000);
       await loadData();
@@ -163,6 +161,21 @@ export function ProvidersPage() {
     }
   }
 
+  async function handleProxyChange(keyId: string, proxyUrl: string) {
+    setError(null);
+    setSaving(true);
+    try {
+      const updated = await updateProviderKey(keyId, { proxyUrl: proxyUrl || null as any });
+      setKeys((prev) => prev.map((k) => (k.id === keyId ? updated : k)));
+      setSavedId(keyId);
+      setTimeout(() => setSavedId(null), 2000);
+    } catch (err) {
+      setError({ key: "providers.failedToSave", detail: String(err) });
+    } finally {
+      setSaving(false);
+    }
+  }
+
   function renderHint(provider: string) {
     const cmd = provider === "anthropic" ? "claude setup-token" : provider === "amazon-bedrock" ? "aws configure" : "";
     const hint = t(`providers.hint_${provider}`, { cmd, defaultValue: "" });
@@ -181,31 +194,175 @@ export function ProvidersPage() {
     return <span style={{ color: "#5f6368" }}>{hint} </span>;
   }
 
+  function handleNewProviderChange(p: string) {
+    setNewProvider(p);
+    setNewModel(getDefaultModelForProvider(p as LLMProvider).modelId);
+    setApiKey("");
+    setNewLabel("");
+    setNewProxyUrl("");
+    setShowAdvanced(false);
+  }
+
   return (
     <div>
       <h1>{t("providers.title")}</h1>
       <p>{t("providers.description")}</p>
 
       {error && (
-        <div style={{ color: "red", marginBottom: 16 }}>{t(error.key)}{error.detail ?? ""}</div>
+        <div className="error-alert">{t(error.key)}{error.detail ?? ""}</div>
       )}
 
-      {/* Section A: Configured Keys table */}
-      <h3>{t("providers.configuredKeysTitle")}</h3>
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>{t("providers.colProvider")}</th>
-            <th style={thStyle}>{t("providers.colLabel")}</th>
-            <th style={thStyle}>{t("providers.colModel")}</th>
-            <th style={thStyle}>{t("providers.colStatus")}</th>
-            <th style={thStyle}>{t("providers.colActions")}</th>
-          </tr>
-        </thead>
+      {/* Section A: Add Key — dropdown + form (like onboarding) */}
+      <div className="section-card" style={{ maxWidth: 680 }}>
+        <h3>{t("providers.addTitle")}</h3>
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("onboarding.providerLabel")}</div>
+          <ProviderSelect value={newProvider} onChange={handleNewProviderChange} />
+          <div style={{ marginTop: 6, fontSize: 12 }}>
+            {renderHint(newProvider)}
+            <a
+              href={PROVIDER_URLS[newProvider as LLMProvider]}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#1a73e8", fontSize: 12 }}
+            >
+              {t("providers.viewPricing")} &rarr;
+            </a>
+          </div>
+        </div>
+
+        {newProvider === "anthropic" && (
+          <div style={{ marginBottom: 8, padding: "6px 10px", backgroundColor: "#fff8e1", borderRadius: 4, fontSize: 11, color: "#7a6200", lineHeight: 1.5 }}>
+            {t("providers.anthropicTokenWarning")}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("providers.keyLabel")}</div>
+            <input
+              type="text"
+              value={newLabel}
+              onChange={(e) => setNewLabel(e.target.value)}
+              placeholder={t("providers.labelPlaceholder")}
+              style={{
+                width: "100%",
+                padding: 8,
+                borderRadius: 4,
+                border: "1px solid #e0e0e0",
+                fontSize: 13,
+                boxSizing: "border-box",
+              }}
+            />
+          </div>
+          <div>
+            <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("providers.modelLabel")}</div>
+            <ModelSelect
+              provider={newProvider}
+              value={newModel || getDefaultModelForProvider(newProvider as LLMProvider).modelId}
+              onChange={setNewModel}
+            />
+          </div>
+        </div>
+
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>
+            {newProvider === "anthropic" ? t("providers.anthropicTokenLabel") : t("providers.apiKeyLabel")} <span style={{ color: "#d32f2f" }}>*</span>
+          </div>
+          <input
+            type="text"
+            autoComplete="off"
+            data-1p-ignore
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder={newProvider === "anthropic" ? t("providers.anthropicTokenPlaceholder") : t("providers.apiKeyPlaceholder")}
+            style={{
+              width: "100%",
+              padding: 8,
+              borderRadius: 4,
+              border: "1px solid #e0e0e0",
+              fontSize: 13,
+              fontFamily: "monospace",
+              boxSizing: "border-box",
+            }}
+          />
+          <small style={{ color: "#888", fontSize: 11 }}>
+            {t("providers.apiKeyHelp")}
+          </small>
+        </div>
+
+        <div style={{ marginBottom: 8 }}>
+          <button
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            style={{
+              padding: "6px 0",
+              background: "none",
+              border: "none",
+              color: "#1a73e8",
+              cursor: "pointer",
+              fontSize: 12,
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+            }}
+          >
+            <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>▶</span>
+            {t("providers.advancedSettings")}
+          </button>
+          {showAdvanced && (
+            <div style={{ marginTop: 8, paddingLeft: 12, borderLeft: "2px solid #e0e0e0" }}>
+              <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("providers.proxyLabel")}</div>
+              <input
+                type="text"
+                value={newProxyUrl}
+                onChange={(e) => setNewProxyUrl(e.target.value)}
+                placeholder={t("providers.proxyPlaceholder")}
+                style={{
+                  width: "100%",
+                  padding: 8,
+                  borderRadius: 4,
+                  border: "1px solid #e0e0e0",
+                  fontSize: 13,
+                  fontFamily: "monospace",
+                  boxSizing: "border-box",
+                }}
+              />
+              <small style={{ color: "#888", fontSize: 11 }}>
+                {t("providers.proxyHelp")}
+              </small>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button
+            className="btn btn-primary"
+            onClick={() => handleAddKey(newProvider)}
+            disabled={saving || validating || !apiKey.trim()}
+            style={{ padding: "8px 16px", fontSize: 13 }}
+          >
+            {validating ? t("providers.validating") : saving ? "..." : t("common.save")}
+          </button>
+        </div>
+      </div>
+
+      {/* Section B: Configured Keys table */}
+      <div className="section-card">
+        <h3>{t("providers.configuredKeysTitle")}</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>{t("providers.colProvider")}</th>
+              <th>{t("providers.colLabel")}</th>
+              <th>{t("providers.colModel")}</th>
+              <th>{t("providers.colStatus")}</th>
+              <th>{t("providers.colActions")}</th>
+            </tr>
+          </thead>
         <tbody>
           {keys.length === 0 ? (
             <tr>
-              <td colSpan={5} style={{ ...tdStyle, textAlign: "center", color: "#888", padding: "24px 12px" }}>
+              <td colSpan={5} style={{ textAlign: "center", color: "#888", padding: "24px 14px" }}>
                 {t("providers.noKeys")}
               </td>
             </tr>
@@ -214,24 +371,36 @@ export function ProvidersPage() {
               const isActive = k.isDefault && k.provider === defaultProvider;
               const isExp = expandedKeyId === k.id;
               return (
-                <tr key={k.id}>
-                  <td style={tdStyle}>
+                <tr key={k.id} className="table-hover-row">
+                  <td>
                     <strong>{t(`providers.label_${k.provider}`)}</strong>
                     {savedId === k.id && (
                       <span style={{ marginLeft: 8, color: "green", fontSize: 12 }}>{t("common.saved")}</span>
                     )}
                   </td>
-                  <td style={tdStyle}>
+                  <td>
                     <span style={{ color: "#555" }}>{k.label}</span>
+                    {k.proxyUrl && (
+                      <span
+                        className="has-tooltip"
+                        data-tooltip={t("providers.proxyTooltip")}
+                        style={{ marginLeft: 8, display: "inline-flex", alignItems: "center" }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <rect x="3" y="11" width="18" height="11" rx="2" fill="#f5d060" stroke="#b8860b" strokeWidth="2" />
+                          <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="#b8860b" strokeWidth="2" strokeLinecap="round" />
+                        </svg>
+                      </span>
+                    )}
                   </td>
-                  <td style={tdStyle}>
+                  <td>
                     <ModelSelect
                       provider={k.provider}
                       value={k.model}
                       onChange={(model) => handleModelChange(k.id, model)}
                     />
                   </td>
-                  <td style={tdStyle}>
+                  <td>
                     {isActive && (
                       <span
                         style={{
@@ -248,52 +417,29 @@ export function ProvidersPage() {
                       </span>
                     )}
                   </td>
-                  <td style={tdStyle}>
+                  <td>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       {!isActive && (
                         <button
+                          className="btn btn-outline"
                           onClick={() => handleActivate(k.id, k.provider)}
-                          style={{
-                            padding: "3px 8px",
-                            border: "1px solid #1a73e8",
-                            borderRadius: 4,
-                            backgroundColor: "transparent",
-                            color: "#1a73e8",
-                            cursor: "pointer",
-                            fontSize: 12,
-                          }}
                         >
                           {t("providers.activate")}
                         </button>
                       )}
                       <button
+                        className="btn btn-secondary"
                         onClick={() => {
                           setExpandedKeyId(isExp ? null : k.id);
                           setApiKey("");
-                        }}
-                        style={{
-                          padding: "3px 8px",
-                          border: "1px solid #888",
-                          borderRadius: 4,
-                          backgroundColor: "transparent",
-                          color: "#555",
-                          cursor: "pointer",
-                          fontSize: 12,
+                          setEditProxyUrl(k.proxyUrl || "");
                         }}
                       >
                         {t("providers.updateKey")}
                       </button>
                       <button
+                        className="btn btn-danger"
                         onClick={() => handleRemoveKey(k.id)}
-                        style={{
-                          padding: "3px 8px",
-                          border: "1px solid #e57373",
-                          borderRadius: 4,
-                          backgroundColor: "transparent",
-                          color: "#c62828",
-                          cursor: "pointer",
-                          fontSize: 12,
-                        }}
                       >
                         {t("providers.removeKey")}
                       </button>
@@ -318,18 +464,10 @@ export function ProvidersPage() {
                             }}
                           />
                           <button
+                            className="btn btn-primary"
                             onClick={() => handleUpdateKey(k.id, k.provider)}
                             disabled={saving || validating || !apiKey.trim()}
-                            style={{
-                              padding: "8px 16px",
-                              backgroundColor: "#1a73e8",
-                              color: "#fff",
-                              border: "none",
-                              borderRadius: 4,
-                              cursor: saving || validating ? "default" : "pointer",
-                              opacity: saving || validating || !apiKey.trim() ? 0.6 : 1,
-                              fontSize: 13,
-                            }}
+                            style={{ padding: "8px 16px", fontSize: 13 }}
                           >
                             {validating ? t("providers.validating") : saving ? "..." : t("common.save")}
                           </button>
@@ -342,6 +480,36 @@ export function ProvidersPage() {
                             {t("providers.anthropicTokenWarning")}
                           </div>
                         )}
+                        <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e0e0e0" }}>
+                          <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("providers.proxyLabel")}</div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <input
+                              type="text"
+                              value={editProxyUrl}
+                              onChange={(e) => setEditProxyUrl(e.target.value)}
+                              placeholder={t("providers.proxyPlaceholder")}
+                              style={{
+                                flex: 1,
+                                padding: 8,
+                                borderRadius: 4,
+                                border: "1px solid #e0e0e0",
+                                fontSize: 13,
+                                fontFamily: "monospace",
+                              }}
+                            />
+                            <button
+                              className="btn btn-primary"
+                              onClick={() => handleProxyChange(k.id, editProxyUrl)}
+                              disabled={saving || editProxyUrl === (k.proxyUrl || "")}
+                              style={{ padding: "8px 16px", fontSize: 13 }}
+                            >
+                              {saving ? "..." : t("common.save")}
+                            </button>
+                          </div>
+                          <small style={{ color: "#888", fontSize: 11 }}>
+                            {t("providers.proxyHelp")}
+                          </small>
+                        </div>
                       </div>
                     )}
                   </td>
@@ -350,135 +518,7 @@ export function ProvidersPage() {
             })
           )}
         </tbody>
-      </table>
-
-      {/* Section B: Add Key cards */}
-      <h3 style={{ marginTop: 32 }}>{t("providers.addTitle")}</h3>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, maxWidth: 640 }}>
-        {ALL_PROVIDERS.map((p) => {
-          const isExp = expandedProvider === p;
-          return (
-            <div
-              key={p}
-              style={{
-                padding: "16px 20px",
-                border: "1px solid #e0e0e0",
-                borderRadius: 8,
-                backgroundColor: "#fff",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <strong style={{ fontSize: 15 }}>{t(`providers.label_${p}`)}</strong>
-                <button
-                  onClick={() => {
-                    setExpandedProvider(isExp ? null : p);
-                    setApiKey("");
-                    setNewLabel("");
-                    setNewModel(getDefaultModelForProvider(p).modelId);
-                  }}
-                  style={{
-                    padding: "4px 12px",
-                    border: "1px solid #1a73e8",
-                    borderRadius: 4,
-                    backgroundColor: isExp ? "#1a73e8" : "transparent",
-                    color: isExp ? "#fff" : "#1a73e8",
-                    cursor: "pointer",
-                    fontSize: 12,
-                  }}
-                >
-                  {t("providers.addKey")}
-                </button>
-              </div>
-              <div style={{ fontSize: 12, color: "#666", marginTop: 6 }}>
-                {t(`providers.desc_${p}`)}
-              </div>
-              {isExp && (
-                <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e0e0e0" }}>
-                  <div style={{ fontSize: 12, marginBottom: 8 }}>
-                    {renderHint(p)}
-                    <a
-                      href={PROVIDER_URLS[p as LLMProvider]}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ color: "#1a73e8", fontSize: 12 }}
-                    >
-                      {t("providers.viewPricing")} &rarr;
-                    </a>
-                  </div>
-                  {p === "anthropic" && (
-                    <div style={{ marginBottom: 8, padding: "6px 10px", backgroundColor: "#fff8e1", borderRadius: 4, fontSize: 11, color: "#7a6200", lineHeight: 1.5 }}>
-                      {t("providers.anthropicTokenWarning")}
-                    </div>
-                  )}
-                  <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("providers.keyLabel")}</div>
-                      <input
-                        type="text"
-                        value={newLabel}
-                        onChange={(e) => setNewLabel(e.target.value)}
-                        placeholder={t("providers.labelPlaceholder")}
-                        style={{
-                          width: "100%",
-                          padding: 8,
-                          borderRadius: 4,
-                          border: "1px solid #e0e0e0",
-                          fontSize: 13,
-                          boxSizing: "border-box",
-                        }}
-                      />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("providers.modelLabel")}</div>
-                      <ModelSelect
-                        provider={p}
-                        value={newModel || getDefaultModelForProvider(p).modelId}
-                        onChange={setNewModel}
-                      />
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <input
-                      type="text"
-                      autoComplete="off"
-                      data-1p-ignore
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      placeholder={p === "anthropic" ? t("providers.anthropicTokenPlaceholder") : t("providers.apiKeyPlaceholder")}
-                      style={{
-                        flex: 1,
-                        padding: 8,
-                        borderRadius: 4,
-                        border: "1px solid #e0e0e0",
-                        fontSize: 13,
-                        fontFamily: "monospace",
-                      }}
-                    />
-                    <button
-                      onClick={() => handleAddKey(p)}
-                      disabled={saving || validating || !apiKey.trim()}
-                      style={{
-                        padding: "8px 16px",
-                        backgroundColor: "#1a73e8",
-                        color: "#fff",
-                        border: "none",
-                        borderRadius: 4,
-                        cursor: saving || validating ? "default" : "pointer",
-                        opacity: saving || validating || !apiKey.trim() ? 0.6 : 1,
-                        fontSize: 13,
-                      }}
-                    >
-                      {validating ? t("providers.validating") : saving ? "..." : t("common.save")}
-                    </button>
-                  </div>
-                  <small style={{ color: "#888", fontSize: 11 }}>
-                    {t("providers.apiKeyHelp")}
-                  </small>
-                </div>
-              )}
-            </div>
-          );
-        })}
+        </table>
       </div>
     </div>
   );

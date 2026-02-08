@@ -9,7 +9,8 @@
     "test": "turbo run test",
     "dev": "turbo run dev",
     "format": "oxfmt --check",
-    "format:fix": "oxfmt --write"
+    "format:fix": "oxfmt --write",
+    "verify-proxy": "node scripts/verify-proxy-domains.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",

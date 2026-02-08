@@ -12,4 +12,6 @@ export default defineConfig({
   noExternal: [
     /^@easyclaw\//,
   ],
+  treeshake: true,
+  inlineOnly: false,
 });

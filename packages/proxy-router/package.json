@@ -1,0 +1,27 @@
+{
+  "name": "@easyclaw/proxy-router",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.mts"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "lint": "oxlint",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@easyclaw/logger": "workspace:*",
+    "undici": "^7.2.0"
+  },
+  "devDependencies": {
+    "oxlint": "^1.43.0",
+    "tsdown": "^0.20.3",
+    "vitest": "^4.0.18"
+  }
+}

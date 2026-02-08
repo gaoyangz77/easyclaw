@@ -28,3 +28,10 @@ export {
   resolveModelConfig,
   getProvidersForRegion,
 } from "./models.js";
+
+export type { ProxyConfig } from "./proxy-utils.js";
+export {
+  parseProxyUrl,
+  reconstructProxyUrl,
+  isValidProxyUrl,
+} from "./proxy-utils.js";

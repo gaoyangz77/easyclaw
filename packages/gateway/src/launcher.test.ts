@@ -179,6 +179,31 @@ describe("GatewayLauncher", () => {
     });
   });
 
+  // ── Reload (SIGUSR1) ──
+
+  describe("reload()", () => {
+    it("sends SIGUSR1 when the gateway is running", async () => {
+      const launcher = createLauncher();
+      await launcher.start();
+
+      await launcher.reload();
+
+      expect(mockChild.killSignals).toContain("SIGUSR1");
+      expect(launcher.getStatus().state).toBe("running");
+    });
+
+    it("falls back to stop+start when the gateway is stopped", async () => {
+      const { spawn } = await import("node:child_process");
+      const launcher = createLauncher();
+
+      // reload() on a stopped launcher should spawn a new process
+      await launcher.reload();
+
+      expect(launcher.getStatus().state).toBe("running");
+      expect(spawn).toHaveBeenCalled();
+    });
+  });
+
   // ── Restart on crash ──
 
   describe("auto-restart on crash", () => {

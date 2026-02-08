@@ -6,8 +6,7 @@ dist/
 .vscode/
 *.tsbuildinfo
 .DS_Store
-website/certs/
-website/.env
-website/site/releases/
-website/source-assets/
+server/
 apps/desktop/release/
+.venv/
+.env

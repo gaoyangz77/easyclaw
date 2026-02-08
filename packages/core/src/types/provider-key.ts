@@ -4,6 +4,7 @@ export interface ProviderKeyEntry {
   label: string;
   model: string;
   isDefault: boolean;
+  proxyBaseUrl?: string | null;
   createdAt: string;
   updatedAt: string;
 }

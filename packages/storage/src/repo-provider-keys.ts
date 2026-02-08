@@ -7,6 +7,7 @@ interface ProviderKeyRow {
   label: string;
   model: string;
   is_default: number;
+  proxy_base_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -18,6 +19,7 @@ function rowToEntry(row: ProviderKeyRow): ProviderKeyEntry {
     label: row.label,
     model: row.model,
     isDefault: row.is_default === 1,
+    proxyBaseUrl: row.proxy_base_url,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -30,7 +32,7 @@ export class ProviderKeysRepository {
     const now = new Date().toISOString();
     this.db
       .prepare(
-        "INSERT INTO provider_keys (id, provider, label, model, is_default, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO provider_keys (id, provider, label, model, is_default, proxy_base_url, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
       )
       .run(
         entry.id,
@@ -38,6 +40,7 @@ export class ProviderKeysRepository {
         entry.label,
         entry.model,
         entry.isDefault ? 1 : 0,
+        entry.proxyBaseUrl ?? null,
         now,
         now,
       );
@@ -75,7 +78,7 @@ export class ProviderKeysRepository {
 
   update(
     id: string,
-    fields: Partial<Pick<ProviderKeyEntry, "label" | "model" | "isDefault">>,
+    fields: Partial<Pick<ProviderKeyEntry, "label" | "model" | "isDefault" | "proxyBaseUrl">>,
   ): ProviderKeyEntry | undefined {
     const existing = this.getById(id);
     if (!existing) return undefined;
@@ -85,17 +88,19 @@ export class ProviderKeysRepository {
       label: fields.label ?? existing.label,
       model: fields.model ?? existing.model,
       isDefault: fields.isDefault !== undefined ? fields.isDefault : existing.isDefault,
+      proxyBaseUrl: fields.proxyBaseUrl !== undefined ? fields.proxyBaseUrl : existing.proxyBaseUrl,
       updatedAt: new Date().toISOString(),
     };
 
     this.db
       .prepare(
-        "UPDATE provider_keys SET label = ?, model = ?, is_default = ?, updated_at = ? WHERE id = ?",
+        "UPDATE provider_keys SET label = ?, model = ?, is_default = ?, proxy_base_url = ?, updated_at = ? WHERE id = ?",
       )
       .run(
         updated.label,
         updated.model,
         updated.isDefault ? 1 : 0,
+        updated.proxyBaseUrl ?? null,
         updated.updatedAt,
         id,
       );

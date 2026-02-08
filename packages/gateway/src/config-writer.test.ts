@@ -273,7 +273,7 @@ describe("config-writer", () => {
   });
 
   describe("writeGatewayConfig - defaultModel", () => {
-    it("writes models.default with provider and modelId", () => {
+    it("writes agents.defaults.model.primary with provider/modelId", () => {
       const configPath = join(tmpDir, "openclaw.json");
       writeGatewayConfig({
         configPath,
@@ -281,18 +281,15 @@ describe("config-writer", () => {
       });
 
       const config = JSON.parse(readFileSync(configPath, "utf-8"));
-      expect(config.models.default).toEqual({
-        provider: "deepseek",
-        modelId: "deepseek-chat",
-      });
+      expect(config.agents.defaults.model.primary).toBe("deepseek/deepseek-chat");
     });
 
-    it("preserves existing models fields when updating default", () => {
+    it("preserves existing agents fields when updating default model", () => {
       const configPath = join(tmpDir, "openclaw.json");
       writeFileSync(
         configPath,
         JSON.stringify({
-          models: { customField: "keep-me", default: { provider: "openai", modelId: "gpt-4o" } },
+          agents: { defaults: { model: { primary: "openai/gpt-4o", fallbacks: ["deepseek/deepseek-chat"] } } },
         }),
       );
 
@@ -302,11 +299,8 @@ describe("config-writer", () => {
       });
 
       const config = JSON.parse(readFileSync(configPath, "utf-8"));
-      expect(config.models.default).toEqual({
-        provider: "anthropic",
-        modelId: "claude-sonnet-4-20250514",
-      });
-      expect(config.models.customField).toBe("keep-me");
+      expect(config.agents.defaults.model.primary).toBe("anthropic/claude-sonnet-4-20250514");
+      expect(config.agents.defaults.model.fallbacks).toEqual(["deepseek/deepseek-chat"]);
     });
 
     it("writes defaultModel alongside other fields", () => {
@@ -320,16 +314,16 @@ describe("config-writer", () => {
 
       const config = JSON.parse(readFileSync(configPath, "utf-8"));
       expect(config.gateway.port).toBe(9999);
-      expect(config.models.default.provider).toBe("openai");
+      expect(config.agents.defaults.model.primary).toBe("openai/gpt-4o");
       expect(config.plugins).toEqual({ p1: {} });
     });
 
-    it("does not touch models when defaultModel is omitted", () => {
+    it("does not touch agents when defaultModel is omitted", () => {
       const configPath = join(tmpDir, "openclaw.json");
       writeFileSync(
         configPath,
         JSON.stringify({
-          models: { default: { provider: "openai", modelId: "gpt-4o" } },
+          agents: { defaults: { model: { primary: "openai/gpt-4o" } } },
         }),
       );
 
@@ -339,7 +333,37 @@ describe("config-writer", () => {
       });
 
       const config = JSON.parse(readFileSync(configPath, "utf-8"));
-      expect(config.models.default).toEqual({ provider: "openai", modelId: "gpt-4o" });
+      expect(config.agents.defaults.model.primary).toBe("openai/gpt-4o");
+    });
+  });
+
+  describe("writeGatewayConfig - commandsRestart", () => {
+    it("writes commands.restart when enabled", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({
+        configPath,
+        commandsRestart: true,
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.commands.restart).toBe(true);
+    });
+
+    it("preserves existing commands fields", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeFileSync(
+        configPath,
+        JSON.stringify({ commands: { other: "value" } }),
+      );
+
+      writeGatewayConfig({
+        configPath,
+        commandsRestart: true,
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.commands.restart).toBe(true);
+      expect(config.commands.other).toBe("value");
     });
   });
 
@@ -462,11 +486,142 @@ describe("config-writer", () => {
       expect(config.gateway.auth.mode).toBe("token");
       expect(config.gateway.auth.token).toMatch(/^[0-9a-f]{64}$/);
     });
+
+    it("includes default tool restrictions in generated config", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      ensureGatewayConfig({ configPath });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.agents.defaults.tools).toEqual({
+        exec: {
+          host: "gateway",
+          security: "allowlist",
+          ask: "on-miss",
+        },
+        elevated: {
+          enabled: false,
+        },
+      });
+    });
   });
 
   describe("DEFAULT_GATEWAY_PORT", () => {
     it("is 18789", () => {
       expect(DEFAULT_GATEWAY_PORT).toBe(18789);
+    });
+  });
+
+  describe("writeGatewayConfig - default tool restrictions", () => {
+    it("applies default tool restrictions to fresh config", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({
+        configPath,
+        gatewayPort: 18789,
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.agents.defaults.tools).toEqual({
+        exec: {
+          host: "gateway",
+          security: "allowlist",
+          ask: "on-miss",
+        },
+        elevated: {
+          enabled: false,
+        },
+      });
+    });
+
+    it("preserves user-configured tool settings", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          agents: {
+            defaults: {
+              tools: {
+                exec: {
+                  host: "docker",
+                  security: "sandbox",
+                },
+                custom: "user-value",
+              },
+            },
+          },
+        }),
+      );
+
+      writeGatewayConfig({
+        configPath,
+        gatewayPort: 18789,
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      // User tools config should be preserved
+      expect(config.agents.defaults.tools.exec.host).toBe("docker");
+      expect(config.agents.defaults.tools.exec.security).toBe("sandbox");
+      expect(config.agents.defaults.tools.custom).toBe("user-value");
+      // Should NOT overwrite with defaults
+      expect(config.agents.defaults.tools.elevated).toBeUndefined();
+    });
+
+    it("applies tool restrictions alongside other agents.defaults fields", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({
+        configPath,
+        defaultModel: { provider: "openai", modelId: "gpt-4o" },
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.agents.defaults.model.primary).toBe("openai/gpt-4o");
+      expect(config.agents.defaults.tools.exec.host).toBe("gateway");
+      expect(config.agents.defaults.tools.exec.security).toBe("allowlist");
+    });
+
+    it("preserves existing model config when applying tool restrictions", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          agents: {
+            defaults: {
+              model: { primary: "anthropic/claude-sonnet-4-20250514" },
+            },
+          },
+        }),
+      );
+
+      writeGatewayConfig({
+        configPath,
+        gatewayPort: 18789,
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.agents.defaults.model.primary).toBe("anthropic/claude-sonnet-4-20250514");
+      expect(config.agents.defaults.tools.exec.host).toBe("gateway");
+    });
+
+    it("does not apply restrictions on subsequent writes", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      // First write: creates defaults
+      writeGatewayConfig({
+        configPath,
+        gatewayPort: 18789,
+      });
+
+      // User manually edits config
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      config.agents.defaults.tools.exec.security = "open";
+      writeFileSync(configPath, JSON.stringify(config));
+
+      // Second write: should preserve user changes
+      writeGatewayConfig({
+        configPath,
+        gatewayPort: 18790,
+      });
+
+      const finalConfig = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(finalConfig.agents.defaults.tools.exec.security).toBe("open");
     });
   });
 });

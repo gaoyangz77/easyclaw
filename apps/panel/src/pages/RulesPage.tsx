@@ -6,26 +6,10 @@ const EXAMPLE_RULE_KEYS = [
   "onboarding.exampleRule1",
   "onboarding.exampleRule2",
   "onboarding.exampleRule3",
+  "onboarding.exampleRule4",
+  "onboarding.exampleRule5",
 ];
 
-const tableStyle: React.CSSProperties = {
-  width: "100%",
-  maxWidth: 720,
-  borderCollapse: "collapse",
-};
-const thStyle: React.CSSProperties = {
-  textAlign: "left",
-  padding: "10px 12px",
-  borderBottom: "2px solid #e0e0e0",
-  fontSize: 13,
-  color: "#5f6368",
-  fontWeight: 600,
-};
-const tdStyle: React.CSSProperties = {
-  padding: "10px 12px",
-  borderBottom: "1px solid #f0f0f0",
-  fontSize: 14,
-};
 
 function StatusBadge({ status }: { status?: Rule["artifactStatus"] }) {
   const { t } = useTranslation();
@@ -69,6 +53,14 @@ export function RulesPage() {
   useEffect(() => {
     loadRules();
   }, []);
+
+  // Poll while any rule has "pending" status so the UI updates when compilation finishes
+  const hasPending = rules.some((r) => r.artifactStatus === "pending");
+  useEffect(() => {
+    if (!hasPending) return;
+    const timer = setInterval(loadRules, 3000);
+    return () => clearInterval(timer);
+  }, [hasPending]);
 
   async function loadRules() {
     try {
@@ -136,68 +128,109 @@ export function RulesPage() {
       <p>{t("rules.description")}</p>
 
       {error && (
-        <div style={{ color: "red", marginBottom: 16 }}>{t(error.key)}{error.detail ?? ""}</div>
+        <div className="error-alert">{t(error.key)}{error.detail ?? ""}</div>
       )}
 
-      <div style={{ marginBottom: 24 }}>
-        <textarea
-          value={newRuleText}
-          onChange={(e) => setNewRuleText(e.target.value)}
-          placeholder={t("rules.placeholder")}
-          rows={3}
-          style={{ width: "100%", maxWidth: 600, marginBottom: 8, display: "block" }}
-        />
-        {rules.length === 0 && !newRuleText && (
-          <div style={{ marginBottom: 12 }}>
-            <span style={{ fontSize: 13, color: "#888" }}>{t("onboarding.tryExample")}</span>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 6 }}>
-              {EXAMPLE_RULE_KEYS.map((key) => {
-                const text = t(key);
-                return (
-                  <button
-                    key={key}
-                    onClick={() => setNewRuleText(text)}
-                    style={{
-                      padding: "6px 12px",
-                      borderRadius: 16,
-                      border: "1px solid #e0e0e0",
-                      backgroundColor: "#fff",
-                      fontSize: 13,
-                      cursor: "pointer",
-                      color: "#333",
-                    }}
-                  >
-                    {text}
-                  </button>
-                );
-              })}
-            </div>
+      {/* Add Rule — examples left, input right */}
+      <div className="section-card">
+        <h3>{t("rules.addRule")}</h3>
+        <div style={{ display: "flex", gap: 24, marginBottom: 12 }}>
+          {/* Left: label */}
+          <div style={{ flex: "0 0 40%", fontSize: 12, color: "#888" }}>
+            {t("onboarding.tryExample")}
           </div>
-        )}
-        <button onClick={handleCreate}>{t("rules.addRule")}</button>
+          <div style={{ flex: 1 }} />
+        </div>
+        <div style={{ display: "flex", gap: 24, alignItems: "stretch" }}>
+          {/* Left: examples */}
+          <div style={{ flex: "0 0 40%", display: "flex", flexDirection: "column", gap: 8 }}>
+            {EXAMPLE_RULE_KEYS.map((ruleKey) => {
+              const text = t(ruleKey);
+              return (
+                <button
+                  key={ruleKey}
+                  onClick={() => setNewRuleText(text)}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 6,
+                    border: "1px solid",
+                    backgroundColor: newRuleText === text ? "#e8f0fe" : "#fafafa",
+                    borderColor: newRuleText === text ? "#1a73e8" : "#e0e0e0",
+                    fontSize: 13,
+                    cursor: "pointer",
+                    color: "#333",
+                    textAlign: "left",
+                    transition: "all 0.15s ease",
+                    lineHeight: 1.5,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (newRuleText !== text) {
+                      e.currentTarget.style.backgroundColor = "#f0f0f0";
+                      e.currentTarget.style.borderColor = "#1a73e8";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (newRuleText !== text) {
+                      e.currentTarget.style.backgroundColor = "#fafafa";
+                      e.currentTarget.style.borderColor = "#e0e0e0";
+                    }
+                  }}
+                >
+                  {text}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Divider */}
+          <div style={{ width: 1, backgroundColor: "#e2e5e9", flexShrink: 0 }} />
+
+          {/* Right: text input */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+            <textarea
+              value={newRuleText}
+              onChange={(e) => setNewRuleText(e.target.value)}
+              placeholder={t("rules.placeholder")}
+              rows={8}
+              style={{ width: "100%", flex: 1, display: "block", resize: "vertical", minHeight: 160 }}
+            />
+          </div>
+        </div>
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+          <button
+            className="btn btn-primary"
+            onClick={handleCreate}
+            disabled={!newRuleText.trim()}
+            style={{ padding: "8px 24px", fontSize: 13 }}
+          >
+            {t("rules.addRule")}
+          </button>
+        </div>
       </div>
 
-      <table style={tableStyle}>
-        <thead>
-          <tr>
-            <th style={thStyle}>{t("rules.colRule")}</th>
-            <th style={thStyle}>{t("rules.colStatus")}</th>
-            <th style={thStyle}>{t("rules.colType")}</th>
-            <th style={thStyle}>{t("rules.colCreated")}</th>
-            <th style={thStyle}>{t("rules.colActions")}</th>
-          </tr>
-        </thead>
+      <div className="section-card">
+        <h3>{t("rules.colRule")}</h3>
+        <table>
+          <thead>
+            <tr>
+              <th style={{ width: "45%" }}>{t("rules.colRule")}</th>
+              <th>{t("rules.colStatus")}</th>
+              <th>{t("rules.colType")}</th>
+              <th>{t("rules.colCreated")}</th>
+              <th>{t("rules.colActions")}</th>
+            </tr>
+          </thead>
         <tbody>
           {rules.length === 0 ? (
             <tr>
-              <td colSpan={5} style={{ ...tdStyle, textAlign: "center", color: "#888", padding: "24px 12px" }}>
+              <td colSpan={5} style={{ textAlign: "center", color: "#888", padding: "24px 14px" }}>
                 {t("rules.emptyState")}
               </td>
             </tr>
           ) : (
             rules.map((rule) => (
-              <tr key={rule.id}>
-                <td style={{ ...tdStyle, maxWidth: 280 }}>
+              <tr key={rule.id} className="table-hover-row">
+                <td>
                   {editingId === rule.id ? (
                     <div>
                       <textarea
@@ -206,10 +239,10 @@ export function RulesPage() {
                         rows={3}
                         style={{ width: "100%", marginBottom: 6, display: "block", fontSize: 13 }}
                       />
-                      <button onClick={() => handleSaveEdit(rule.id)} style={{ marginRight: 6, fontSize: 12 }}>
+                      <button className="btn btn-primary" onClick={() => handleSaveEdit(rule.id)} style={{ marginRight: 6 }}>
                         {t("common.save")}
                       </button>
-                      <button onClick={handleCancelEdit} style={{ fontSize: 12 }}>
+                      <button className="btn btn-secondary" onClick={handleCancelEdit}>
                         {t("common.cancel")}
                       </button>
                     </div>
@@ -219,33 +252,33 @@ export function RulesPage() {
                     </span>
                   )}
                 </td>
-                <td style={tdStyle}>
+                <td>
                   <StatusBadge status={rule.artifactStatus} />
                 </td>
-                <td style={tdStyle}>
+                <td>
                   {rule.artifactType ?? "—"}
                 </td>
-                <td style={{ ...tdStyle, fontSize: 12, color: "#666", whiteSpace: "nowrap" }}>
+                <td style={{ fontSize: 12, color: "#666", whiteSpace: "nowrap" }}>
                   {new Date(rule.createdAt).toLocaleDateString()}
                 </td>
-                <td style={tdStyle}>
+                <td>
                   {editingId !== rule.id && (
                     <div style={{ display: "flex", gap: 6 }}>
                       <button
+                        className="btn btn-secondary"
                         onClick={() => handleStartEdit(rule)}
-                        style={{ cursor: "pointer", fontSize: 12 }}
                       >
                         {t("common.edit")}
                       </button>
                       <button
+                        className="btn btn-outline"
                         onClick={() => handleRecompile(rule)}
-                        style={{ cursor: "pointer", fontSize: 12 }}
                       >
                         {t("rules.recompile")}
                       </button>
                       <button
+                        className="btn btn-danger"
                         onClick={() => handleDelete(rule.id)}
-                        style={{ color: "red", cursor: "pointer", fontSize: 12 }}
                       >
                         {t("common.delete")}
                       </button>
@@ -256,7 +289,8 @@ export function RulesPage() {
             ))
           )}
         </tbody>
-      </table>
+        </table>
+      </div>
     </div>
   );
 }

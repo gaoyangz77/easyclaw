@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { PROVIDER_URLS, getDefaultModelForProvider } from "@easyclaw/core";
 import type { LLMProvider } from "@easyclaw/core";
-import { updateSettings, createProviderKey } from "../api.js";
+import { updateSettings, createProviderKey, validateApiKey } from "../api.js";
 import { ProviderSelect } from "../components/ProviderSelect.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 
@@ -42,6 +42,8 @@ export function OnboardingPage({
   const [provider, setProvider] = useState("openai");
   const [model, setModel] = useState(getDefaultModelForProvider("openai" as LLMProvider).modelId);
   const [apiKey, setApiKey] = useState("");
+  const [proxyUrl, setProxyUrl] = useState("");
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [providerError, setProviderError] = useState<{ key: string; detail?: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -67,15 +69,25 @@ export function OnboardingPage({
     setValidating(true);
     setProviderError(null);
     try {
+      // Validate API key (with proxy if configured) to prevent IP pollution/bans
+      const proxy = proxyUrl.trim() || undefined;
+      const validation = await validateApiKey(provider, apiKey.trim(), proxy);
+      if (!validation.valid) {
+        setProviderError({ key: "providers.invalidKey", detail: validation.error });
+        setValidating(false);
+        return;
+      }
+
       setValidating(false);
       setSaving(true);
 
-      // Create provider key entry (server validates the key)
+      // Create provider key entry
       await createProviderKey({
         provider,
         label: "Default",
         model,
         apiKey: apiKey.trim(),
+        proxyUrl: proxy,
       });
       // Set as active provider
       await updateSettings({ "llm-provider": provider });
@@ -244,6 +256,49 @@ export function OnboardingPage({
                 </div>
               )}
             </label>
+
+            <div style={{ marginBottom: 20 }}>
+              <button
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                style={{
+                  padding: "6px 0",
+                  background: "none",
+                  border: "none",
+                  color: "#1a73e8",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>▶</span>
+                {t("providers.advancedSettings")}
+              </button>
+              {showAdvanced && (
+                <div style={{ marginTop: 8, paddingLeft: 12, borderLeft: "2px solid #e0e0e0" }}>
+                  <div style={{ fontSize: 13, marginBottom: 4, color: "#555" }}>{t("providers.proxyLabel")}</div>
+                  <input
+                    type="text"
+                    value={proxyUrl}
+                    onChange={(e) => setProxyUrl(e.target.value)}
+                    placeholder={t("providers.proxyPlaceholder")}
+                    style={{
+                      width: "100%",
+                      padding: 8,
+                      borderRadius: 4,
+                      border: "1px solid #e0e0e0",
+                      fontSize: 13,
+                      fontFamily: "monospace",
+                      boxSizing: "border-box",
+                    }}
+                  />
+                  <small style={{ color: "#888", fontSize: 11 }}>
+                    {t("providers.proxyHelp")}
+                  </small>
+                </div>
+              )}
+            </div>
 
             <button
               onClick={handleSaveProvider}

@@ -19,7 +19,8 @@
   "dependencies": {
     "@easyclaw/core": "workspace:*",
     "@easyclaw/logger": "workspace:*",
-    "@easyclaw/secrets": "workspace:*"
+    "@easyclaw/secrets": "workspace:*",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "tsdown": "^0.20.3",

@@ -1,0 +1,7 @@
+{
+  "id": "easyclaw-file-permissions",
+  "name": "EasyClaw File Permissions",
+  "description": "Enforces file access permissions via before_tool_call hook",
+  "version": "1.0.0",
+  "configSchema": {}
+}

@@ -1,0 +1,61 @@
+name: Test Build (No Signing)
+
+# Test build workflow without code signing
+# Runs on every push to main to ensure builds don't break
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  test-build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm run build
+
+      - name: Test Windows build (no signing)
+        run: |
+          cd apps/desktop
+          pnpm run pack
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+  test-build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build packages
+        run: pnpm run build
+
+      - name: Test macOS build (no signing)
+        run: |
+          cd apps/desktop
+          pnpm run pack
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
