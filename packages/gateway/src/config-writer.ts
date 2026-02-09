@@ -313,13 +313,14 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
           : {};
       const existingPaths = Array.isArray(existingLoad.paths) ? existingLoad.paths : [];
 
-      // Add plugin path if not already present
-      if (!existingPaths.includes(pluginPath)) {
-        merged.load = {
-          ...existingLoad,
-          paths: [...existingPaths, pluginPath],
-        };
-      }
+      // Replace any stale file-permissions plugin paths with the current resolved one
+      const filteredPaths = existingPaths.filter(
+        (p: unknown) => typeof p !== "string" || !p.includes("easyclaw-file-permissions"),
+      );
+      merged.load = {
+        ...existingLoad,
+        paths: [...filteredPaths, pluginPath],
+      };
 
       // Enable the plugin in entries
       const existingEntries =
