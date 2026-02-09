@@ -194,7 +194,7 @@ export class GatewayRpcClient {
       });
 
       this.ws.on("error", (err) => {
-        log.error("Gateway WebSocket error:", err);
+        log.warn(`Gateway WebSocket error: ${(err as Error).message ?? err}`);
         if (!settled) {
           settled = true;
           reject(err);
@@ -218,7 +218,7 @@ export class GatewayRpcClient {
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       this.connect().catch((err) => {
-        log.error("Reconnect failed:", err);
+        log.warn(`Reconnect failed: ${(err as Error).message ?? err}`);
         // connect() failure triggers ws close → scheduleReconnect() will be called again
       });
     }, delay);
