@@ -269,11 +269,19 @@ app.whenReady().then(async () => {
   const sttEnabled = storage.settings.get("stt.enabled") === "true";
   const sttProvider = (storage.settings.get("stt.provider") || "groq") as "groq" | "volcengine";
 
+  // In packaged app, the file-permissions plugin lives in Resources/file-permissions-plugin/.
+  // In dev, config-writer resolves the plugin path via monorepo root.
+  const filePermissionsPluginPath = app.isPackaged
+    ? join(process.resourcesPath, "file-permissions-plugin", "easyclaw-file-permissions.mjs")
+    : undefined;
+
   writeGatewayConfig({
     configPath,
+    gatewayPort: DEFAULT_GATEWAY_PORT,
     enableChatCompletions: true,
     commandsRestart: true,
     enableFilePermissions: true,
+    filePermissionsPluginPath,
     defaultModel: {
       provider: startupModelConfig.provider,
       modelId: startupModelConfig.modelId,

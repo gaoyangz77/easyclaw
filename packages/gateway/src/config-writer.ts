@@ -157,6 +157,9 @@ export interface WriteGatewayConfigOptions {
   };
   /** Enable file permissions plugin. */
   enableFilePermissions?: boolean;
+  /** Override path to the file permissions plugin .mjs entry file.
+   *  Used in packaged Electron apps where the monorepo root doesn't exist. */
+  filePermissionsPluginPath?: string;
 }
 
 
@@ -303,7 +306,7 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
 
     // Add file permissions plugin if enabled
     if (options.enableFilePermissions !== undefined) {
-      const pluginPath = resolveFilePermissionsPluginPath();
+      const pluginPath = options.filePermissionsPluginPath ?? resolveFilePermissionsPluginPath();
       const existingLoad =
         typeof merged.load === "object" && merged.load !== null
           ? (merged.load as Record<string, unknown>)

@@ -773,6 +773,10 @@ export function startPanelServer(options: PanelServerOptions): Server {
   const distDir = resolve(options.panelDistDir);
   const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, vendorDir } = options;
 
+  // Ensure vendor OpenClaw functions (loadCostUsageSummary, discoverAllSessions)
+  // read from EasyClaw's state dir (~/.easyclaw/openclaw/) instead of ~/.openclaw/
+  process.env.OPENCLAW_STATE_DIR = resolveOpenClawStateDir();
+
   // Start pairing notifier to send follow-up messages to Telegram users
   const pairingNotifier = startPairingNotifier();
 
@@ -794,7 +798,7 @@ export function startPanelServer(options: PanelServerOptions): Server {
     // API routes
     if (pathname.startsWith("/api/")) {
       try {
-        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured);
+        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, vendorDir);
       } catch (err) {
         log.error("API error:", err);
         sendJson(res, 500, { error: "Internal server error" });
@@ -845,6 +849,7 @@ async function handleApiRoute(
   onSttChange?: () => void,
   onPermissionsChange?: () => void,
   onChannelConfigured?: (channelId: string) => void,
+  vendorDir?: string,
 ): Promise<void> {
   // --- Status ---
   if (pathname === "/api/status" && req.method === "GET") {

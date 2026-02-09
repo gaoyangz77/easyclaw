@@ -21,6 +21,7 @@ jobs:
           cache: pnpm
 
       - name: Setup OpenClaw vendor
+        shell: bash
         run: |
           git clone https://github.com/openclaw/openclaw.git vendor/openclaw
           cd vendor/openclaw

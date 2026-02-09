@@ -367,6 +367,34 @@ describe("config-writer", () => {
     });
   });
 
+  describe("writeGatewayConfig - filePermissionsPluginPath override", () => {
+    it("uses provided filePermissionsPluginPath instead of auto-resolving", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      const customPath = "/app/Resources/file-permissions-plugin/easyclaw-file-permissions.mjs";
+      writeGatewayConfig({
+        configPath,
+        enableFilePermissions: true,
+        filePermissionsPluginPath: customPath,
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.plugins.load.paths).toContain(customPath);
+      expect(config.plugins.entries["easyclaw-file-permissions"]).toEqual({ enabled: true });
+    });
+
+    it("falls back to auto-resolved path when filePermissionsPluginPath is omitted", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({
+        configPath,
+        enableFilePermissions: true,
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.plugins.load.paths).toHaveLength(1);
+      expect(config.plugins.load.paths[0]).toContain("easyclaw-file-permissions.mjs");
+    });
+  });
+
   describe("ensureGatewayConfig", () => {
     it("creates default config when no file exists", () => {
       const configPath = join(tmpDir, "openclaw.json");

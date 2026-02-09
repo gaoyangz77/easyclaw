@@ -31,6 +31,12 @@ extraResources:
       - "!extensions/**/node_modules/**"
       - "packages/**"
       - "!packages/**/node_modules/**"
+  # File permissions plugin — must be outside asar (loaded by OpenClaw at runtime)
+  - from: "../../packages/file-permissions-plugin/dist"
+    to: "file-permissions-plugin"
+    filter:
+      - "easyclaw-file-permissions.mjs"
+      - "openclaw.plugin.json"
   # Panel UI static files
   - from: "../panel/dist"
     to: "panel-dist"
@@ -57,13 +63,13 @@ mac:
 dmg:
   background: build/dmg-background.png
   window:
-    width: 540
-    height: 380
+    width: 270
+    height: 190
   contents:
-    - x: 140
-      y: 200
-    - x: 400
-      y: 200
+    - x: 70
+      y: 100
+    - x: 200
+      y: 100
       type: link
       path: /Applications
 

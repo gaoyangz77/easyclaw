@@ -11,8 +11,8 @@
     "lint": "oxlint",
     "test": "vitest run",
     "pack": "electron-builder --dir",
-    "dist:mac": "electron-builder --mac",
-    "dist:win": "electron-builder --win --config electron-builder.win.yml"
+    "dist:mac": "node scripts/prune-vendor-deps.cjs && electron-builder --mac",
+    "dist:win": "node scripts/prune-vendor-deps.cjs && electron-builder --win --config electron-builder.win.yml"
   },
   "dependencies": {
     "@easyclaw/core": "workspace:*",
