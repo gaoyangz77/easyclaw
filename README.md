@@ -48,8 +48,20 @@ EasyClaw enforces file access permissions through an OpenClaw plugin that interc
 ## Quick Start
 
 ```bash
+# 1. Clone and build the vendored OpenClaw runtime
+git clone https://github.com/openclaw/openclaw.git vendor/openclaw
+cd vendor/openclaw
+git checkout e78ae48e6
+echo 'node-linker=hoisted' > .npmrc
+pnpm install --no-frozen-lockfile
+pnpm run build
+cd ../..
+
+# 2. Install workspace dependencies and build
 pnpm install
 pnpm build
+
+# 3. Launch in dev mode
 pnpm --filter @easyclaw/desktop dev
 ```
 
@@ -193,6 +205,14 @@ The panel server exposes these endpoints:
 | `~/.openclaw/skills/`            | Auto-generated skill files |
 
 ## Building Installers
+
+The `dist:mac` and `dist:win` scripts automatically prune `vendor/openclaw/node_modules` to production-only dependencies before packaging. This reduces the DMG from ~360MB to ~270MB.
+
+**After building**, vendor node_modules will be pruned. To restore full deps for development:
+
+```bash
+cd vendor/openclaw && CI=true pnpm install --no-frozen-lockfile && cd ../..
+```
 
 ### macOS (DMG, universal arm64+x64)
 

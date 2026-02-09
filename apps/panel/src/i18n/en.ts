@@ -279,6 +279,7 @@ export default {
     // Tutorial links
     setupGuide: "Setup Guide",
     setupGuideLinkAriaLabel: "Open {{channel}} setup guide in new tab",
+    viewTutorial: "View Setup Tutorial",
     // Tooltips for each channel
     tooltipTelegram: "Find @BotFather to create a bot and get token",
     tooltipWhatsApp: "Need a real phone number, use 'openclaw channels login' to scan QR code",

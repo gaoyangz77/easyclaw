@@ -255,36 +255,76 @@ export function ChannelsPage() {
       {/* Add Account Section */}
       <div className="section-card" style={{ marginBottom: 20 }}>
         <h3>{t("channels.addAccount")}</h3>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
-          <label htmlFor="channel-select" style={{ fontSize: 13, fontWeight: 500, color: "#666" }}>
-            {t("channels.selectChannelType")}
-          </label>
-          <select
-            id="channel-select"
-            value={selectedDropdownChannel}
-            onChange={(e) => setSelectedDropdownChannel(e.target.value)}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 4,
-              border: "1px solid #e0e0e0",
-              fontSize: 14,
-              minWidth: 200,
-            }}
-          >
-            <option value="" disabled>{t("channels.selectChannel")}</option>
-            {KNOWN_CHANNELS.map(ch => (
-              <option key={ch.id} value={ch.id}>
-                {t(ch.labelKey)}
-              </option>
-            ))}
-          </select>
-          <button
-            className="btn btn-primary"
-            onClick={handleAddAccountFromDropdown}
-            disabled={!selectedDropdownChannel}
-          >
-            {t("channels.addAccount")}
-          </button>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <label htmlFor="channel-select" style={{ fontSize: 13, fontWeight: 500, color: "#666" }}>
+              {t("channels.selectChannelType")}
+            </label>
+            <select
+              id="channel-select"
+              value={selectedDropdownChannel}
+              onChange={(e) => setSelectedDropdownChannel(e.target.value)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 4,
+                border: "1px solid #e0e0e0",
+                fontSize: 14,
+                minWidth: 200,
+              }}
+            >
+              <option value="" disabled>{t("channels.selectChannel")}</option>
+              {KNOWN_CHANNELS.map(ch => (
+                <option key={ch.id} value={ch.id}>
+                  {t(ch.labelKey)}
+                </option>
+              ))}
+            </select>
+            <button
+              className="btn btn-primary"
+              onClick={handleAddAccountFromDropdown}
+              disabled={!selectedDropdownChannel}
+            >
+              {t("channels.addAccount")}
+            </button>
+          </div>
+
+          {/* Tooltip and tutorial link for selected channel */}
+          {selectedDropdownChannel && (() => {
+            const selected = KNOWN_CHANNELS.find(ch => ch.id === selectedDropdownChannel);
+            if (!selected) return null;
+
+            return (
+              <div style={{
+                padding: "10px 12px",
+                backgroundColor: "#e8f4f8",
+                borderLeft: "3px solid #1976d2",
+                borderRadius: 4,
+                fontSize: 13,
+                lineHeight: 1.6,
+                minWidth: 400,
+                maxWidth: 600,
+                textAlign: "left",
+              }}>
+                <div style={{ color: "#555", marginBottom: 6 }}>
+                  ℹ️ {t(selected.tooltip)}
+                </div>
+                <div>
+                  <a
+                    href={selected.tutorialUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      color: "#1976d2",
+                      textDecoration: "none",
+                      fontWeight: 500,
+                    }}
+                  >
+                    📖 {t("channels.viewTutorial")} →
+                  </a>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 

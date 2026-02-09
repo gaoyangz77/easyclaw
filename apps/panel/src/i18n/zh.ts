@@ -279,6 +279,7 @@ export default {
     // Tutorial links
     setupGuide: "配置教程",
     setupGuideLinkAriaLabel: "在新标签页打开 {{channel}} 配置教程",
+    viewTutorial: "查看配置教程",
     // Tooltips for each channel
     tooltipTelegram: "找 @BotFather 创建 bot，拿到 token",
     tooltipWhatsApp: "需要一个真实手机号，openclaw channels login 扫码连接",

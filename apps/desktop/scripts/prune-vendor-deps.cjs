@@ -109,7 +109,6 @@ const STRIP_DIRS = new Set([
   "__test__",
   "testing",
   "docs",
-  "doc",
   "documentation",
   "example",
   "examples",

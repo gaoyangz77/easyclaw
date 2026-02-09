@@ -62,14 +62,15 @@ mac:
 
 dmg:
   background: build/dmg-background.png
+  iconSize: 80
   window:
-    width: 270
-    height: 190
+    width: 590
+    height: 380
   contents:
-    - x: 70
-      y: 100
-    - x: 200
-      y: 100
+    - x: 155
+      y: 200
+    - x: 435
+      y: 200
       type: link
       path: /Applications
 
