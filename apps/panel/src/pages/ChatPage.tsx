@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { fetchGatewayInfo } from "../api.js";
+import { fetchGatewayInfo, fetchProviderKeys } from "../api.js";
 import { GatewayChatClient } from "../lib/gateway-client.js";
 import type { GatewayEvent, GatewayHelloOk } from "../lib/gateway-client.js";
 import "./ChatPage.css";
@@ -57,6 +57,8 @@ function formatMessage(text: string): React.ReactNode[] {
 /**
  * Extract plain text from gateway message content blocks.
  */
+const NO_PROVIDER_RE = /no\s+(llm\s+)?provider|no\s+api\s*key|provider\s+not\s+configured|key\s+not\s+(found|configured)/i;
+
 function extractText(content: unknown): string {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -254,7 +256,8 @@ export function ChatPage() {
         setExternalRunActive(false);
         // Surface error to user if we're waiting for a response
         if (runIdRef.current) {
-          const errText = payload.errorMessage ?? "An error occurred.";
+          const raw = payload.errorMessage ?? "An error occurred.";
+          const errText = NO_PROVIDER_RE.test(raw) ? t("chat.noProviderError") : raw;
           setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${errText}`, timestamp: Date.now() }]);
           setStreaming(null);
           setRunId(null);
@@ -288,7 +291,8 @@ export function ChatPage() {
       }
       case "error": {
         console.error("[chat] error event:", payload.errorMessage ?? "unknown error", "runId:", payload.runId);
-        const errText = payload.errorMessage ?? "An error occurred.";
+        const raw = payload.errorMessage ?? "An error occurred.";
+        const errText = NO_PROVIDER_RE.test(raw) ? t("chat.noProviderError") : raw;
         setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${errText}`, timestamp: Date.now() }]);
         setStreaming(null);
         setRunId(null);
@@ -306,7 +310,7 @@ export function ChatPage() {
         break;
       }
     }
-  }, [loadHistory]);
+  }, [loadHistory, t]);
 
   // Timeout: if runId is set but no response arrives within 60s, show error
   useEffect(() => {
@@ -315,7 +319,7 @@ export function ChatPage() {
       console.error("[chat] response timeout — no event received within 60s for runId:", runId);
       setMessages((prev) => [...prev, {
         role: "assistant",
-        text: "⚠ Request timed out. The model may be unavailable or the model ID may be incorrect.",
+        text: `⚠ ${t("chat.timeoutError")}`,
         timestamp: Date.now(),
       }]);
       setStreaming(null);
@@ -372,9 +376,26 @@ export function ChatPage() {
     };
   }, [loadHistory, handleEvent]);
 
-  function handleSend() {
+  async function handleSend() {
     const text = draft.trim();
     if (!text || connectionState !== "connected" || !clientRef.current) return;
+
+    // Pre-flight: check if any provider key is configured
+    try {
+      const keys = await fetchProviderKeys();
+      if (keys.length === 0) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "user", text, timestamp: Date.now() },
+          { role: "assistant", text: `⚠ ${t("chat.noProviderError")}`, timestamp: Date.now() },
+        ]);
+        setDraft("");
+        if (textareaRef.current) textareaRef.current.style.height = "auto";
+        return;
+      }
+    } catch {
+      // Check failed — proceed anyway, let gateway handle it
+    }
 
     const idempotencyKey = crypto.randomUUID();
 
@@ -394,7 +415,9 @@ export function ChatPage() {
       idempotencyKey,
     }).catch((err) => {
       // RPC-level failure — clear runId so UI doesn't get stuck in streaming mode
-      setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${(err as Error).message || "Failed to send message."}`, timestamp: Date.now() }]);
+      const raw = (err as Error).message || "Failed to send message.";
+      const errText = NO_PROVIDER_RE.test(raw) ? t("chat.noProviderError") : raw;
+      setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${errText}`, timestamp: Date.now() }]);
       setStreaming(null);
       setRunId(null);
     });

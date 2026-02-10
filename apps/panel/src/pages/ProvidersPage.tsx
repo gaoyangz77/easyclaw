@@ -179,7 +179,23 @@ export function ProvidersPage() {
   async function handleRemoveKey(keyId: string) {
     setError(null);
     try {
+      const removed = keys.find((k) => k.id === keyId);
+      const wasActive = removed && removed.isDefault && removed.provider === defaultProvider;
       await deleteProviderKey(keyId);
+
+      if (wasActive) {
+        const remaining = keys.filter((k) => k.id !== keyId);
+        if (remaining.length > 0) {
+          const next = remaining[0];
+          await activateProviderKey(next.id);
+          await updateSettings({ "llm-provider": next.provider });
+          setDefaultProvider(next.provider);
+        } else {
+          await updateSettings({ "llm-provider": "" });
+          setDefaultProvider("");
+        }
+      }
+
       await loadData();
     } catch (err) {
       setError({ key: "providers.failedToSave", detail: String(err) });

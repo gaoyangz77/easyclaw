@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { PROVIDER_URLS, getDefaultModelForProvider } from "@easyclaw/core";
 import type { LLMProvider } from "@easyclaw/core";
-import { updateSettings, createProviderKey, validateApiKey } from "../api.js";
+import { updateSettings, createProviderKey, validateApiKey, fetchPricing } from "../api.js";
+import type { ProviderPricing } from "../api.js";
 import { ProviderSelect } from "../components/ProviderSelect.js";
 import { ModelSelect } from "../components/ModelSelect.js";
+import { PricingTable } from "../components/PricingTable.js";
 
 function StepDot({ step, currentStep }: { step: number; currentStep: number }) {
   const isActive = step === currentStep;
@@ -47,6 +49,37 @@ export function OnboardingPage({
   const [providerError, setProviderError] = useState<{ key: string; detail?: string } | null>(null);
   const [saving, setSaving] = useState(false);
   const [validating, setValidating] = useState(false);
+  const [pricingList, setPricingList] = useState<ProviderPricing[] | null>(null);
+  const [pricingLoading, setPricingLoading] = useState(true);
+  const formRef = useRef<HTMLDivElement>(null);
+  const [formHeight, setFormHeight] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    const el = formRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setFormHeight(el.offsetHeight));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [currentStep]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const statusRes = await fetch("http://127.0.0.1:3210/api/status");
+        const status = await statusRes.json();
+        const deviceId = status.deviceId || "unknown";
+        const lang = navigator.language?.slice(0, 2) || "en";
+        const platform = navigator.userAgent.includes("Mac") ? "darwin"
+          : navigator.userAgent.includes("Win") ? "win32" : "linux";
+        const data = await fetchPricing(deviceId, platform, "0.8.0", lang);
+        setPricingList(data);
+      } catch {
+        setPricingList(null);
+      } finally {
+        setPricingLoading(false);
+      }
+    })();
+  }, []);
 
   const panelSections = [
     { name: t("onboarding.sectionRules"), desc: t("onboarding.sectionRulesDesc") },
@@ -157,9 +190,10 @@ export function OnboardingPage({
           backgroundColor: "#fff",
           borderRadius: 12,
           padding: "48px 40px",
-          maxWidth: 560,
+          maxWidth: currentStep === 0 ? 960 : 560,
           width: "100%",
           boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
+          transition: "max-width 0.3s ease",
         }}
       >
         {/* Step indicator */}
@@ -179,7 +213,9 @@ export function OnboardingPage({
 
         {/* Step 0: Welcome + Provider */}
         {currentStep === 0 && (
-          <div>
+          <div style={{ display: "flex", gap: 28, alignItems: "stretch" }}>
+            {/* Left: form */}
+            <div ref={formRef} style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{ fontSize: 24, margin: "0 0 8px" }}>
               {t("onboarding.welcomeTitle")}
             </h1>
@@ -317,6 +353,12 @@ export function OnboardingPage({
             >
               {validating ? t("onboarding.validating") : saving ? t("onboarding.saving") : t("onboarding.saveAndContinue")}
             </button>
+            </div>
+
+            {/* Right: pricing table */}
+            <div style={{ width: 320, flexShrink: 0, height: formHeight }}>
+              <PricingTable provider={provider} pricingList={pricingList} loading={pricingLoading} />
+            </div>
           </div>
         )}
 

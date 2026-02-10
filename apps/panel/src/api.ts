@@ -532,5 +532,5 @@ export async function fetchPricing(
     } catch {
       return null;
     }
-  }, 600_000); // 10min — pricing rarely changes during a session
+  }, 14_400_000); // 4h — pricing rarely changes
 }

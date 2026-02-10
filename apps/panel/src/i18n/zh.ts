@@ -34,6 +34,8 @@ export default {
     emptyState: "开始和你的 Agent 对话吧。",
     historyEnd: "已到对话开头",
     loadError: "无法连接到 Gateway",
+    noProviderError: "未配置 LLM 提供商。请前往「LLM 模型」页面添加 API 密钥。",
+    timeoutError: "请求超时。模型可能不可用，或模型 ID 不正确。",
   },
   rules: {
     title: "规则",
