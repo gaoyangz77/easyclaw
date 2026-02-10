@@ -28,7 +28,8 @@ export function Layout({
   }, []);
 
   const NAV_ITEMS = [
-    { path: "/", label: t("nav.rules") },
+    { path: "/", label: t("nav.chat") },
+    { path: "/rules", label: t("nav.rules") },
     { path: "/providers", label: t("nav.providers") },
     { path: "/channels", label: t("nav.channels") },
     { path: "/permissions", label: t("nav.permissions") },

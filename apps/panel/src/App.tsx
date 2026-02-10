@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Layout } from "./layout/Layout.js";
+import { ChatPage } from "./pages/ChatPage.js";
 import { RulesPage } from "./pages/RulesPage.js";
 import { ProvidersPage } from "./pages/ProvidersPage.js";
 import { ChannelsPage } from "./pages/ChannelsPage.js";
@@ -14,7 +15,8 @@ import { OnboardingPage } from "./pages/OnboardingPage.js";
 import { fetchSettings } from "./api.js";
 
 const PAGES: Record<string, () => ReactNode> = {
-  "/": RulesPage,
+  "/": ChatPage,
+  "/rules": RulesPage,
   "/providers": ProvidersPage,
   "/channels": ChannelsPage,
   "/permissions": PermissionsPage,
@@ -96,7 +98,7 @@ export function App() {
     return <OnboardingPage onComplete={handleOnboardingComplete} />;
   }
 
-  const PageComponent = PAGES[currentPath] ?? RulesPage;
+  const PageComponent = PAGES[currentPath] ?? ChatPage;
   return (
     <Layout currentPath={currentPath} onNavigate={navigate}>
       <PageComponent />

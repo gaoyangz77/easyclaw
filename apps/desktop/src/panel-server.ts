@@ -603,6 +603,8 @@ export interface PanelServerOptions {
     releaseNotes?: string;
     error?: string;
   } | null;
+  /** Getter for gateway connection info (WebSocket URL + auth token). */
+  getGatewayInfo?: () => { wsUrl: string; token?: string };
 }
 
 /**
@@ -780,7 +782,7 @@ async function syncActiveKey(
 export function startPanelServer(options: PanelServerOptions): Server {
   const port = options.port ?? 3210;
   const distDir = resolve(options.panelDistDir);
-  const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, vendorDir, getUpdateResult } = options;
+  const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, vendorDir, getUpdateResult, getGatewayInfo } = options;
 
   // Ensure vendor OpenClaw functions (loadCostUsageSummary, discoverAllSessions)
   // read from EasyClaw's state dir (~/.easyclaw/openclaw/) instead of ~/.openclaw/
@@ -807,7 +809,7 @@ export function startPanelServer(options: PanelServerOptions): Server {
     // API routes
     if (pathname.startsWith("/api/")) {
       try {
-        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, vendorDir, getUpdateResult);
+        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, vendorDir, getUpdateResult, getGatewayInfo);
       } catch (err) {
         log.error("API error:", err);
         sendJson(res, 500, { error: "Internal server error" });
@@ -866,6 +868,7 @@ async function handleApiRoute(
     download?: { url: string; sha256: string; size: number };
     releaseNotes?: string;
   } | null,
+  getGatewayInfo?: () => { wsUrl: string; token?: string },
 ): Promise<void> {
   // --- Status ---
   if (pathname === "/api/status" && req.method === "GET") {
@@ -1396,6 +1399,14 @@ async function handleApiRoute(
       downloadUrl: result?.download?.url ?? null,
       releaseNotes: result?.releaseNotes ?? null,
     });
+    return;
+  }
+
+  // --- Gateway Info ---
+
+  if (pathname === "/api/app/gateway-info" && req.method === "GET") {
+    const info = getGatewayInfo?.();
+    sendJson(res, 200, info ?? { wsUrl: "ws://127.0.0.1:28789" });
     return;
   }
 

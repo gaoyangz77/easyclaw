@@ -693,6 +693,14 @@ app.whenReady().then(async () => {
     secretStore,
     getRpcClient: () => rpcClient,
     getUpdateResult: () => latestUpdateResult,
+    getGatewayInfo: () => {
+      const config = readExistingConfig(configPath);
+      const gw = config.gateway as Record<string, unknown> | undefined;
+      const port = (gw?.port as number) ?? DEFAULT_GATEWAY_PORT;
+      const auth = gw?.auth as Record<string, unknown> | undefined;
+      const token = auth?.token as string | undefined;
+      return { wsUrl: `ws://127.0.0.1:${port}`, token };
+    },
     onRuleChange: (action, ruleId) => {
       log.info(`Rule ${action}: ${ruleId}`);
       if (action === "created" || action === "updated") {

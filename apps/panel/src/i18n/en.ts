@@ -15,6 +15,7 @@ export default {
     currencySymbol: "$",
   },
   nav: {
+    chat: "Chat",
     rules: "Rules",
     providers: "LLM Providers",
     channels: "Channels",
@@ -22,6 +23,17 @@ export default {
     usage: "Usage",
     stt: "Speech-to-Text",
     settings: "Settings",
+  },
+  chat: {
+    placeholder: "Type a message...",
+    send: "Send",
+    stop: "Stop",
+    connected: "Connected",
+    disconnected: "Disconnected",
+    connecting: "Connecting...",
+    emptyState: "Start a conversation with your agent.",
+    historyEnd: "Beginning of conversation",
+    loadError: "Failed to connect to gateway",
   },
   rules: {
     title: "Rules",

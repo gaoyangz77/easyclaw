@@ -15,6 +15,7 @@ export default {
     currencySymbol: "$",
   },
   nav: {
+    chat: "对话",
     rules: "规则",
     providers: "LLM 模型",
     channels: "通道",
@@ -22,6 +23,17 @@ export default {
     usage: "用量",
     stt: "语音转文字",
     settings: "设置",
+  },
+  chat: {
+    placeholder: "输入消息...",
+    send: "发送",
+    stop: "停止",
+    connected: "已连接",
+    disconnected: "未连接",
+    connecting: "连接中...",
+    emptyState: "开始和你的 Agent 对话吧。",
+    historyEnd: "已到对话开头",
+    loadError: "无法连接到 Gateway",
   },
   rules: {
     title: "规则",

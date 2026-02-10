@@ -382,6 +382,17 @@ export async function fetchUpdateInfo(): Promise<UpdateInfo> {
   return fetchJson<UpdateInfo>("/app/update");
 }
 
+// --- Gateway Info ---
+
+export interface GatewayInfo {
+  wsUrl: string;
+  token?: string;
+}
+
+export async function fetchGatewayInfo(): Promise<GatewayInfo> {
+  return fetchJson<GatewayInfo>("/app/gateway-info");
+}
+
 // --- Pairing ---
 
 export interface PairingRequest {
