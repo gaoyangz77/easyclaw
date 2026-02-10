@@ -191,15 +191,15 @@ export const EXTRA_MODELS: Partial<Record<LLMProvider, ModelConfig[]>> = {
   zhipu: [
     {
       provider: "zhipu",
-      modelId: "glm-4.7",
-      displayName: "GLM-4.7",
-      cost: { input: cny(4), output: cny(16), cacheRead: 0, cacheWrite: 0 }, // ¥4/¥16
-    },
-    {
-      provider: "zhipu",
       modelId: "glm-4.7-flash",
       displayName: "GLM-4.7-Flash",
       cost: FREE_COST,
+    },
+    {
+      provider: "zhipu",
+      modelId: "glm-4.7",
+      displayName: "GLM-4.7",
+      cost: { input: cny(4), output: cny(16), cacheRead: 0, cacheWrite: 0 }, // ¥4/¥16
     },
     {
       provider: "zhipu",
@@ -250,6 +250,16 @@ export const EXTRA_MODELS: Partial<Record<LLMProvider, ModelConfig[]>> = {
       cost: FREE_COST,
     },
   ],
+};
+
+/**
+ * Preferred default model per provider. If a provider has a preferred model
+ * and that model exists in KNOWN_MODELS, `getDefaultModelForProvider` returns
+ * it instead of the first entry. This lets us set defaults for vendor-managed
+ * providers (e.g. zai) without overriding their full model list.
+ */
+const PREFERRED_DEFAULT_MODEL: Partial<Record<LLMProvider, string>> = {
+  zai: "glm-4.7-flash",
 };
 
 /**
@@ -321,16 +331,20 @@ export function getDefaultModelForRegion(region: string): ModelConfig {
 
 /**
  * Get the default model for a specific provider.
- * Returns the first model in that provider's list, or undefined if none are known.
+ * If a preferred default is configured and exists in the provider's list,
+ * returns that; otherwise returns the first model.
  */
 export function getDefaultModelForProvider(
   provider: LLMProvider,
 ): ModelConfig | undefined {
   const models = KNOWN_MODELS[provider];
-  if (models && models.length > 0) {
-    return models[0];
+  if (!models || models.length === 0) return undefined;
+  const preferred = PREFERRED_DEFAULT_MODEL[provider];
+  if (preferred) {
+    const match = models.find((m) => m.modelId === preferred);
+    if (match) return match;
   }
-  return undefined;
+  return models[0];
 }
 
 /**

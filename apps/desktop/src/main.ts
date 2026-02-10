@@ -352,6 +352,7 @@ app.whenReady().then(async () => {
       provider: sttProvider,
     },
     extraProviders: buildExtraProviderConfigs(),
+    forceStandaloneBrowser: true,
   });
 
   // Clean up any existing gateway processes before starting

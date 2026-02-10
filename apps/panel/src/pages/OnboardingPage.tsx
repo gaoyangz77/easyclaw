@@ -41,8 +41,9 @@ export function OnboardingPage({
   const [currentStep, setCurrentStep] = useState(0);
 
   // Step 0 state
-  const [provider, setProvider] = useState("openai");
-  const [model, setModel] = useState(getDefaultModelForProvider("openai" as LLMProvider)?.modelId ?? "");
+  const defaultProv = i18n.language === "zh" ? "zhipu" : "openai";
+  const [provider, setProvider] = useState(defaultProv);
+  const [model, setModel] = useState(getDefaultModelForProvider(defaultProv as LLMProvider)?.modelId ?? "");
   const [apiKey, setApiKey] = useState("");
   const [proxyUrl, setProxyUrl] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);

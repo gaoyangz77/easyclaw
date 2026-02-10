@@ -20,14 +20,15 @@ import { PricingTable } from "../components/PricingTable.js";
 
 
 export function ProvidersPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [keys, setKeys] = useState<ProviderKeyEntry[]>([]);
   const [defaultProvider, setDefaultProvider] = useState<string>("");
-  const [newProvider, setNewProvider] = useState("openai");
+  const defaultProv = i18n.language === "zh" ? "zhipu" : "openai";
+  const [newProvider, setNewProvider] = useState(defaultProv);
   const [expandedKeyId, setExpandedKeyId] = useState<string | null>(null);
   const [apiKey, setApiKey] = useState("");
   const [newLabel, setNewLabel] = useState("");
-  const [newModel, setNewModel] = useState("");
+  const [newModel, setNewModel] = useState(getDefaultModelForProvider(defaultProv as LLMProvider)?.modelId ?? "");
   const [newProxyUrl, setNewProxyUrl] = useState("");
   const [editProxyUrl, setEditProxyUrl] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);

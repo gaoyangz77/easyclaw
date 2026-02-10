@@ -223,6 +223,12 @@ export interface WriteGatewayConfigOptions {
   /** Skip OpenClaw bootstrap (prevents creating template files like AGENTS.md on first startup). */
   skipBootstrap?: boolean;
   /**
+   * Force standalone browser mode ("openclaw" driver) and disable Chrome extension relay.
+   * When true, sets browser.defaultProfile to "openclaw" and overrides the "chrome" profile
+   * to also use the "openclaw" driver, so the agent never uses extension relay mode.
+   */
+  forceStandaloneBrowser?: boolean;
+  /**
    * Extra LLM providers to register in OpenClaw's models.providers config.
    * Used for providers not natively supported by OpenClaw (e.g. zhipu, volcengine).
    */
@@ -478,6 +484,28 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
       providers: {
         ...existingProviders,
         ...options.extraProviders,
+      },
+    };
+  }
+
+  // Force standalone browser: set default profile to "openclaw" and override
+  // the "chrome" profile to also use the "openclaw" driver, preventing the
+  // extension relay auto-creation (vendor code skips if chrome key exists).
+  if (options.forceStandaloneBrowser) {
+    const existingBrowser =
+      typeof config.browser === "object" && config.browser !== null
+        ? (config.browser as Record<string, unknown>)
+        : {};
+    const existingProfiles =
+      typeof existingBrowser.profiles === "object" && existingBrowser.profiles !== null
+        ? (existingBrowser.profiles as Record<string, unknown>)
+        : {};
+    config.browser = {
+      ...existingBrowser,
+      defaultProfile: "openclaw",
+      profiles: {
+        ...existingProfiles,
+        chrome: { driver: "openclaw", color: "#00AA00" },
       },
     };
   }
