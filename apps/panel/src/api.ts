@@ -436,6 +436,24 @@ export async function fetchUpdateInfo(): Promise<UpdateInfo> {
   return fetchJson<UpdateInfo>("/app/update");
 }
 
+// --- Changelog ---
+
+export interface ChangelogEntry {
+  version: string;
+  date: string;
+  en: string[];
+  zh: string[];
+}
+
+export async function fetchChangelog(): Promise<{
+  currentVersion: string | null;
+  entries: ChangelogEntry[];
+}> {
+  return cachedFetch("changelog", async () => {
+    return fetchJson("/app/changelog");
+  }, 86_400_000); // 24h — only changes on app update
+}
+
 // --- Gateway Info ---
 
 export interface GatewayInfo {

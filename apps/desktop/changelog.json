@@ -1,0 +1,20 @@
+[
+  {
+    "version": "1.1.0",
+    "date": "2026-02-10",
+    "en": [
+      "Panel now opens in built-in window (no more external browser)",
+      "Minimize to tray when closing the window",
+      "Resizable sidebar with drag handle",
+      "Reduced redundant API requests with smart caching",
+      "Pricing table with scrollable layout"
+    ],
+    "zh": [
+      "面板改为内置窗口打开（不再使用外部浏览器）",
+      "关闭窗口时最小化到托盘",
+      "侧边栏支持拖拽调整宽度",
+      "智能缓存减少重复 API 请求",
+      "价格表支持滚动显示"
+    ]
+  }
+]

@@ -757,9 +757,11 @@ app.whenReady().then(async () => {
   const panelDistDir = app.isPackaged
     ? join(process.resourcesPath, "panel-dist")
     : resolve(__dirname, "../../panel/dist");
+  const changelogPath = resolve(__dirname, "../changelog.json");
   startPanelServer({
     port: PANEL_PORT,
     panelDistDir,
+    changelogPath,
     vendorDir,
     storage,
     secretStore,

@@ -608,6 +608,8 @@ export interface PanelServerOptions {
   } | null;
   /** Getter for gateway connection info (WebSocket URL + auth token). */
   getGatewayInfo?: () => { wsUrl: string; token?: string };
+  /** Path to changelog.json file. */
+  changelogPath?: string;
 }
 
 /**
@@ -785,7 +787,17 @@ async function syncActiveKey(
 export function startPanelServer(options: PanelServerOptions): Server {
   const port = options.port ?? 3210;
   const distDir = resolve(options.panelDistDir);
-  const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, vendorDir, deviceId, getUpdateResult, getGatewayInfo } = options;
+  const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, vendorDir, deviceId, getUpdateResult, getGatewayInfo, changelogPath } = options;
+
+  // Read changelog.json once at startup (cached in closure)
+  let changelogEntries: unknown[] = [];
+  if (changelogPath && existsSync(changelogPath)) {
+    try {
+      changelogEntries = JSON.parse(readFileSync(changelogPath, "utf-8"));
+    } catch (err) {
+      log.warn("Failed to read changelog.json:", err);
+    }
+  }
 
   // Ensure vendor OpenClaw functions (loadCostUsageSummary, discoverAllSessions)
   // read from EasyClaw's state dir (~/.easyclaw/openclaw/) instead of ~/.openclaw/
@@ -811,6 +823,16 @@ export function startPanelServer(options: PanelServerOptions): Server {
 
     // API routes
     if (pathname.startsWith("/api/")) {
+      // Changelog endpoint (handled in closure to access changelogEntries)
+      if (pathname === "/api/app/changelog" && req.method === "GET") {
+        const result = getUpdateResult?.();
+        sendJson(res, 200, {
+          currentVersion: result?.currentVersion ?? null,
+          entries: changelogEntries,
+        });
+        return;
+      }
+
       try {
         await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, vendorDir, deviceId, getUpdateResult, getGatewayInfo);
       } catch (err) {

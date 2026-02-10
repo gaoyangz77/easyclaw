@@ -8,6 +8,7 @@ files:
   - dist/**
   - build/trayIcon.png
   - build/trayIcon@2x.png
+  - changelog.json
   - node_modules/**
   - "!node_modules/**/test_extension.node"
   - package.json
