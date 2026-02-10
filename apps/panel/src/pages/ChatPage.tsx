@@ -127,7 +127,7 @@ export function ChatPage() {
     } else {
       scrollToBottom();
     }
-  }, [messages, streaming, scrollToBottom]);
+  }, [messages, streaming, runId, scrollToBottom]);
 
   // Fetch more messages from gateway when user scrolled past all cached messages
   const fetchMore = useCallback(async () => {
@@ -210,6 +210,8 @@ export function ChatPage() {
       });
 
       const parsed = parseRawMessages(result?.messages);
+      // Guard: don't wipe existing messages if gateway returns empty on reconnect
+      if (parsed.length === 0 && messagesLengthRef.current > 0) return;
       setAllFetched(parsed.length < FETCH_BATCH);
       shouldInstantScrollRef.current = true;
       setMessages(parsed);
@@ -341,8 +343,11 @@ export function ChatPage() {
       sessionKey: sessionKeyRef.current,
       message: text,
       idempotencyKey,
-    }).catch(() => {
-      // Error event from gateway will handle display
+    }).catch((err) => {
+      // RPC-level failure — clear runId so UI doesn't get stuck in streaming mode
+      setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${(err as Error).message || "Failed to send message."}`, timestamp: Date.now() }]);
+      setStreaming(null);
+      setRunId(null);
     });
   }
 
@@ -399,6 +404,11 @@ export function ChatPage() {
               {formatMessage(msg.text)}
             </div>
           ))}
+          {runId !== null && streaming === null && (
+            <div className="chat-bubble chat-bubble-assistant chat-thinking">
+              <span className="chat-thinking-dots"><span /><span /><span /></span>
+            </div>
+          )}
           {streaming !== null && (
             <div className="chat-bubble chat-bubble-assistant chat-streaming-cursor">
               {formatMessage(streaming)}
@@ -420,7 +430,6 @@ export function ChatPage() {
           onChange={handleInput}
           onKeyDown={handleKeyDown}
           placeholder={t("chat.placeholder")}
-          disabled={connectionState !== "connected"}
           rows={1}
         />
         {isStreaming ? (
