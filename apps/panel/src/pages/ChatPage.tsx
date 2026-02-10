@@ -91,6 +91,7 @@ export function ChatPage() {
   const [streaming, setStreaming] = useState<string | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<"connecting" | "connected" | "disconnected">("connecting");
+  const [agentName, setAgentName] = useState<string | null>(null);
   const [allFetched, setAllFetched] = useState(false);
   const clientRef = useRef<GatewayChatClient | null>(null);
   const sessionKeyRef = useRef(DEFAULT_SESSION_KEY);
@@ -226,11 +227,15 @@ export function ChatPage() {
 
     const payload = evt.payload as {
       state?: string;
+      runId?: string;
       message?: { role?: string; content?: unknown; timestamp?: number };
       errorMessage?: string;
     } | undefined;
 
     if (!payload) return;
+
+    // Only process events for runs we initiated (filters out rule compilation, etc.)
+    if (!runIdRef.current || payload.runId !== runIdRef.current) return;
 
     switch (payload.state) {
       case "delta": {
@@ -287,6 +292,12 @@ export function ChatPage() {
             if (mainKey) sessionKeyRef.current = mainKey;
             setConnectionState("connected");
             loadHistory(client);
+            // Fetch agent display name
+            client.request<{ name?: string }>("agent.identity.get", {
+              sessionKey: sessionKeyRef.current,
+            }).then((res) => {
+              if (!cancelled && res?.name) setAgentName(res.name);
+            }).catch(() => {});
           },
           onDisconnected: () => {
             if (!cancelled) setConnectionState("connecting");
@@ -371,7 +382,10 @@ export function ChatPage() {
   return (
     <div className="chat-container">
       {messages.length === 0 && !streaming ? (
-        <div className="chat-empty">{t("chat.emptyState")}</div>
+        <div className="chat-empty">
+          {agentName && <div className="chat-empty-agent">{agentName}</div>}
+          <div>{t("chat.emptyState")}</div>
+        </div>
       ) : (
         <div className="chat-messages" ref={messagesContainerRef} onScroll={handleScroll}>
           {showHistoryEnd && (
@@ -396,7 +410,7 @@ export function ChatPage() {
 
       <div className="chat-status">
         <span className={`chat-status-dot chat-status-dot-${connectionState}`} />
-        <span>{t(statusKey)}</span>
+        <span>{agentName ? `${agentName} · ${t(statusKey)}` : t(statusKey)}</span>
       </div>
 
       <div className="chat-input-area">
