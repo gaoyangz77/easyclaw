@@ -93,6 +93,7 @@ export function ChatPage() {
   const [connectionState, setConnectionState] = useState<"connecting" | "connected" | "disconnected">("connecting");
   const [agentName, setAgentName] = useState<string | null>(null);
   const [allFetched, setAllFetched] = useState(false);
+  const [externalRunActive, setExternalRunActive] = useState(false);
   const clientRef = useRef<GatewayChatClient | null>(null);
   const sessionKeyRef = useRef(DEFAULT_SESSION_KEY);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -127,7 +128,7 @@ export function ChatPage() {
     } else {
       scrollToBottom();
     }
-  }, [messages, streaming, runId, scrollToBottom]);
+  }, [messages, streaming, runId, externalRunActive, scrollToBottom]);
 
   // Fetch more messages from gateway when user scrolled past all cached messages
   const fetchMore = useCallback(async () => {
@@ -245,8 +246,12 @@ export function ChatPage() {
 
     // Events from a different run on the same session (e.g. channel messages)
     if (!isOurRun) {
-      if (payload.state === "error") {
+      if (payload.state === "delta") {
+        // External run is actively streaming — show thinking indicator
+        setExternalRunActive(true);
+      } else if (payload.state === "error") {
         console.error("[chat] error event:", payload.errorMessage ?? "unknown error", "runId:", payload.runId);
+        setExternalRunActive(false);
         // Surface error to user if we're waiting for a response
         if (runIdRef.current) {
           const errText = payload.errorMessage ?? "An error occurred.";
@@ -254,11 +259,13 @@ export function ChatPage() {
           setStreaming(null);
           setRunId(null);
         }
-      }
-      if (payload.state === "final") {
+      } else if (payload.state === "final") {
+        setExternalRunActive(false);
         // Another run finished on our session (channel message reply done) — reload history
         const client = clientRef.current;
         if (client) loadHistory(client);
+      } else if (payload.state === "aborted") {
+        setExternalRunActive(false);
       }
       return;
     }
@@ -446,7 +453,7 @@ export function ChatPage() {
               {formatMessage(msg.text)}
             </div>
           ))}
-          {runId !== null && streaming === null && (
+          {((runId !== null && streaming === null) || (externalRunActive && runId === null)) && (
             <div className="chat-bubble chat-bubble-assistant chat-thinking">
               <span className="chat-thinking-dots"><span /><span /><span /></span>
             </div>

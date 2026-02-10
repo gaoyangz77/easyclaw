@@ -22,6 +22,9 @@ export function PricingTable({
     <div className="section-card" style={{ padding: "16px 18px" }}>
       <h4 style={{ margin: "0 0 4px 0", fontSize: 14 }}>
         {providerLabel} — {t("providers.pricingTitle")}
+        <span style={{ fontSize: 11, color: "#888", fontWeight: 400, marginLeft: 8 }}>
+          {t("providers.pricingPerMillion")}
+        </span>
       </h4>
 
       {loading && (
@@ -85,9 +88,6 @@ export function PricingTable({
               ))}
             </tbody>
           </table>
-          <div style={{ marginTop: 8, fontSize: 11, color: "#888" }}>
-            {t("providers.pricingPerMillion")}
-          </div>
           <div style={{ marginTop: 6 }}>
             <a
               href={data.pricingUrl}
