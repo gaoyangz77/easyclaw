@@ -1,6 +1,18 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ALL_PROVIDERS } from "@easyclaw/core";
+import { fetchModelCatalog } from "../api.js";
+
+/** Domestic Chinese LLM providers — shown first (in this order) when UI language is Chinese. */
+const CHINA_FIRST_PROVIDERS = [
+  "zhipu",
+  "volcengine",
+  "deepseek",
+  "moonshot",
+  "qwen",
+  "minimax",
+  "xiaomi",
+];
 
 export function ProviderSelect({
   value,
@@ -9,9 +21,16 @@ export function ProviderSelect({
   value: string;
   onChange: (provider: string) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const [catalogProviders, setCatalogProviders] = useState<Set<string> | null>(null);
+
+  useEffect(() => {
+    fetchModelCatalog().then((data) => {
+      setCatalogProviders(new Set(Object.keys(data)));
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -22,6 +41,16 @@ export function ProviderSelect({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Sort: Chinese domestic providers first (in defined order) when UI language is Chinese
+  const sortedProviders = useMemo(() => {
+    const available = ALL_PROVIDERS.filter((p) => !catalogProviders || catalogProviders.has(p));
+    if (i18n.language !== "zh") return available;
+    const availableSet = new Set(available);
+    const china = CHINA_FIRST_PROVIDERS.filter((p) => availableSet.has(p));
+    const rest = available.filter((p) => !CHINA_FIRST_PROVIDERS.includes(p));
+    return [...china, ...rest];
+  }, [catalogProviders, i18n.language]);
 
   return (
     <div ref={ref} style={{ position: "relative" }}>
@@ -67,7 +96,7 @@ export function ProviderSelect({
             marginTop: 2,
           }}
         >
-          {ALL_PROVIDERS.map((p) => (
+          {sortedProviders.map((p) => (
             <button
               type="button"
               key={p}

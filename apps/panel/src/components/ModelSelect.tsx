@@ -1,31 +1,6 @@
 import { useState, useEffect } from "react";
-import { getModelsForProvider } from "@easyclaw/core";
-import type { LLMProvider } from "@easyclaw/core";
 import { fetchModelCatalog } from "../api.js";
 import type { CatalogModelEntry } from "../api.js";
-
-// Module-level cache so all ModelSelect instances share one fetch
-let cachedCatalog: Record<string, CatalogModelEntry[]> | null = null;
-let fetchPromise: Promise<Record<string, CatalogModelEntry[]>> | null = null;
-
-function loadCatalog(): Promise<Record<string, CatalogModelEntry[]>> {
-  if (cachedCatalog) return Promise.resolve(cachedCatalog);
-  if (fetchPromise) return fetchPromise;
-  fetchPromise = fetchModelCatalog()
-    .then((catalog) => {
-      // Only cache non-empty results; empty means gateway/vendor not ready yet
-      if (Object.keys(catalog).length > 0) {
-        cachedCatalog = catalog;
-      }
-      fetchPromise = null;
-      return catalog;
-    })
-    .catch(() => {
-      fetchPromise = null;
-      return {};
-    });
-  return fetchPromise;
-}
 
 export function ModelSelect({
   provider,
@@ -37,23 +12,44 @@ export function ModelSelect({
   onChange: (modelId: string) => void;
 }) {
   const [catalog, setCatalog] = useState<Record<string, CatalogModelEntry[]>>(
-    cachedCatalog ?? {},
+    {},
   );
 
   useEffect(() => {
-    loadCatalog().then(setCatalog);
+    let cancelled = false;
+
+    function load() {
+      fetchModelCatalog()
+        .then((data) => {
+          if (cancelled) return;
+          setCatalog(data);
+          if (Object.keys(data).length === 0) {
+            // models.json not ready yet (gateway still starting), retry
+            setTimeout(load, 2000);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setTimeout(load, 2000);
+        });
+    }
+
+    load();
+    return () => { cancelled = true; };
   }, []);
 
-  // Prefer dynamic catalog from gateway; fall back to static KNOWN_MODELS
-  const dynamicModels = catalog[provider];
-  const models: Array<{ modelId: string; displayName: string }> = dynamicModels
-    ? dynamicModels.map((m) => ({ modelId: m.id, displayName: m.name }))
-    : getModelsForProvider(provider as LLMProvider).map((m) => ({
-        modelId: m.modelId,
-        displayName: m.displayName,
-      }));
+  const models = (catalog[provider] ?? []).map((m) => ({
+    modelId: m.id,
+    displayName: m.name,
+  }));
 
-  // Ensure the current value is always in the list (e.g. a custom model ID)
+  // Auto-select first model when value is empty
+  useEffect(() => {
+    if (!value && models.length > 0) {
+      onChange(models[0].modelId);
+    }
+  }, [value, models.length > 0]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Ensure the current value is always in the list (e.g. a custom model ID).
   if (value && !models.some((m) => m.modelId === value)) {
     models.push({ modelId: value, displayName: value });
   }

@@ -18,6 +18,8 @@ export { ALL_CHANNELS, BUILTIN_CHANNELS, CUSTOM_CHANNELS } from "./channels.js";
 export type { LLMProvider, ModelConfig, Region } from "./models.js";
 export {
   KNOWN_MODELS,
+  EXTRA_MODELS,
+  initKnownModels,
   PROVIDER_LABELS,
   PROVIDER_URLS,
   PROVIDER_BASE_URLS,

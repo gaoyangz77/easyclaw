@@ -184,12 +184,31 @@ tbody td {
 /* Sidebar */
 .sidebar {
   width: 240px;
+  flex-shrink: 0;
   padding: 24px 16px;
   background: linear-gradient(180deg, #ffffff 0%, #f8f9fb 100%);
   border-right: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
   position: relative;
+  overflow: hidden;
+}
+
+.sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 4px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  transition: background-color 0.15s;
+  z-index: 10;
+}
+
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active {
+  background-color: var(--color-primary);
 }
 
 .sidebar-brand {

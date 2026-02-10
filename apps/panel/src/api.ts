@@ -11,6 +11,40 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// --- Request deduplication + TTL cache ---
+// Prevents N+1 fetches when multiple components request the same endpoint.
+// In-flight requests are shared; resolved values are cached for `ttl` ms.
+
+const _cache = new Map<string, { data: unknown; ts: number }>();
+const _inflight = new Map<string, Promise<unknown>>();
+
+function cachedFetch<T>(key: string, fn: () => Promise<T>, ttl: number): Promise<T> {
+  // Return cached value if still fresh
+  const cached = _cache.get(key);
+  if (cached && Date.now() - cached.ts < ttl) {
+    return Promise.resolve(cached.data as T);
+  }
+  // Deduplicate in-flight requests
+  const existing = _inflight.get(key);
+  if (existing) return existing as Promise<T>;
+
+  const promise = fn().then((data) => {
+    _cache.set(key, { data, ts: Date.now() });
+    _inflight.delete(key);
+    return data;
+  }).catch((err) => {
+    _inflight.delete(key);
+    throw err;
+  });
+  _inflight.set(key, promise);
+  return promise;
+}
+
+/** Invalidate a cached endpoint so the next call re-fetches. */
+function invalidateCache(key: string) {
+  _cache.delete(key);
+}
+
 // --- Rules ---
 
 export interface Rule {
@@ -23,33 +57,42 @@ export interface Rule {
 }
 
 export async function fetchRules(): Promise<Rule[]> {
-  const data = await fetchJson<{ rules: Rule[] }>("/rules");
-  return data.rules;
+  return cachedFetch("rules", async () => {
+    const data = await fetchJson<{ rules: Rule[] }>("/rules");
+    return data.rules;
+  }, 3000);
 }
 
 export async function createRule(text: string): Promise<Rule> {
-  return fetchJson<Rule>("/rules", {
+  const result = await fetchJson<Rule>("/rules", {
     method: "POST",
     body: JSON.stringify({ text }),
   });
+  invalidateCache("rules");
+  return result;
 }
 
 export async function updateRule(id: string, text: string): Promise<Rule> {
-  return fetchJson<Rule>("/rules/" + id, {
+  const result = await fetchJson<Rule>("/rules/" + id, {
     method: "PUT",
     body: JSON.stringify({ text }),
   });
+  invalidateCache("rules");
+  return result;
 }
 
 export async function deleteRule(id: string): Promise<void> {
   await fetchJson("/rules/" + id, { method: "DELETE" });
+  invalidateCache("rules");
 }
 
 // --- Settings ---
 
 export async function fetchSettings(): Promise<Record<string, string>> {
-  const data = await fetchJson<{ settings: Record<string, string> }>("/settings");
-  return data.settings;
+  return cachedFetch("settings", async () => {
+    const data = await fetchJson<{ settings: Record<string, string> }>("/settings");
+    return data.settings;
+  }, 5000);
 }
 
 export async function updateSettings(settings: Record<string, string>): Promise<void> {
@@ -57,6 +100,7 @@ export async function updateSettings(settings: Record<string, string>): Promise<
     method: "PUT",
     body: JSON.stringify(settings),
   });
+  invalidateCache("settings");
 }
 
 export async function validateApiKey(
@@ -84,8 +128,10 @@ export interface ProviderKeyEntry {
 }
 
 export async function fetchProviderKeys(): Promise<ProviderKeyEntry[]> {
-  const data = await fetchJson<{ keys: ProviderKeyEntry[] }>("/provider-keys");
-  return data.keys;
+  return cachedFetch("provider-keys", async () => {
+    const data = await fetchJson<{ keys: ProviderKeyEntry[] }>("/provider-keys");
+    return data.keys;
+  }, 5000);
 }
 
 export async function createProviderKey(data: {
@@ -95,28 +141,34 @@ export async function createProviderKey(data: {
   apiKey: string;
   proxyUrl?: string;
 }): Promise<ProviderKeyEntry> {
-  return fetchJson<ProviderKeyEntry>("/provider-keys", {
+  const result = await fetchJson<ProviderKeyEntry>("/provider-keys", {
     method: "POST",
     body: JSON.stringify(data),
   });
+  invalidateCache("provider-keys");
+  return result;
 }
 
 export async function updateProviderKey(
   id: string,
   fields: { label?: string; model?: string; proxyUrl?: string },
 ): Promise<ProviderKeyEntry> {
-  return fetchJson<ProviderKeyEntry>("/provider-keys/" + id, {
+  const result = await fetchJson<ProviderKeyEntry>("/provider-keys/" + id, {
     method: "PUT",
     body: JSON.stringify(fields),
   });
+  invalidateCache("provider-keys");
+  return result;
 }
 
 export async function activateProviderKey(id: string): Promise<void> {
   await fetchJson("/provider-keys/" + id + "/activate", { method: "POST" });
+  invalidateCache("provider-keys");
 }
 
 export async function deleteProviderKey(id: string): Promise<void> {
   await fetchJson("/provider-keys/" + id, { method: "DELETE" });
+  invalidateCache("provider-keys");
 }
 
 // --- Model Catalog ---
@@ -132,8 +184,10 @@ export interface CatalogModelEntry {
  * Empty object if models.json doesn't exist yet (gateway not started).
  */
 export async function fetchModelCatalog(): Promise<Record<string, CatalogModelEntry[]>> {
-  const data = await fetchJson<{ models: Record<string, CatalogModelEntry[]> }>("/models");
-  return data.models;
+  return cachedFetch("models", async () => {
+    const data = await fetchJson<{ models: Record<string, CatalogModelEntry[]> }>("/models");
+    return data.models;
+  }, 30000); // 30s — model catalog rarely changes
 }
 
 // --- Channels ---
@@ -425,4 +479,56 @@ export async function removeFromAllowlist(channelId: string, entry: string): Pro
   await fetchJson(`/pairing/allowlist/${channelId}/${encodeURIComponent(entry)}`, {
     method: "DELETE",
   });
+}
+
+// --- Pricing (cloud backend) ---
+
+export interface ModelPricing {
+  modelId: string;
+  displayName: string;
+  inputPricePerMillion: string;
+  outputPricePerMillion: string;
+  note?: string;
+}
+
+export interface ProviderPricing {
+  provider: string;
+  currency: string;
+  pricingUrl: string;
+  models: ModelPricing[];
+}
+
+const PRICING_API_URL = "https://www.easy-claw.com/api/graphql";
+
+/**
+ * Fetch model pricing data from the cloud backend.
+ * Returns null if the server is unreachable (graceful degradation).
+ */
+export async function fetchPricing(
+  deviceId: string,
+  platform: string,
+  appVersion: string,
+  language: string,
+): Promise<ProviderPricing[] | null> {
+  try {
+    const res = await fetch(PRICING_API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: `query($deviceId: String!, $platform: String!, $appVersion: String!, $language: String!) {
+          pricing(deviceId: $deviceId, platform: $platform, appVersion: $appVersion, language: $language) {
+            provider currency pricingUrl
+            models { modelId displayName inputPricePerMillion outputPricePerMillion note }
+          }
+        }`,
+        variables: { deviceId, platform, appVersion, language },
+      }),
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json.data?.pricing ?? null;
+  } catch {
+    return null;
+  }
 }

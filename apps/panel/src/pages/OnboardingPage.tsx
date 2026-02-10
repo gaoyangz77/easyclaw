@@ -40,7 +40,7 @@ export function OnboardingPage({
 
   // Step 0 state
   const [provider, setProvider] = useState("openai");
-  const [model, setModel] = useState(getDefaultModelForProvider("openai" as LLMProvider).modelId);
+  const [model, setModel] = useState(getDefaultModelForProvider("openai" as LLMProvider)?.modelId ?? "");
   const [apiKey, setApiKey] = useState("");
   const [proxyUrl, setProxyUrl] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -58,7 +58,7 @@ export function OnboardingPage({
 
   function handleProviderChange(newProvider: string) {
     setProvider(newProvider);
-    setModel(getDefaultModelForProvider(newProvider as LLMProvider).modelId);
+    setModel(getDefaultModelForProvider(newProvider as LLMProvider)?.modelId ?? "");
   }
 
   async function handleSaveProvider() {

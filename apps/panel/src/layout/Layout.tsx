@@ -1,8 +1,12 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { fetchUpdateInfo } from "../api.js";
 import type { UpdateInfo } from "../api.js";
+
+const SIDEBAR_MIN = 160;
+const SIDEBAR_MAX = 400;
+const SIDEBAR_DEFAULT = 240;
 
 export function Layout({
   children,
@@ -16,6 +20,8 @@ export function Layout({
   const { t, i18n } = useTranslation();
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [dismissed, setDismissed] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_DEFAULT);
+  const isDragging = useRef(false);
 
   useEffect(() => {
     fetchUpdateInfo()
@@ -25,6 +31,33 @@ export function Layout({
       .catch(() => {
         // Silently ignore — update check is best-effort
       });
+  }, []);
+
+  const handleMouseDown = useCallback(() => {
+    isDragging.current = true;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, []);
+
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!isDragging.current) return;
+      const newWidth = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, e.clientX));
+      setSidebarWidth(newWidth);
+    }
+    function onMouseUp() {
+      if (isDragging.current) {
+        isDragging.current = false;
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+      }
+    }
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    return () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
   }, []);
 
   const NAV_ITEMS = [
@@ -47,7 +80,7 @@ export function Layout({
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
-      <nav className="sidebar">
+      <nav className="sidebar" style={{ width: sidebarWidth, minWidth: sidebarWidth }}>
         <h2 className="sidebar-brand">{t("common.brandName")}</h2>
         <ul style={{ listStyle: "none", padding: 0, margin: 0, flex: 1 }}>
           {NAV_ITEMS.map((item) => {
@@ -67,6 +100,9 @@ export function Layout({
                     fontSize: 14,
                     color: active ? undefined : "#374151",
                     backgroundColor: active ? undefined : "transparent",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
                   }}
                 >
                   {item.label}
@@ -75,6 +111,10 @@ export function Layout({
             );
           })}
         </ul>
+        <div
+          className="sidebar-resize-handle"
+          onMouseDown={handleMouseDown}
+        />
       </nav>
       <div className="main-content">
         <div className="topbar">

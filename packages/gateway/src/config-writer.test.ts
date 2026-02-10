@@ -9,6 +9,7 @@ import {
   writeGatewayConfig,
   ensureGatewayConfig,
   generateGatewayToken,
+  buildExtraProviderConfigs,
   DEFAULT_GATEWAY_PORT,
 } from "./config-writer.js";
 
@@ -650,6 +651,129 @@ describe("config-writer", () => {
 
       const finalConfig = JSON.parse(readFileSync(configPath, "utf-8"));
       expect(finalConfig.agents.defaults.tools.exec.security).toBe("open");
+    });
+  });
+
+  describe("writeGatewayConfig - extraProviders", () => {
+    it("writes models.providers section with extra providers", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({
+        configPath,
+        extraProviders: {
+          zhipu: {
+            baseUrl: "https://open.bigmodel.cn/api/paas/v4",
+            api: "openai-completions",
+            models: [
+              {
+                id: "glm-4.7-flash",
+                name: "GLM-4.7-Flash",
+                reasoning: false,
+                input: ["text"],
+                cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+                contextWindow: 128000,
+                maxTokens: 8192,
+              },
+            ],
+          },
+        },
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.models.providers.zhipu).toBeDefined();
+      expect(config.models.providers.zhipu.baseUrl).toBe("https://open.bigmodel.cn/api/paas/v4");
+      expect(config.models.providers.zhipu.api).toBe("openai-completions");
+      expect(config.models.providers.zhipu.models).toHaveLength(1);
+      expect(config.models.providers.zhipu.models[0].id).toBe("glm-4.7-flash");
+    });
+
+    it("sets mode to merge by default", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({
+        configPath,
+        extraProviders: {
+          test: { baseUrl: "http://test", models: [] },
+        },
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.models.mode).toBe("merge");
+    });
+
+    it("preserves existing models.providers when adding extra", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          models: {
+            mode: "merge",
+            providers: {
+              existing: { baseUrl: "http://existing", models: [] },
+            },
+          },
+        }),
+      );
+
+      writeGatewayConfig({
+        configPath,
+        extraProviders: {
+          zhipu: { baseUrl: "https://open.bigmodel.cn/api/paas/v4", models: [] },
+        },
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.models.providers.existing).toBeDefined();
+      expect(config.models.providers.zhipu).toBeDefined();
+    });
+
+    it("does not write models section when extraProviders is empty", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({
+        configPath,
+        extraProviders: {},
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.models).toBeUndefined();
+    });
+
+    it("does not write models section when extraProviders is omitted", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({
+        configPath,
+        gatewayPort: 18789,
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.models).toBeUndefined();
+    });
+  });
+
+  describe("buildExtraProviderConfigs", () => {
+    it("returns configs for all EXTRA_MODELS providers", () => {
+      const configs = buildExtraProviderConfigs();
+      expect(configs.volcengine).toBeDefined();
+      expect(configs.zhipu).toBeDefined();
+    });
+
+    it("sets api to openai-completions for all providers", () => {
+      const configs = buildExtraProviderConfigs();
+      for (const config of Object.values(configs)) {
+        expect(config.api).toBe("openai-completions");
+      }
+    });
+
+    it("uses correct base URLs from PROVIDER_BASE_URLS", () => {
+      const configs = buildExtraProviderConfigs();
+      expect(configs.volcengine.baseUrl).toBe("https://ark.cn-beijing.volces.com/api/v3");
+      expect(configs.zhipu.baseUrl).toBe("https://open.bigmodel.cn/api/paas/v4");
+    });
+
+    it("includes all models from EXTRA_MODELS", () => {
+      const configs = buildExtraProviderConfigs();
+      expect(configs.volcengine.models.length).toBeGreaterThan(0);
+      expect(configs.zhipu.models.length).toBeGreaterThan(0);
+      expect(configs.zhipu.models.some((m) => m.id === "glm-4.7")).toBe(true);
+      expect(configs.volcengine.models.some((m) => m.id === "doubao-seed-1-8-251228")).toBe(true);
     });
   });
 });

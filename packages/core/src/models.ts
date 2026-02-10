@@ -5,6 +5,7 @@ export type LLMProvider =
   | "google"
   | "deepseek"
   | "zhipu"
+  | "zai"
   | "moonshot"
   | "qwen"
   | "groq"
@@ -14,6 +15,7 @@ export type LLMProvider =
   | "minimax"
   | "venice"
   | "xiaomi"
+  | "volcengine"
   | "amazon-bedrock";
 
 /** Display names for all providers. */
@@ -23,6 +25,7 @@ export const PROVIDER_LABELS: Record<LLMProvider, string> = {
   google: "Google (Gemini)",
   deepseek: "DeepSeek",
   zhipu: "Zhipu (GLM)",
+  zai: "Z.ai (GLM)",
   moonshot: "Moonshot (Kimi)",
   qwen: "Qwen",
   groq: "Groq",
@@ -32,11 +35,14 @@ export const PROVIDER_LABELS: Record<LLMProvider, string> = {
   minimax: "MiniMax",
   venice: "Venice AI",
   xiaomi: "Xiaomi",
+  volcengine: "Volcengine (Doubao)",
   "amazon-bedrock": "Amazon Bedrock",
 };
 
 /** Ordered list of all providers. */
-export const ALL_PROVIDERS: LLMProvider[] = Object.keys(PROVIDER_LABELS) as LLMProvider[];
+export const ALL_PROVIDERS: LLMProvider[] = Object.keys(
+  PROVIDER_LABELS,
+) as LLMProvider[];
 
 /**
  * OpenAI-compatible API base URLs for each provider.
@@ -48,6 +54,7 @@ export const PROVIDER_BASE_URLS: Record<LLMProvider, string> = {
   google: "https://generativelanguage.googleapis.com/v1beta/openai",
   deepseek: "https://api.deepseek.com/v1",
   zhipu: "https://open.bigmodel.cn/api/paas/v4",
+  zai: "https://api.z.ai/api/paas/v4",
   moonshot: "https://api.moonshot.cn/v1",
   qwen: "https://dashscope.aliyuncs.com/compatible-mode/v1",
   groq: "https://api.groq.com/openai/v1",
@@ -57,6 +64,7 @@ export const PROVIDER_BASE_URLS: Record<LLMProvider, string> = {
   minimax: "https://api.minimax.chat/v1",
   venice: "https://api.venice.ai/api/v1",
   xiaomi: "https://api.xiaomi.com/v1",
+  volcengine: "https://ark.cn-beijing.volces.com/api/v3",
   "amazon-bedrock": "https://bedrock-runtime.us-east-1.amazonaws.com",
 };
 
@@ -67,6 +75,7 @@ export const PROVIDER_URLS: Record<LLMProvider, string> = {
   google: "https://ai.google.dev/pricing",
   deepseek: "https://platform.deepseek.com/api-docs/pricing",
   zhipu: "https://open.bigmodel.cn/pricing",
+  zai: "https://z.ai/pricing",
   moonshot: "https://platform.moonshot.cn/docs/pricing",
   qwen: "https://help.aliyun.com/zh/model-studio/getting-started/models",
   groq: "https://groq.com/pricing/",
@@ -76,6 +85,7 @@ export const PROVIDER_URLS: Record<LLMProvider, string> = {
   minimax: "https://platform.minimaxi.com/document/Price",
   venice: "https://venice.ai/pricing",
   xiaomi: "https://developers.xiaomi.com/mimo",
+  volcengine: "https://www.volcengine.com/docs/82379/1330310",
   "amazon-bedrock": "https://aws.amazon.com/bedrock/pricing/",
 };
 
@@ -89,6 +99,7 @@ export const PROVIDER_ENV_VARS: Record<LLMProvider, string> = {
   google: "GEMINI_API_KEY", // OpenClaw expects GEMINI_API_KEY for google provider
   deepseek: "DEEPSEEK_API_KEY",
   zhipu: "ZHIPU_API_KEY",
+  zai: "ZAI_API_KEY",
   moonshot: "MOONSHOT_API_KEY",
   qwen: "DASHSCOPE_API_KEY",
   groq: "GROQ_API_KEY",
@@ -98,6 +109,7 @@ export const PROVIDER_ENV_VARS: Record<LLMProvider, string> = {
   minimax: "MINIMAX_API_KEY",
   venice: "VENICE_API_KEY",
   xiaomi: "XIAOMI_API_KEY",
+  volcengine: "ARK_API_KEY",
   "amazon-bedrock": "AWS_ACCESS_KEY_ID",
 };
 
@@ -119,57 +131,104 @@ export interface ModelConfig {
 /** Known regions. */
 export type Region = "us" | "eu" | "cn" | (string & {});
 
-/** All known models grouped by provider (subset with well-known defaults). */
-export const KNOWN_MODELS: Partial<Record<LLMProvider, ModelConfig[]>> = {
-  openai: [
-    { provider: "openai", modelId: "gpt-4o", displayName: "GPT-4o" },
-    { provider: "openai", modelId: "gpt-4o-mini", displayName: "GPT-4o Mini" },
-  ],
-  anthropic: [
-    { provider: "anthropic", modelId: "claude-sonnet-4-20250514", displayName: "Claude Sonnet 4" },
-    { provider: "anthropic", modelId: "claude-haiku-3-5-20241022", displayName: "Claude 3.5 Haiku" },
-  ],
-  google: [
-    { provider: "google", modelId: "gemini-2.5-pro", displayName: "Gemini 2.5 Pro" },
-    { provider: "google", modelId: "gemini-2.5-flash", displayName: "Gemini 2.5 Flash" },
-  ],
-  deepseek: [
-    { provider: "deepseek", modelId: "deepseek-chat", displayName: "DeepSeek Chat" },
-    { provider: "deepseek", modelId: "deepseek-reasoner", displayName: "DeepSeek Reasoner" },
+/**
+ * Extra models for providers not supported by OpenClaw.
+ * These are our own additions that won't appear in OpenClaw's models.json.
+ */
+export const EXTRA_MODELS: Partial<Record<LLMProvider, ModelConfig[]>> = {
+  volcengine: [
+    {
+      provider: "volcengine",
+      modelId: "doubao-seed-1-8-251228",
+      displayName: "Doubao Seed 1.8",
+    },
+    {
+      provider: "volcengine",
+      modelId: "doubao-seed-1-6-251015",
+      displayName: "Doubao Seed 1.6",
+    },
+    {
+      provider: "volcengine",
+      modelId: "doubao-seed-1-6-lite-251015",
+      displayName: "Doubao Seed 1.6 Lite",
+    },
+    {
+      provider: "volcengine",
+      modelId: "doubao-seed-1-6-flash-250828",
+      displayName: "Doubao Seed 1.6 Flash",
+    },
   ],
   zhipu: [
-    { provider: "zhipu", modelId: "glm-4-plus", displayName: "GLM-4 Plus" },
-    { provider: "zhipu", modelId: "glm-4-flash", displayName: "GLM-4 Flash" },
-  ],
-  moonshot: [
-    { provider: "moonshot", modelId: "kimi-k2.5", displayName: "Kimi K2.5" },
-  ],
-  qwen: [
-    { provider: "qwen", modelId: "qwen-plus", displayName: "Qwen Plus" },
-    { provider: "qwen", modelId: "qwen-turbo", displayName: "Qwen Turbo" },
-  ],
-  groq: [
-    { provider: "groq", modelId: "llama-3.3-70b-versatile", displayName: "Llama 3.3 70B" },
-  ],
-  mistral: [
-    { provider: "mistral", modelId: "mistral-large-latest", displayName: "Mistral Large" },
-  ],
-  xai: [
-    { provider: "xai", modelId: "grok-3", displayName: "Grok 3" },
-  ],
-  minimax: [
-    { provider: "minimax", modelId: "MiniMax-M2.1", displayName: "MiniMax M2.1" },
-  ],
-  xiaomi: [
-    { provider: "xiaomi", modelId: "mimo-v2-flash", displayName: "MiMo v2 Flash" },
+    { provider: "zhipu", modelId: "glm-4.7", displayName: "GLM-4.7" },
+    {
+      provider: "zhipu",
+      modelId: "glm-4.7-flash",
+      displayName: "GLM-4.7-Flash",
+    },
+    { provider: "zhipu", modelId: "glm-4.6", displayName: "GLM-4.6" },
+    { provider: "zhipu", modelId: "glm-4.6v", displayName: "GLM-4.6V" },
+    { provider: "zhipu", modelId: "glm-4.5", displayName: "GLM-4.5" },
+    {
+      provider: "zhipu",
+      modelId: "glm-4.5-flash",
+      displayName: "GLM-4.5-Flash",
+    },
+    { provider: "zhipu", modelId: "glm-4.5-air", displayName: "GLM-4.5-Air" },
+    { provider: "zhipu", modelId: "glm-4.5v", displayName: "GLM-4.5V" },
   ],
 };
+
+/**
+ * All known models grouped by provider.
+ *
+ * At startup this only contains EXTRA_MODELS. Once the gateway's models.json
+ * is loaded, `initKnownModels()` populates it with OpenClaw's full catalog.
+ */
+// eslint-disable-next-line import/no-mutable-exports
+export let KNOWN_MODELS: Partial<Record<LLMProvider, ModelConfig[]>> = {
+  ...EXTRA_MODELS,
+};
+
+/**
+ * Populate KNOWN_MODELS from the gateway's model catalog.
+ *
+ * Called by `readFullModelCatalog()` in @easyclaw/gateway after reading
+ * models.json. EXTRA_MODELS providers take precedence (our own config).
+ */
+export function initKnownModels(
+  catalog: Record<string, Array<{ id: string; name: string }>>,
+): void {
+  const result: Partial<Record<LLMProvider, ModelConfig[]>> = {};
+
+  for (const [provider, entries] of Object.entries(catalog)) {
+    if (!ALL_PROVIDERS.includes(provider as LLMProvider)) continue;
+    const p = provider as LLMProvider;
+    result[p] = entries.map((e) => ({
+      provider: p,
+      modelId: e.id,
+      displayName: e.name,
+    }));
+  }
+
+  // EXTRA_MODELS take precedence
+  for (const [provider, models] of Object.entries(EXTRA_MODELS)) {
+    if (models && models.length > 0) {
+      result[provider as LLMProvider] = models;
+    }
+  }
+
+  KNOWN_MODELS = result;
+}
 
 /** Default model configurations per region. */
 const REGION_DEFAULTS: Record<string, ModelConfig> = {
   us: { provider: "openai", modelId: "gpt-4o", displayName: "GPT-4o" },
   eu: { provider: "openai", modelId: "gpt-4o", displayName: "GPT-4o" },
-  cn: { provider: "deepseek", modelId: "deepseek-chat", displayName: "DeepSeek Chat" },
+  cn: {
+    provider: "deepseek",
+    modelId: "deepseek-chat",
+    displayName: "DeepSeek Chat",
+  },
 };
 
 /** Global fallback if region not found in defaults. */
@@ -188,22 +247,24 @@ export function getDefaultModelForRegion(region: string): ModelConfig {
 
 /**
  * Get the default model for a specific provider.
- * Returns the first model in that provider's list.
+ * Returns the first model in that provider's list, or undefined if none are known.
  */
-export function getDefaultModelForProvider(provider: LLMProvider): ModelConfig {
+export function getDefaultModelForProvider(
+  provider: LLMProvider,
+): ModelConfig | undefined {
   const models = KNOWN_MODELS[provider];
   if (models && models.length > 0) {
     return models[0];
   }
-  return { provider, modelId: provider, displayName: PROVIDER_LABELS[provider] ?? provider };
+  return undefined;
 }
 
 /**
  * Get all known models for a specific provider.
- * Returns the provider's model list, or a single default model if none are defined.
+ * Returns the provider's model list, or an empty array if none are known.
  */
 export function getModelsForProvider(provider: LLMProvider): ModelConfig[] {
-  return KNOWN_MODELS[provider] ?? [getDefaultModelForProvider(provider)];
+  return KNOWN_MODELS[provider] ?? [];
 }
 
 /**
@@ -227,7 +288,7 @@ export function resolveModelConfig(options: {
   }
 
   if (options.userProvider) {
-    return getDefaultModelForProvider(options.userProvider);
+    return getDefaultModelForProvider(options.userProvider) ?? regionDefault;
   }
 
   return regionDefault;
@@ -239,7 +300,28 @@ export function resolveModelConfig(options: {
  */
 export function getProvidersForRegion(region: string): LLMProvider[] {
   if (region === "cn") {
-    return ["deepseek", "zhipu", "moonshot", "qwen", "minimax", "xiaomi", "openai", "anthropic", "google"];
+    return [
+      "deepseek",
+      "zhipu",
+      "moonshot",
+      "qwen",
+      "volcengine",
+      "minimax",
+      "xiaomi",
+      "openai",
+      "anthropic",
+      "google",
+    ];
   }
-  return ["openai", "anthropic", "google", "deepseek", "groq", "mistral", "xai", "openrouter"];
+  return [
+    "openai",
+    "anthropic",
+    "google",
+    "deepseek",
+    "zai",
+    "groq",
+    "mistral",
+    "xai",
+    "openrouter",
+  ];
 }

@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createLogger } from "@easyclaw/logger";
+import { EXTRA_MODELS, PROVIDER_BASE_URLS, type LLMProvider } from "@easyclaw/core";
 import { generateAudioConfig, mergeAudioConfig } from "./audio-config-writer.js";
 
 const log = createLogger("gateway:config");
@@ -45,6 +46,65 @@ function resolveFilePermissionsPluginPath(): string {
 /** Generate a random hex token for gateway auth. */
 export function generateGatewayToken(): string {
   return randomBytes(32).toString("hex");
+}
+
+/**
+ * Build OpenClaw-compatible provider configs from EXTRA_MODELS.
+ *
+ * EXTRA_MODELS contains providers not natively supported by OpenClaw
+ * (e.g. zhipu, volcengine). This function generates the `models.providers`
+ * config entries so OpenClaw registers them as custom providers.
+ *
+ * All EXTRA_MODELS providers use OpenAI-compatible APIs.
+ */
+export function buildExtraProviderConfigs(): Record<string, {
+  baseUrl: string;
+  api: string;
+  models: Array<{
+    id: string;
+    name: string;
+    reasoning: boolean;
+    input: Array<"text" | "image">;
+    cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
+    contextWindow: number;
+    maxTokens: number;
+  }>;
+}> {
+  const result: Record<string, {
+    baseUrl: string;
+    api: string;
+    models: Array<{
+      id: string;
+      name: string;
+      reasoning: boolean;
+      input: Array<"text" | "image">;
+      cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
+      contextWindow: number;
+      maxTokens: number;
+    }>;
+  }> = {};
+
+  for (const [provider, models] of Object.entries(EXTRA_MODELS)) {
+    if (!models || models.length === 0) continue;
+    const baseUrl = PROVIDER_BASE_URLS[provider as LLMProvider];
+    if (!baseUrl) continue;
+
+    result[provider] = {
+      baseUrl,
+      api: "openai-completions",
+      models: models.map((m) => ({
+        id: m.modelId,
+        name: m.displayName,
+        reasoning: false,
+        input: ["text"] as Array<"text" | "image">,
+        cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+        contextWindow: 128000,
+        maxTokens: 8192,
+      })),
+    };
+  }
+
+  return result;
 }
 
 /** Minimal OpenClaw config structure that EasyClaw manages. */
@@ -160,6 +220,23 @@ export interface WriteGatewayConfigOptions {
   /** Override path to the file permissions plugin .mjs entry file.
    *  Used in packaged Electron apps where the monorepo root doesn't exist. */
   filePermissionsPluginPath?: string;
+  /**
+   * Extra LLM providers to register in OpenClaw's models.providers config.
+   * Used for providers not natively supported by OpenClaw (e.g. zhipu, volcengine).
+   */
+  extraProviders?: Record<string, {
+    baseUrl: string;
+    api?: string;
+    models: Array<{
+      id: string;
+      name: string;
+      reasoning?: boolean;
+      input?: Array<"text" | "image">;
+      cost?: { input: number; output: number; cacheRead: number; cacheWrite: number };
+      contextWindow?: number;
+      maxTokens?: number;
+    }>;
+  }>;
 }
 
 
@@ -362,6 +439,26 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
     mergeAudioConfig(config, audioConfig);
     // Note: STT API keys are passed via environment variables (GROQ_API_KEY, etc.)
     // OpenClaw's audio providers automatically read from env vars.
+  }
+
+  // Extra providers → models.providers (for providers not built into OpenClaw)
+  if (options.extraProviders !== undefined && Object.keys(options.extraProviders).length > 0) {
+    const existingModels =
+      typeof config.models === "object" && config.models !== null
+        ? (config.models as Record<string, unknown>)
+        : {};
+    const existingProviders =
+      typeof existingModels.providers === "object" && existingModels.providers !== null
+        ? (existingModels.providers as Record<string, unknown>)
+        : {};
+    config.models = {
+      ...existingModels,
+      mode: existingModels.mode ?? "merge",
+      providers: {
+        ...existingProviders,
+        ...options.extraProviders,
+      },
+    };
   }
 
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");

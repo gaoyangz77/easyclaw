@@ -11,10 +11,12 @@ import {
   activateProviderKey,
   deleteProviderKey,
   validateApiKey,
+  fetchPricing,
 } from "../api.js";
-import type { ProviderKeyEntry } from "../api.js";
+import type { ProviderKeyEntry, ProviderPricing } from "../api.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 import { ProviderSelect } from "../components/ProviderSelect.js";
+import { PricingTable } from "../components/PricingTable.js";
 
 
 export function ProvidersPage() {
@@ -33,9 +35,12 @@ export function ProvidersPage() {
   const [validating, setValidating] = useState(false);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [error, setError] = useState<{ key: string; detail?: string } | null>(null);
+  const [pricingList, setPricingList] = useState<ProviderPricing[] | null>(null);
+  const [pricingLoading, setPricingLoading] = useState(true);
 
   useEffect(() => {
     loadData();
+    loadPricing();
   }, []);
 
   async function loadData() {
@@ -48,6 +53,26 @@ export function ProvidersPage() {
       setError(null);
     } catch (err) {
       setError({ key: "providers.failedToLoad", detail: String(err) });
+    }
+  }
+
+  async function loadPricing() {
+    setPricingLoading(true);
+    try {
+      // Get deviceId from local panel server status
+      const statusRes = await fetch("http://127.0.0.1:3210/api/status");
+      const status = await statusRes.json();
+      const deviceId = status.deviceId || "unknown";
+      const lang = navigator.language?.slice(0, 2) || "en";
+      // Platform detection: panel runs in Electron webview
+      const platform = navigator.userAgent.includes("Mac") ? "darwin"
+        : navigator.userAgent.includes("Win") ? "win32" : "linux";
+      const data = await fetchPricing(deviceId, platform, "0.8.0", lang);
+      setPricingList(data);
+    } catch {
+      setPricingList(null);
+    } finally {
+      setPricingLoading(false);
     }
   }
 
@@ -68,7 +93,7 @@ export function ProvidersPage() {
       const entry = await createProviderKey({
         provider,
         label: newLabel.trim() || t("providers.labelDefault"),
-        model: newModel || getDefaultModelForProvider(provider as LLMProvider).modelId,
+        model: newModel || (getDefaultModelForProvider(provider as LLMProvider)?.modelId ?? ""),
         apiKey: apiKey.trim(),
         proxyUrl,
       });
@@ -106,7 +131,7 @@ export function ProvidersPage() {
       const entry = await createProviderKey({
         provider,
         label: existing?.label || t("providers.labelDefault"),
-        model: existing?.model || getDefaultModelForProvider(provider as LLMProvider).modelId,
+        model: existing?.model || (getDefaultModelForProvider(provider as LLMProvider)?.modelId ?? ""),
         apiKey: apiKey.trim(),
       });
 
@@ -196,7 +221,7 @@ export function ProvidersPage() {
 
   function handleNewProviderChange(p: string) {
     setNewProvider(p);
-    setNewModel(getDefaultModelForProvider(p as LLMProvider).modelId);
+    setNewModel(getDefaultModelForProvider(p as LLMProvider)?.modelId ?? "");
     setApiKey("");
     setNewLabel("");
     setNewProxyUrl("");
@@ -212,8 +237,9 @@ export function ProvidersPage() {
         <div className="error-alert">{t(error.key)}{error.detail ?? ""}</div>
       )}
 
-      {/* Section A: Add Key — dropdown + form (like onboarding) */}
-      <div className="section-card" style={{ maxWidth: 680 }}>
+      {/* Section A: Add Key — left form + right pricing table */}
+      <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
+      <div className="section-card" style={{ flex: 1, maxWidth: 680, minWidth: 320 }}>
         <h3>{t("providers.addTitle")}</h3>
         <div style={{ marginBottom: 12 }}>
           <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("onboarding.providerLabel")}</div>
@@ -259,7 +285,7 @@ export function ProvidersPage() {
             <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("providers.modelLabel")}</div>
             <ModelSelect
               provider={newProvider}
-              value={newModel || getDefaultModelForProvider(newProvider as LLMProvider).modelId}
+              value={newModel || (getDefaultModelForProvider(newProvider as LLMProvider)?.modelId ?? "")}
               onChange={setNewModel}
             />
           </div>
@@ -344,6 +370,12 @@ export function ProvidersPage() {
             {validating ? t("providers.validating") : saving ? "..." : t("common.save")}
           </button>
         </div>
+      </div>
+
+      {/* Right: Pricing table */}
+      <div style={{ width: 380, flexShrink: 0, position: "sticky", top: 24 }}>
+        <PricingTable provider={newProvider} pricingList={pricingList} loading={pricingLoading} />
+      </div>
       </div>
 
       {/* Section B: Configured Keys table */}

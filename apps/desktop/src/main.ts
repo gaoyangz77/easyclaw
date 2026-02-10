@@ -1,4 +1,4 @@
-import { app, Tray, shell, dialog, Notification } from "electron";
+import { app, BrowserWindow, Tray, shell, dialog, Notification } from "electron";
 import { createLogger, enableFileLogging } from "@easyclaw/logger";
 import {
   GatewayLauncher,
@@ -12,6 +12,7 @@ import {
   syncAllAuthProfiles,
   clearAllAuthProfiles,
   DEFAULT_GATEWAY_PORT,
+  buildExtraProviderConfigs,
 } from "@easyclaw/gateway";
 import type { GatewayState } from "@easyclaw/gateway";
 import { resolveModelConfig, ALL_PROVIDERS, getDefaultModelForProvider, providerSecretKey, reconstructProxyUrl } from "@easyclaw/core";
@@ -58,7 +59,7 @@ async function migrateOldProviderKeys(
     const keyValue = await secretStore.get(secretKey);
     if (keyValue && keyValue !== "") {
       const id = crypto.randomUUID();
-      const model = getDefaultModelForProvider(provider).modelId;
+      const model = getDefaultModelForProvider(provider)?.modelId ?? "";
       storage.providerKeys.create({
         id,
         provider,
@@ -93,6 +94,7 @@ const DOMAIN_TO_PROVIDER: Record<string, string> = {
   "generativelanguage.googleapis.com": "google",
   "api.deepseek.com": "deepseek",
   "open.bigmodel.cn": "zhipu",
+  "api.z.ai": "zai",
   "api.moonshot.cn": "moonshot",
   "dashscope.aliyuncs.com": "qwen",
   "api.groq.com": "groq",
@@ -102,6 +104,7 @@ const DOMAIN_TO_PROVIDER: Record<string, string> = {
   "api.minimax.chat": "minimax",
   "api.venice.ai": "venice",
   "api.xiaomi.com": "xiaomi",
+  "ark.cn-beijing.volces.com": "volcengine",
   // Amazon Bedrock regional endpoints
   "bedrock-runtime.us-east-1.amazonaws.com": "amazon-bedrock",
   "bedrock-runtime.us-west-2.amazonaws.com": "amazon-bedrock",
@@ -170,7 +173,8 @@ function buildProxyEnv(): Record<string, string> {
   };
 }
 
-app.dock?.hide();
+let mainWindow: BrowserWindow | null = null;
+let isQuitting = false;
 
 // Ensure only one instance of the desktop app runs at a time
 const gotTheLock = app.requestSingleInstanceLock();
@@ -181,8 +185,13 @@ if (!gotTheLock) {
 }
 
 app.on("second-instance", () => {
-  // User tried to run a second instance, do nothing
-  log.warn("Attempted to start second instance - ignored");
+  log.warn("Attempted to start second instance - showing existing window");
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    app.dock?.show();
+  }
 });
 
 app.whenReady().then(async () => {
@@ -341,6 +350,7 @@ app.whenReady().then(async () => {
       enabled: sttEnabled,
       provider: sttProvider,
     },
+    extraProviders: buildExtraProviderConfigs(),
   });
 
   // Clean up any existing gateway processes before starting
@@ -503,9 +513,11 @@ app.whenReady().then(async () => {
    * - `keyOnly: true` — Only an API key changed (add/activate/delete).
    *   Syncs auth-profiles.json and proxy router config. No restart needed.
    * - `configOnly: true` — Only the config file changed (e.g. model switch).
-   *   Updates gateway config and sends SIGUSR1 for fast reload (~1.5s).
-   * - Neither — Updates all configs and reloads gateway with SIGUSR1.
-   *   No hard restart needed since proxy env vars are fixed (127.0.0.1:9999).
+   *   Updates gateway config and performs a full gateway restart.
+   *   Full restart is required because SIGUSR1 reload re-reads config but
+   *   agent sessions keep their existing model (only new sessions get the new default).
+   * - Neither — Updates all configs and restarts gateway.
+   *   Full restart ensures model changes take effect immediately.
    */
   async function handleProviderChange(hint?: { configOnly?: boolean; keyOnly?: boolean }): Promise<void> {
     const keyOnly = hint?.keyOnly === true;
@@ -554,17 +566,20 @@ app.whenReady().then(async () => {
         provider: modelConfig.provider,
         modelId: modelConfig.modelId,
       },
+      extraProviders: buildExtraProviderConfigs(),
     });
 
-    // SIGUSR1 graceful reload — env vars don't change (proxy is fixed at 127.0.0.1:9999)
-    log.info("Config updated, using SIGUSR1 graceful reload");
-    await launcher.reload();
+    // Full gateway restart to ensure model change takes effect.
+    // SIGUSR1 graceful reload re-reads config but agent sessions keep their
+    // existing model assignment. A stop+start creates fresh sessions with
+    // the new default model from config.
+    log.info("Config updated, performing full gateway restart for model change");
+    await launcher.stop();
+    await launcher.start();
 
-    // Reconnect RPC client after reload to ensure fresh WebSocket connection.
-    // The gateway's graceful reload closes existing WS connections;
-    // auto-reconnect with backoff handles the timing.
+    // Reconnect RPC client after restart to establish fresh WebSocket connection.
     connectRpcClient().catch((err) => {
-      log.error("Failed to initiate RPC client reconnect after config reload:", err);
+      log.error("Failed to initiate RPC client reconnect after gateway restart:", err);
     });
   }
 
@@ -580,7 +595,10 @@ app.whenReady().then(async () => {
     tray.setContextMenu(
       buildTrayMenu(state, {
         onOpenPanel: () => {
-          shell.openExternal(PANEL_URL);
+          if (mainWindow && !mainWindow.webContents.getURL()) {
+            mainWindow.loadURL(PANEL_URL);
+          }
+          showMainWindow();
         },
         onRestartGateway: async () => {
           await launcher.stop();
@@ -636,6 +654,46 @@ app.whenReady().then(async () => {
   tray.setToolTip("EasyClaw");
   updateTray("stopped");
 
+  // Create main panel window (hidden initially, loaded when gateway starts)
+  const isDev = !!process.env.PANEL_DEV_URL;
+  mainWindow = new BrowserWindow({
+    width: isDev ? 1800 : 1200,
+    height: 800,
+    show: false,
+    title: "EasyClaw",
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+
+  // Open external links in system browser instead of new Electron window
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    shell.openExternal(url);
+    return { action: "deny" };
+  });
+
+  // Open DevTools in dev mode
+  if (process.env.PANEL_DEV_URL) {
+    mainWindow.webContents.openDevTools();
+  }
+
+  // Hide to tray instead of quitting when window is closed
+  mainWindow.on("close", (e) => {
+    if (!isQuitting) {
+      e.preventDefault();
+      mainWindow!.hide();
+      app.dock?.hide();
+    }
+  });
+
+  function showMainWindow() {
+    if (!mainWindow) return;
+    mainWindow.show();
+    mainWindow.focus();
+    app.dock?.show();
+  }
+
   // Listen to gateway events
   let firstStart = true;
   launcher.on("started", () => {
@@ -649,7 +707,8 @@ app.whenReady().then(async () => {
 
     if (firstStart) {
       firstStart = false;
-      shell.openExternal(PANEL_URL);
+      mainWindow?.loadURL(PANEL_URL);
+      showMainWindow();
     }
   });
 
@@ -800,6 +859,8 @@ app.whenReady().then(async () => {
 
   // Cleanup on quit
   app.on("before-quit", async () => {
+    isQuitting = true;
+
     // Clear sensitive API keys from disk before quitting
     clearAllAuthProfiles(stateDir);
 

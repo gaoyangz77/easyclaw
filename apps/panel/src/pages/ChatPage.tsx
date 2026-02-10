@@ -230,15 +230,40 @@ export function ChatPage() {
     const payload = evt.payload as {
       state?: string;
       runId?: string;
+      sessionKey?: string;
       message?: { role?: string; content?: unknown; timestamp?: number };
       errorMessage?: string;
     } | undefined;
 
     if (!payload) return;
 
-    // Only process events for runs we initiated (filters out rule compilation, etc.)
-    if (!runIdRef.current || payload.runId !== runIdRef.current) return;
+    // Filter by sessionKey — only process events for our session
+    // (filters out rule compilation, OpenAI-compat endpoints, etc.)
+    if (payload.sessionKey && payload.sessionKey !== sessionKeyRef.current) return;
 
+    const isOurRun = runIdRef.current && payload.runId === runIdRef.current;
+
+    // Events from a different run on the same session (e.g. channel messages)
+    if (!isOurRun) {
+      if (payload.state === "error") {
+        console.error("[chat] error event:", payload.errorMessage ?? "unknown error", "runId:", payload.runId);
+        // Surface error to user if we're waiting for a response
+        if (runIdRef.current) {
+          const errText = payload.errorMessage ?? "An error occurred.";
+          setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${errText}`, timestamp: Date.now() }]);
+          setStreaming(null);
+          setRunId(null);
+        }
+      }
+      if (payload.state === "final") {
+        // Another run finished on our session (channel message reply done) — reload history
+        const client = clientRef.current;
+        if (client) loadHistory(client);
+      }
+      return;
+    }
+
+    // Our own run — process normally
     switch (payload.state) {
       case "delta": {
         const text = extractText(payload.message?.content);
@@ -255,6 +280,7 @@ export function ChatPage() {
         break;
       }
       case "error": {
+        console.error("[chat] error event:", payload.errorMessage ?? "unknown error", "runId:", payload.runId);
         const errText = payload.errorMessage ?? "An error occurred.";
         setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${errText}`, timestamp: Date.now() }]);
         setStreaming(null);
@@ -273,7 +299,23 @@ export function ChatPage() {
         break;
       }
     }
-  }, []);
+  }, [loadHistory]);
+
+  // Timeout: if runId is set but no response arrives within 60s, show error
+  useEffect(() => {
+    if (!runId) return;
+    const timer = setTimeout(() => {
+      console.error("[chat] response timeout — no event received within 60s for runId:", runId);
+      setMessages((prev) => [...prev, {
+        role: "assistant",
+        text: "⚠ Request timed out. The model may be unavailable or the model ID may be incorrect.",
+        timestamp: Date.now(),
+      }]);
+      setStreaming(null);
+      setRunId(null);
+    }, 60_000);
+    return () => clearTimeout(timer);
+  }, [runId]);
 
   // Initialize connection
   useEffect(() => {

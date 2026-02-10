@@ -13,6 +13,7 @@ export {
   resolveOpenClawStateDir,
   resolveOpenClawConfigPath,
   generateGatewayToken,
+  buildExtraProviderConfigs,
   DEFAULT_GATEWAY_PORT,
 } from "./config-writer.js";
 export type {
@@ -41,6 +42,7 @@ export {
   readGatewayModelCatalog,
   readVendorModelCatalog,
   readFullModelCatalog,
+  normalizeCatalog,
 } from "./model-catalog.js";
 export type { CatalogModelEntry } from "./model-catalog.js";
 export {

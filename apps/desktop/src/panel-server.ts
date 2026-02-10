@@ -1213,7 +1213,7 @@ async function handleApiRoute(
     }
 
     const id = randomUUID();
-    const model = body.model || getDefaultModelForProvider(body.provider as LLMProvider).modelId;
+    const model = body.model || getDefaultModelForProvider(body.provider as LLMProvider)?.modelId || "";
     const label = body.label || "Default";
 
     // Parse proxy URL if provided (Option B: smart split)
