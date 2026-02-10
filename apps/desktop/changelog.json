@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.1.2",
+    "date": "2026-02-10",
+    "en": [
+      "Chat page: collapsible example prompts to help new users get started",
+      "File permissions: full access mode toggle for simplified setup",
+      "Improved file path validation with better glob and home-dir support"
+    ],
+    "zh": [
+      "聊天页面：可折叠的示例提示，帮助新用户快速上手",
+      "文件权限：新增完全访问模式开关，简化权限配置",
+      "优化文件路径验证，改进通配符和主目录路径支持"
+    ]
+  },
+  {
     "version": "1.1.1",
     "date": "2026-02-10",
     "en": [
