@@ -294,6 +294,23 @@ describe("checkForUpdate", () => {
     });
   });
 
+  it("appends region query param when provided", async () => {
+    await checkForUpdate("1.0.0", { region: "cn" });
+    expect(fetch).toHaveBeenCalledWith(
+      `${DEFAULT_MANIFEST_URL}?region=cn`,
+      { signal: expect.any(AbortSignal) },
+    );
+  });
+
+  it("appends region with & when manifestUrl already has query params", async () => {
+    const customUrl = "https://staging.easy-claw.com/manifest.json?v=2";
+    await checkForUpdate("1.0.0", { manifestUrl: customUrl, region: "cn" });
+    expect(fetch).toHaveBeenCalledWith(
+      `${customUrl}&region=cn`,
+      { signal: expect.any(AbortSignal) },
+    );
+  });
+
   it("handles manifest with no download for current platform", async () => {
     const manifestNoDownloads: UpdateManifest = {
       ...mockManifest,

@@ -13,6 +13,7 @@ import {
   clearAllAuthProfiles,
   DEFAULT_GATEWAY_PORT,
   buildExtraProviderConfigs,
+  resolveVolcengineSttCliPath,
 } from "@easyclaw/gateway";
 import type { GatewayState } from "@easyclaw/gateway";
 import { resolveModelConfig, ALL_PROVIDERS, getDefaultModelForProvider, providerSecretKey, reconstructProxyUrl } from "@easyclaw/core";
@@ -239,7 +240,8 @@ app.whenReady().then(async () => {
   let latestUpdateResult: UpdateCheckResult | null = null;
 
   async function performUpdateCheck(): Promise<void> {
-    const result = await checkForUpdate(app.getVersion());
+    const region = storage.settings.get("region") ?? "us";
+    const result = await checkForUpdate(app.getVersion(), { region });
     latestUpdateResult = result;
     if (result.updateAvailable) {
       log.info(`Update available: v${result.latestVersion}`);
@@ -350,6 +352,8 @@ app.whenReady().then(async () => {
     stt: {
       enabled: sttEnabled,
       provider: sttProvider,
+      nodeBin: process.execPath,
+      sttCliPath: resolveVolcengineSttCliPath(),
     },
     extraProviders: buildExtraProviderConfigs(),
     forceStandaloneBrowser: true,
@@ -474,6 +478,8 @@ app.whenReady().then(async () => {
       stt: {
         enabled: sttEnabled,
         provider: sttProvider,
+        nodeBin: process.execPath,
+        sttCliPath: resolveVolcengineSttCliPath(),
       },
     });
 
