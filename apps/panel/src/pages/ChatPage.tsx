@@ -18,12 +18,32 @@ type ChatMessage = {
 type PendingImage = { dataUrl: string; base64: string; mimeType: string };
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
+const MAX_WS_PAYLOAD_BYTES = 7 * 1024 * 1024; // client-side guard: keep under gateway WS frame limit
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
 const DEFAULT_SESSION_KEY = "agent:main:main";
 const INITIAL_VISIBLE = 50;
 const PAGE_SIZE = 20;
 const FETCH_BATCH = 200;
+
+/**
+ * Clean up raw gateway message text:
+ * - Strip "Conversation info (untrusted metadata):" blocks
+ * - Format audio transcript messages nicely
+ */
+function cleanMessageText(text: string): string {
+  // Remove "Conversation info (untrusted metadata):" and its JSON block
+  let cleaned = text.replace(/Conversation info \(untrusted metadata\):\s*\{[\s\S]*?\}\s*/g, "").trim();
+
+  // Detect audio transcript pattern:
+  //   [Audio] User text: [Telegram ... ] <media:audio>\nTranscript: 实际文本
+  const audioMatch = cleaned.match(/\[Audio\]\s*User text:\s*\[.*?\]\s*<media:audio>\s*Transcript:\s*([\s\S]*)/);
+  if (audioMatch) {
+    cleaned = `🔊 ${audioMatch[1].trim()}`;
+  }
+
+  return cleaned;
+}
 
 /**
  * Basic text formatter: code blocks, inline code, and line breaks.
@@ -406,6 +426,15 @@ export function ChatPage() {
     const images = pendingImages;
     if ((!text && images.length === 0) || connectionState !== "connected" || !clientRef.current) return;
 
+    // Pre-flight: check total payload size to avoid WebSocket frame limit
+    if (images.length > 0) {
+      const totalBase64Bytes = images.reduce((sum, img) => sum + img.base64.length, 0);
+      if (totalBase64Bytes > MAX_WS_PAYLOAD_BYTES) {
+        alert(t("chat.payloadTooLarge"));
+        return;
+      }
+    }
+
     // Pre-flight: check if any provider key is configured
     try {
       const keys = await fetchProviderKeys();
@@ -625,7 +654,7 @@ export function ChatPage() {
                   ))}
                 </div>
               )}
-              {msg.text && formatMessage(msg.text)}
+              {msg.text && formatMessage(cleanMessageText(msg.text))}
             </div>
           ))}
           {((runId !== null && streaming === null) || (externalRunActive && runId === null)) && (

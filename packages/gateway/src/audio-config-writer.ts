@@ -8,10 +8,12 @@ const log = createLogger("gateway:audio-config");
  * Maps to tools.media.audio.models in openclaw.json.
  */
 interface AudioModelConfig {
-  provider: string;
+  provider?: string;
   model?: string;
-  type: "provider";
-  capabilities: ["audio"];
+  type: "provider" | "cli";
+  command?: string;
+  args?: string[];
+  capabilities?: ["audio"];
   language?: string;
 }
 
@@ -23,11 +25,18 @@ interface AudioModelConfig {
  *
  * @param enabled - Whether STT is enabled
  * @param provider - STT provider (groq or volcengine)
+ * @param options - Additional options for CLI-based providers
  * @returns OpenClaw tools.media.audio configuration object
  */
 export function generateAudioConfig(
   enabled: boolean,
   provider: SttProviderType,
+  options?: {
+    /** Absolute path to the Node.js binary (for CLI-based providers). */
+    nodeBin?: string;
+    /** Absolute path to the Volcengine STT CLI script. */
+    sttCliPath?: string;
+  },
 ): Record<string, unknown> | null {
   if (!enabled) {
     return null;
@@ -44,13 +53,18 @@ export function generateAudioConfig(
       capabilities: ["audio"],
     });
   } else if (provider === "volcengine") {
-    // Volcengine uses its own API
-    models.push({
-      provider: "volcengine",
-      type: "provider",
-      capabilities: ["audio"],
-      language: "zh-CN", // Default to Chinese for Volcengine
-    });
+    // Volcengine is not natively supported in OpenClaw, so we use a CLI bridge script.
+    // The script reads VOLCENGINE_APP_KEY and VOLCENGINE_ACCESS_KEY from env vars
+    // (already injected by secret-injector.ts) and calls the Volcengine API.
+    if (options?.nodeBin && options?.sttCliPath) {
+      models.push({
+        type: "cli",
+        command: options.nodeBin,
+        args: [options.sttCliPath, "{{MediaPath}}"],
+      });
+    } else {
+      log.warn("Volcengine STT requires nodeBin and sttCliPath; skipping audio config");
+    }
   }
 
   if (models.length === 0) {
@@ -61,11 +75,10 @@ export function generateAudioConfig(
   return {
     enabled: true,
     models,
-    // Optional: Configure behavior
     maxBytes: 25 * 1024 * 1024, // 25MB limit
-    timeoutSeconds: 60, // 1 minute timeout
+    timeoutSeconds: 300, // 5 minutes (volcengine uses async submit+poll)
     scope: {
-      default: "allow", // Allow audio transcription by default
+      default: "allow",
     },
   };
 }

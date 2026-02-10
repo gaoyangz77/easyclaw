@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { fetchModelCatalog } from "../api.js";
 import type { CatalogModelEntry } from "../api.js";
+import { Select } from "./Select.js";
 
 export function ModelSelect({
   provider,
@@ -55,23 +56,10 @@ export function ModelSelect({
   }
 
   return (
-    <select
+    <Select
       value={value}
-      onChange={(e) => onChange(e.target.value)}
-      style={{
-        padding: 8,
-        borderRadius: 4,
-        border: "1px solid #e0e0e0",
-        fontSize: 13,
-        backgroundColor: "#fff",
-        cursor: "pointer",
-      }}
-    >
-      {models.map((m) => (
-        <option key={m.modelId} value={m.modelId}>
-          {m.displayName}
-        </option>
-      ))}
-    </select>
+      onChange={onChange}
+      options={models.map((m) => ({ value: m.modelId, label: m.displayName }))}
+    />
   );
 }

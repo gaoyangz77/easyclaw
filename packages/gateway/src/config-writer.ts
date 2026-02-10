@@ -214,6 +214,10 @@ export interface WriteGatewayConfigOptions {
   stt?: {
     enabled: boolean;
     provider: "groq" | "volcengine";
+    /** Absolute path to the Node.js binary (for CLI-based STT providers like volcengine). */
+    nodeBin?: string;
+    /** Absolute path to the Volcengine STT CLI script. */
+    sttCliPath?: string;
   };
   /** Enable file permissions plugin. */
   enableFilePermissions?: boolean;
@@ -473,7 +477,10 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
   // STT configuration via OpenClaw's tools.media.audio
   if (options.stt !== undefined) {
     // Generate OpenClaw tools.media.audio configuration
-    const audioConfig = generateAudioConfig(options.stt.enabled, options.stt.provider);
+    const audioConfig = generateAudioConfig(options.stt.enabled, options.stt.provider, {
+      nodeBin: options.stt.nodeBin,
+      sttCliPath: options.stt.sttCliPath,
+    });
     mergeAudioConfig(config, audioConfig);
     // Note: STT API keys are passed via environment variables (GROQ_API_KEY, etc.)
     // OpenClaw's audio providers automatically read from env vars.

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { fetchSettings, updateSettings } from "../api.js";
 import type { SttProvider } from "@easyclaw/core";
+import { Select } from "../components/Select.js";
 
 export function SttPage() {
   const { t, i18n } = useTranslation();
@@ -157,21 +158,14 @@ export function SttPage() {
             {/* Provider select */}
             <div style={{ marginBottom: 16 }}>
               <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("stt.provider")}</div>
-              <select
+              <Select
                 value={provider}
-                onChange={(e) => setProvider(e.target.value as SttProvider)}
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: 4,
-                  border: "1px solid #e0e0e0",
-                  fontSize: 13,
-                  backgroundColor: "#fff",
-                }}
-              >
-                <option value="groq">Groq (Whisper)</option>
-                <option value="volcengine">Volcengine ({"\u706B\u5C71\u5F15\u64CE"})</option>
-              </select>
+                onChange={(v) => setProvider(v as SttProvider)}
+                options={[
+                  { value: "groq", label: "Groq (Whisper)" },
+                  { value: "volcengine", label: "Volcengine (\u706B\u5C71\u5F15\u64CE)" },
+                ]}
+              />
               <p style={{ fontSize: 12, color: "#888", margin: "6px 0 0" }}>{t("stt.providerHelp")}</p>
             </div>
 
@@ -225,6 +219,55 @@ export function SttPage() {
             {/* Volcengine credentials */}
             {provider === "volcengine" && (
               <>
+                <div style={{
+                  marginBottom: 14,
+                  padding: "10px 14px",
+                  backgroundColor: "#e8f4fd",
+                  borderRadius: 6,
+                  border: "1px solid #b3d9f2",
+                  fontSize: 13,
+                  color: "#1a5276",
+                  lineHeight: 1.6,
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span>{t("stt.volcengineFreeTier")}</span>
+                    <a
+                      href="https://console.volcengine.com/speech/app"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: "#1a73e8", fontWeight: 500 }}
+                    >
+                      {t("stt.volcentineFreeLink")}
+                    </a>
+                    <span style={{ position: "relative", display: "inline-block" }}>
+                      <span
+                        className="volcengine-help-trigger"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: 18,
+                          height: 18,
+                          borderRadius: "50%",
+                          backgroundColor: "#b3d9f2",
+                          color: "#1a5276",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "help",
+                        }}
+                      >
+                        ?
+                      </span>
+                      <div className="volcengine-help-tooltip">
+                        <div style={{ fontWeight: 600, marginBottom: 6 }}>{t("stt.volcengineStepsTitle")}</div>
+                        <div>{t("stt.volcengineStep1")}</div>
+                        <div>{t("stt.volcengineStep2")}</div>
+                        <div>{t("stt.volcengineStep3")}</div>
+                      </div>
+                    </span>
+                  </div>
+                </div>
+
                 <div style={{ marginBottom: 12 }}>
                   <div style={{ fontSize: 12, marginBottom: 4, color: "#555", display: "flex", alignItems: "center", gap: 8 }}>
                     {t("stt.volcengineAppKey")}
@@ -280,12 +323,12 @@ export function SttPage() {
                 <p style={{ fontSize: 12, color: "#888", margin: "0 0 16px" }}>
                   {t("stt.volcengineHelp")}{" "}
                   <a
-                    href="https://console.volcengine.com/speech"
+                    href="https://console.volcengine.com/speech/app"
                     target="_blank"
                     rel="noopener noreferrer"
                     style={{ color: "#1a73e8", fontSize: 12 }}
                   >
-                    console.volcengine.com/speech
+                    console.volcengine.com/speech/app
                   </a>
                 </p>
               </>

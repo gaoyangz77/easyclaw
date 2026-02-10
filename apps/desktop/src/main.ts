@@ -13,7 +13,6 @@ import {
   clearAllAuthProfiles,
   DEFAULT_GATEWAY_PORT,
   buildExtraProviderConfigs,
-  resolveVolcengineSttCliPath,
 } from "@easyclaw/gateway";
 import type { GatewayState } from "@easyclaw/gateway";
 import { resolveModelConfig, ALL_PROVIDERS, getDefaultModelForProvider, providerSecretKey, reconstructProxyUrl } from "@easyclaw/core";
@@ -41,6 +40,13 @@ const log = createLogger("desktop");
 const PANEL_PORT = 3210;
 const PANEL_URL = process.env.PANEL_DEV_URL || `http://127.0.0.1:${PANEL_PORT}`;
 const PROXY_ROUTER_PORT = 9999;
+
+// Resolve Volcengine STT CLI script path.
+// In packaged app: bundled into Resources/.
+// In dev: resolve relative to the bundled output (apps/desktop/dist/) → packages/gateway/dist/.
+const sttCliPath = app.isPackaged
+  ? join(process.resourcesPath, "volcengine-stt-cli.mjs")
+  : resolve(dirname(fileURLToPath(import.meta.url)), "../../../packages/gateway/dist/volcengine-stt-cli.mjs");
 
 /**
  * Migrate old-style `{provider}-api-key` secrets to the new provider_keys table.
@@ -353,7 +359,7 @@ app.whenReady().then(async () => {
       enabled: sttEnabled,
       provider: sttProvider,
       nodeBin: process.execPath,
-      sttCliPath: resolveVolcengineSttCliPath(),
+      sttCliPath,
     },
     extraProviders: buildExtraProviderConfigs(),
     forceStandaloneBrowser: true,
@@ -479,7 +485,7 @@ app.whenReady().then(async () => {
         enabled: sttEnabled,
         provider: sttProvider,
         nodeBin: process.execPath,
-        sttCliPath: resolveVolcengineSttCliPath(),
+        sttCliPath,
       },
     });
 

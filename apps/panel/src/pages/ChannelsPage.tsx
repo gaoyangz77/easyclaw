@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { fetchChannelStatus, deleteChannelAccount, type ChannelsStatusSnapshot, type ChannelAccountSnapshot } from "../api.js";
 import { AddChannelAccountModal } from "../components/AddChannelAccountModal.js";
 import { ManageAllowlistModal } from "../components/ManageAllowlistModal.js";
+import { Select } from "../components/Select.js";
 
 // OpenClaw built-in channels
 const KNOWN_CHANNELS = [
@@ -268,28 +269,19 @@ export function ChannelsPage() {
         <h3>{t("channels.addAccount")}</h3>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <label htmlFor="channel-select" style={{ fontSize: 13, fontWeight: 500, color: "#666" }}>
+            <label style={{ fontSize: 13, fontWeight: 500, color: "#666" }}>
               {t("channels.selectChannelType")}
             </label>
-            <select
-              id="channel-select"
+            <Select
               value={selectedDropdownChannel}
-              onChange={(e) => setSelectedDropdownChannel(e.target.value)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 4,
-                border: "1px solid #e0e0e0",
-                fontSize: 14,
-                minWidth: 200,
-              }}
-            >
-              <option value="" disabled>{t("channels.selectChannel")}</option>
-              {visibleChannels.map(ch => (
-                <option key={ch.id} value={ch.id}>
-                  {t(ch.labelKey)}
-                </option>
-              ))}
-            </select>
+              onChange={setSelectedDropdownChannel}
+              placeholder={t("channels.selectChannel")}
+              options={visibleChannels.map(ch => ({
+                value: ch.id,
+                label: t(ch.labelKey),
+              }))}
+              style={{ minWidth: 200 }}
+            />
             <button
               className="btn btn-primary"
               onClick={handleAddAccountFromDropdown}

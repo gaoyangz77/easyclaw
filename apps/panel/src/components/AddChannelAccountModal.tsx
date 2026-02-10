@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Modal } from "./Modal.js";
+import { Select } from "./Select.js";
 import { createChannelAccount, updateChannelAccount } from "../api.js";
 import { CHANNEL_SCHEMAS } from "../channel-schemas.js";
 
@@ -250,24 +251,14 @@ export function AddChannelAccountModal({
               {field.required && isEdit && field.isSecret && ""}
             </label>
             {field.type === "select" ? (
-              <select
+              <Select
                 value={formData[field.id] || ""}
-                onChange={(e) => setFormData({...formData, [field.id]: e.target.value})}
-                style={{
-                  width: "100%",
-                  padding: "8px 12px",
-                  borderRadius: 4,
-                  border: "1px solid #e0e0e0",
-                  fontSize: 14,
-                  backgroundColor: "#fff",
-                }}
-              >
-                {field.options?.map(opt => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label.startsWith("channels.") ? t(opt.label) : opt.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(v) => setFormData({...formData, [field.id]: v})}
+                options={(field.options ?? []).map(opt => ({
+                  value: opt.value,
+                  label: opt.label.startsWith("channels.") ? t(opt.label) : opt.label,
+                }))}
+              />
             ) : field.type === "textarea" ? (
               <textarea
                 value={formData[field.id] || ""}

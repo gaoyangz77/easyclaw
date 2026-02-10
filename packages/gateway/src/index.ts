@@ -77,3 +77,4 @@ export {
   generateAudioConfig,
   mergeAudioConfig,
 } from "./audio-config-writer.js";
+export { resolveVolcengineSttCliPath } from "./volcengine-stt-cli-path.js";

@@ -475,3 +475,153 @@ tbody td {
 .has-tooltip:hover::after {
   opacity: 1;
 }
+
+/* ===== 17. Custom Select ===== */
+.custom-select {
+  position: relative;
+}
+
+.custom-select-trigger {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.custom-select-trigger:hover:not(:disabled) {
+  border-color: #c0c4c9;
+  filter: none;
+  transform: none;
+}
+
+.custom-select-trigger:focus-visible {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.12);
+  outline: none;
+}
+
+.custom-select-trigger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.custom-select-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.custom-select-placeholder {
+  color: var(--color-text-muted);
+  flex: 1;
+  min-width: 0;
+}
+
+.custom-select-chevron {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.custom-select-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 280px;
+  overflow-y: auto;
+  background-color: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  z-index: 50;
+}
+
+.custom-select-option {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  border-bottom: 1px solid var(--color-border-light);
+  background-color: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 13px;
+  border-radius: 0;
+  transition: background-color var(--transition-fast);
+}
+
+.custom-select-option:last-child {
+  border-bottom: none;
+}
+
+.custom-select-option:hover {
+  background-color: var(--color-bg-alt);
+  filter: none;
+  transform: none;
+}
+
+.custom-select-option[data-selected] {
+  background-color: var(--color-primary-light);
+}
+
+.custom-select-option[data-selected]:hover {
+  background-color: var(--color-primary-light);
+}
+
+.custom-select-option-label {
+  font-weight: 500;
+}
+
+.custom-select-option-desc {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+/* ===== Volcengine help tooltip ===== */
+.volcengine-help-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--color-text);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.8;
+  white-space: nowrap;
+  z-index: 100;
+  box-shadow: var(--shadow-md);
+}
+
+.volcengine-help-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--color-text);
+}
+
+.volcengine-help-trigger:hover + .volcengine-help-tooltip {
+  display: block;
+}
