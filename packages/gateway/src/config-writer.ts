@@ -505,7 +505,7 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
       defaultProfile: "openclaw",
       profiles: {
         ...existingProfiles,
-        chrome: { driver: "openclaw", color: "#00AA00" },
+        chrome: { driver: "clawd", color: "#00AA00" },
       },
     };
   }
