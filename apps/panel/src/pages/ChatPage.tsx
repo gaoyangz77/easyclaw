@@ -157,6 +157,7 @@ export function ChatPage() {
   // Stable refs so event handler closures always see the latest state
   const runIdRef = useRef(runId);
   runIdRef.current = runId;
+  const receivedDeltaRef = useRef(false);
   const messagesLengthRef = useRef(messages.length);
   messagesLengthRef.current = messages.length;
   const visibleCountRef = useRef(visibleCount);
@@ -322,6 +323,7 @@ export function ChatPage() {
     // Our own run — process normally
     switch (payload.state) {
       case "delta": {
+        receivedDeltaRef.current = true;
         const text = extractText(payload.message?.content);
         if (text) setStreaming(text);
         break;
@@ -358,10 +360,13 @@ export function ChatPage() {
     }
   }, [loadHistory, t]);
 
-  // Timeout: if runId is set but no response arrives within 60s, show error
+  // Timeout: if runId is set but no first delta arrives within 60s, show error.
+  // Once the first delta is received, the timeout is cancelled and won't fire again.
   useEffect(() => {
     if (!runId) return;
+    receivedDeltaRef.current = false;
     const timer = setTimeout(() => {
+      if (receivedDeltaRef.current) return; // already streaming — no timeout
       console.error("[chat] response timeout — no event received within 60s for runId:", runId);
       setMessages((prev) => [...prev, {
         role: "assistant",
