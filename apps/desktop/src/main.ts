@@ -232,9 +232,8 @@ app.whenReady().then(async () => {
   const storage = createStorage();
   const secretStore = createSecretStore();
 
-  // Initialize telemetry client (privacy-first, user opt-in required)
-  // DISABLED: Telemetry endpoint not configured yet
-  const telemetryEnabled = false; // storage.settings.get("telemetry_enabled") === "true";
+  // Initialize telemetry client (opt-out: enabled by default, user can disable via consent dialog or Settings)
+  const telemetryEnabled = storage.settings.get("telemetry_enabled") !== "false";
   const telemetryEndpoint = process.env.TELEMETRY_ENDPOINT || "https://t.easy-claw.com/";
   let telemetryClient: RemoteTelemetryClient | null = null;
 
@@ -264,6 +263,10 @@ app.whenReady().then(async () => {
     latestUpdateResult = result;
     if (result.updateAvailable) {
       log.info(`Update available: v${result.latestVersion}`);
+      telemetryClient?.track("app.update_available", {
+        currentVersion: app.getVersion(),
+        latestVersion: result.latestVersion,
+      });
       const isZh = systemLocale === "zh";
       const notification = new Notification({
         title: isZh ? "EasyClaw 有新版本" : "EasyClaw Update Available",
@@ -307,11 +310,8 @@ app.whenReady().then(async () => {
     log.error("Failed to start proxy router:", err);
   });
 
-  // Track app.started event
-  telemetryClient?.track("app.started", {
-    version: app.getVersion(),
-    platform: process.platform,
-  });
+  // Track app.started event (version + platform are already top-level fields on every event)
+  telemetryClient?.track("app.started");
 
   // Track heartbeat every 5 minutes
   if (telemetryClient) {
@@ -777,12 +777,16 @@ app.whenReady().then(async () => {
   process.on("uncaughtException", (error) => {
     log.error("Uncaught exception:", error);
 
-    // Track error event with truncated stack trace (first 5 lines)
+    // Sanitize paths to remove usernames (e.g., /Users/john/... → ~/...)
+    const sanitizePath = (s: string) =>
+      s.replace(/(?:\/Users\/|\/home\/|C:\\Users\\)[^\s/\\]+/gi, "~");
+
+    // Track error event with truncated + sanitized stack trace (first 5 lines)
     const stackLines = error.stack?.split("\n") ?? [];
-    const truncatedStack = stackLines.slice(0, 5).join("\n");
+    const truncatedStack = sanitizePath(stackLines.slice(0, 5).join("\n"));
 
     telemetryClient?.track("app.error", {
-      errorMessage: error.message,
+      errorMessage: sanitizePath(error.message),
       errorStack: truncatedStack,
     });
   });
@@ -862,6 +866,9 @@ app.whenReady().then(async () => {
       telemetryClient?.track("channel.configured", {
         channelType: channelId,
       });
+    },
+    onTelemetryTrack: (eventType, metadata) => {
+      telemetryClient?.track(eventType, metadata);
     },
   });
 

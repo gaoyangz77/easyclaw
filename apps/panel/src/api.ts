@@ -422,6 +422,17 @@ export async function updateTelemetrySetting(enabled: boolean): Promise<void> {
   });
 }
 
+// --- Telemetry Event Tracking ---
+
+/** Fire-and-forget telemetry event relay to desktop main process. */
+export function trackEvent(eventType: string, metadata?: Record<string, unknown>): void {
+  fetch(BASE_URL + "/telemetry/track", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventType, metadata }),
+  }).catch(() => {});
+}
+
 // --- App Update ---
 
 export interface UpdateInfo {

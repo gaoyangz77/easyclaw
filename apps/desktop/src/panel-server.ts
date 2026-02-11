@@ -593,6 +593,8 @@ export interface PanelServerOptions {
   onPermissionsChange?: () => void;
   /** Callback fired when a channel account is created or updated. */
   onChannelConfigured?: (channelId: string) => void;
+  /** Callback to track a telemetry event (relays to RemoteTelemetryClient in main process). */
+  onTelemetryTrack?: (eventType: string, metadata?: Record<string, unknown>) => void;
   /** Override path to the vendored OpenClaw directory (for packaged app). */
   vendorDir?: string;
   /** Stable device identifier (SHA-256 hash of hardware fingerprint). */
@@ -787,7 +789,7 @@ async function syncActiveKey(
 export function startPanelServer(options: PanelServerOptions): Server {
   const port = options.port ?? 3210;
   const distDir = resolve(options.panelDistDir);
-  const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, vendorDir, deviceId, getUpdateResult, getGatewayInfo, changelogPath } = options;
+  const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, changelogPath } = options;
 
   // Read changelog.json once at startup (cached in closure)
   let changelogEntries: unknown[] = [];
@@ -834,7 +836,7 @@ export function startPanelServer(options: PanelServerOptions): Server {
       }
 
       try {
-        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, vendorDir, deviceId, getUpdateResult, getGatewayInfo);
+        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo);
       } catch (err) {
         log.error("API error:", err);
         sendJson(res, 500, { error: "Internal server error" });
@@ -885,6 +887,7 @@ async function handleApiRoute(
   onSttChange?: () => void,
   onPermissionsChange?: () => void,
   onChannelConfigured?: (channelId: string) => void,
+  onTelemetryTrack?: (eventType: string, metadata?: Record<string, unknown>) => void,
   vendorDir?: string,
   deviceId?: string,
   getUpdateResult?: () => {
@@ -1027,7 +1030,7 @@ async function handleApiRoute(
   // --- Telemetry Settings ---
   if (pathname === "/api/settings/telemetry" && req.method === "GET") {
     const enabledStr = storage.settings.get("telemetry_enabled");
-    const enabled = enabledStr === "true";
+    const enabled = enabledStr !== "false";
     sendJson(res, 200, { enabled });
     return;
   }
@@ -1040,6 +1043,31 @@ async function handleApiRoute(
     }
     storage.settings.set("telemetry_enabled", body.enabled ? "true" : "false");
     sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // --- Telemetry Event Tracking (panel → main process relay) ---
+  if (pathname === "/api/telemetry/track" && req.method === "POST") {
+    const PANEL_EVENT_ALLOWLIST = new Set([
+      "onboarding.started",
+      "onboarding.provider_saved",
+      "onboarding.completed",
+      "panel.page_viewed",
+      "chat.message_sent",
+      "chat.response_received",
+      "chat.generation_stopped",
+      "rule.preset_used",
+      "telemetry.toggled",
+    ]);
+    const body = (await parseBody(req)) as { eventType?: string; metadata?: Record<string, unknown> };
+    if (!body.eventType || !PANEL_EVENT_ALLOWLIST.has(body.eventType)) {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    onTelemetryTrack?.(body.eventType, body.metadata);
+    res.writeHead(204);
+    res.end();
     return;
   }
 
@@ -1134,6 +1162,7 @@ async function handleApiRoute(
       sendJson(res, 200, { ok: true });
       // Reinitialize STT manager with new credentials
       onSttChange?.();
+      onTelemetryTrack?.("stt.configured", { provider: body.provider });
       return;
     } catch (err) {
       log.error("Failed to save STT credentials", err);
@@ -1287,6 +1316,8 @@ async function handleApiRoute(
     // First key for provider needs config update (default model), others just need auth profile sync
     onProviderChange?.(isFirst ? { configOnly: true } : { keyOnly: true });
 
+    onTelemetryTrack?.("provider.key_added", { provider: body.provider, isFirst });
+
     sendJson(res, 201, entry);
     return;
   }
@@ -1315,6 +1346,8 @@ async function handleApiRoute(
     } else {
       onProviderChange?.({ keyOnly: true });
     }
+
+    onTelemetryTrack?.("provider.activated", { provider: entry.provider });
 
     sendJson(res, 200, { ok: true });
     return;
@@ -1872,6 +1905,10 @@ async function handleApiRoute(
       // Note: Permissions require environment variable update (EASYCLAW_FILE_PERMISSIONS),
       // which requires a full gateway restart to apply the updated env vars.
       onPermissionsChange?.();
+      onTelemetryTrack?.("permissions.updated", {
+        readCount: (body.readPaths ?? []).length,
+        writeCount: (body.writePaths ?? []).length,
+      });
     } catch (err) {
       log.error("Failed to sync permissions to OpenClaw:", err);
       // Still return success to the client since permissions were saved to SQLite

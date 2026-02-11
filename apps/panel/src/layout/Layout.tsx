@@ -70,7 +70,6 @@ export function Layout({
     { path: "/permissions", label: t("nav.permissions") },
     { path: "/stt", label: t("nav.stt") },
     { path: "/usage", label: t("nav.usage") },
-    // TODO: Unhide after server-side telemetry receiver is deployed (see PROGRESS.md V1)
     // { path: "/settings", label: t("nav.settings") },
   ];
 

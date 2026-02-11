@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { fetchTelemetrySetting, updateTelemetrySetting } from "../api.js";
+import { fetchTelemetrySetting, updateTelemetrySetting, trackEvent } from "../api.js";
 
 export function SettingsPage() {
   const { t } = useTranslation();
@@ -32,6 +32,7 @@ export function SettingsPage() {
       setError(null);
       await updateTelemetrySetting(enabled);
       setTelemetryEnabled(enabled);
+      trackEvent("telemetry.toggled", { enabled });
     } catch (err) {
       setError(t("settings.telemetry.failedToSave") + String(err));
       // Revert on error

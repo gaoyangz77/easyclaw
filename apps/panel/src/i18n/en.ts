@@ -547,6 +547,14 @@ export default {
       learnMore: "Learn more about our privacy policy",
       failedToLoad: "Failed to load telemetry settings: ",
       failedToSave: "Failed to save telemetry settings: ",
+      consent: {
+        title: "Help Improve EasyClaw",
+        description: "We collect anonymous usage statistics to improve the product. No personal data, conversation content, or API keys are ever collected.",
+        collectLabel: "What we collect:",
+        items: "App lifecycle, feature usage, error reports, runtime stats",
+        agree: "Agree",
+        disagree: "Disagree",
+      },
     },
   },
   update: {

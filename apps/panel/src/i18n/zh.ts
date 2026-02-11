@@ -547,6 +547,14 @@ export default {
       learnMore: "了解更多关于我们的隐私政策",
       failedToLoad: "加载遥测设置失败：",
       failedToSave: "保存遥测设置失败：",
+      consent: {
+        title: "帮助改进爪爪",
+        description: "我们收集匿名使用统计数据以改进产品。绝不收集个人信息、对话内容或 API 密钥。",
+        collectLabel: "收集内容：",
+        items: "应用生命周期、功能使用情况、错误报告、运行统计",
+        agree: "同意",
+        disagree: "不同意",
+      },
     },
   },
   update: {

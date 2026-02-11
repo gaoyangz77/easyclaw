@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
-import { fetchGatewayInfo, fetchProviderKeys } from "../api.js";
+import { fetchGatewayInfo, fetchProviderKeys, trackEvent } from "../api.js";
 import { GatewayChatClient } from "../lib/gateway-client.js";
 import type { GatewayEvent, GatewayHelloOk } from "../lib/gateway-client.js";
 import "./ChatPage.css";
@@ -164,6 +164,7 @@ export function ChatPage() {
   visibleCountRef.current = visibleCount;
   const allFetchedRef = useRef(allFetched);
   allFetchedRef.current = allFetched;
+  const sendTimeRef = useRef<number>(0);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -333,6 +334,10 @@ export function ChatPage() {
         if (text) {
           setMessages((prev) => [...prev, { role: "assistant", text, timestamp: Date.now() }]);
         }
+        if (sendTimeRef.current > 0) {
+          trackEvent("chat.response_received", { durationMs: Date.now() - sendTimeRef.current });
+          sendTimeRef.current = 0;
+        }
         setStreaming(null);
         setRunId(null);
         break;
@@ -469,6 +474,8 @@ export function ChatPage() {
     setDraft("");
     setPendingImages([]);
     setRunId(idempotencyKey);
+    sendTimeRef.current = Date.now();
+    trackEvent("chat.message_sent", { hasImage: images.length > 0 });
 
     // Reset textarea height
     if (textareaRef.current) {
@@ -501,6 +508,7 @@ export function ChatPage() {
 
   function handleStop() {
     if (!clientRef.current || !runIdRef.current) return;
+    trackEvent("chat.generation_stopped");
     clientRef.current.request("chat.abort", {
       sessionKey: sessionKeyRef.current,
       runId: runIdRef.current,

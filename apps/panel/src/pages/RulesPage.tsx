@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { fetchRules, createRule, updateRule, deleteRule, type Rule } from "../api.js";
+import { fetchRules, createRule, updateRule, deleteRule, trackEvent, type Rule } from "../api.js";
 
 const EXAMPLE_RULE_KEYS = [
   "onboarding.exampleRule1",
@@ -144,12 +144,15 @@ export function RulesPage() {
         <div style={{ display: "flex", gap: 24, alignItems: "stretch" }}>
           {/* Left: examples */}
           <div style={{ flex: "0 0 40%", display: "flex", flexDirection: "column", gap: 8 }}>
-            {EXAMPLE_RULE_KEYS.map((ruleKey) => {
+            {EXAMPLE_RULE_KEYS.map((ruleKey, index) => {
               const text = t(ruleKey);
               return (
                 <button
                   key={ruleKey}
-                  onClick={() => setNewRuleText(text)}
+                  onClick={() => {
+                    setNewRuleText(text);
+                    trackEvent("rule.preset_used", { presetIndex: index });
+                  }}
                   style={{
                     padding: "10px 14px",
                     borderRadius: 6,

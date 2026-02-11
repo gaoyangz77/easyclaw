@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { PROVIDER_API_KEY_URLS, getDefaultModelForProvider } from "@easyclaw/core";
 import type { LLMProvider } from "@easyclaw/core";
-import { updateSettings, createProviderKey, validateApiKey, fetchPricing } from "../api.js";
+import { updateSettings, createProviderKey, validateApiKey, fetchPricing, trackEvent } from "../api.js";
 import type { ProviderPricing } from "../api.js";
 import { ProviderSelect } from "../components/ProviderSelect.js";
 import { ModelSelect } from "../components/ModelSelect.js";
@@ -54,6 +54,10 @@ export function OnboardingPage({
   const [pricingLoading, setPricingLoading] = useState(true);
   const formRef = useRef<HTMLDivElement>(null);
   const [formHeight, setFormHeight] = useState<number | undefined>(undefined);
+
+  useEffect(() => {
+    trackEvent("onboarding.started", { language: i18n.language });
+  }, []);
 
   useEffect(() => {
     const el = formRef.current;
@@ -125,6 +129,7 @@ export function OnboardingPage({
       });
       // Set as active provider
       await updateSettings({ "llm-provider": provider });
+      trackEvent("onboarding.provider_saved", { provider });
       setCurrentStep(1);
     } catch (err) {
       setProviderError({ key: "onboarding.failedToSave", detail: String(err) });
@@ -393,7 +398,10 @@ export function OnboardingPage({
             </div>
 
             <button
-              onClick={onComplete}
+              onClick={() => {
+                trackEvent("onboarding.completed");
+                onComplete();
+              }}
               style={{
                 padding: "10px 24px",
                 backgroundColor: "#1a73e8",

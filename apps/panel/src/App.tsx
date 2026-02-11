@@ -9,11 +9,11 @@ import { ChannelsPage } from "./pages/ChannelsPage.js";
 import { PermissionsPage } from "./pages/PermissionsPage.js";
 import { SttPage } from "./pages/SttPage.js";
 import { UsagePage } from "./pages/UsagePage.js";
-// TODO: Unhide after server-side telemetry receiver is deployed (see PROGRESS.md V1)
-// import { SettingsPage } from "./pages/SettingsPage.js";
+import { SettingsPage } from "./pages/SettingsPage.js";
 import { OnboardingPage } from "./pages/OnboardingPage.js";
 import { WhatsNewModal } from "./components/WhatsNewModal.js";
-import { fetchSettings, fetchChangelog } from "./api.js";
+import { TelemetryConsentModal } from "./components/TelemetryConsentModal.js";
+import { fetchSettings, fetchChangelog, trackEvent } from "./api.js";
 import type { ChangelogEntry } from "./api.js";
 
 const PAGES: Record<string, () => ReactNode> = {
@@ -24,8 +24,7 @@ const PAGES: Record<string, () => ReactNode> = {
   "/permissions": PermissionsPage,
   "/stt": SttPage,
   "/usage": UsagePage,
-  // TODO: Unhide after server-side telemetry receiver is deployed (see PROGRESS.md V1)
-  // "/settings": SettingsPage,
+  "/settings": SettingsPage,
 };
 
 /** Normalise a browser pathname to one of our known routes, defaulting to "/" */
@@ -33,11 +32,16 @@ function resolveRoute(pathname: string): string {
   return pathname in PAGES ? pathname : "/";
 }
 
+function pageNameFromRoute(route: string): string {
+  return route === "/" ? "chat" : route.slice(1);
+}
+
 export function App() {
   const { t } = useTranslation();
   const [currentPath, setCurrentPath] = useState(() => resolveRoute(window.location.pathname));
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
+  const [showTelemetryConsent, setShowTelemetryConsent] = useState(false);
   const [changelogEntries, setChangelogEntries] = useState<ChangelogEntry[]>([]);
   const [currentVersion, setCurrentVersion] = useState("");
 
@@ -56,6 +60,7 @@ export function App() {
       window.history.pushState(null, "", route);
     }
     setCurrentPath(route);
+    trackEvent("panel.page_viewed", { page: pageNameFromRoute(route) });
   }, []);
 
   useEffect(() => {
@@ -94,6 +99,21 @@ export function App() {
       .catch(() => {});
   }, [showOnboarding]);
 
+  // Show telemetry consent dialog on first launch (after onboarding)
+  useEffect(() => {
+    if (showOnboarding !== false) return;
+    if (!localStorage.getItem("telemetry.consentShown")) {
+      setShowTelemetryConsent(true);
+    }
+  }, [showOnboarding]);
+
+  // Track initial page view when main app mounts (not during onboarding)
+  useEffect(() => {
+    if (showOnboarding === false) {
+      trackEvent("panel.page_viewed", { page: pageNameFromRoute(currentPath) });
+    }
+  }, [showOnboarding === false]); // eslint-disable-line react-hooks/exhaustive-deps
+
   function handleOnboardingComplete() {
     setShowOnboarding(false);
     navigate("/");
@@ -128,6 +148,10 @@ export function App() {
         onClose={() => setShowWhatsNew(false)}
         entries={changelogEntries}
         currentVersion={currentVersion}
+      />
+      <TelemetryConsentModal
+        isOpen={showTelemetryConsent && !showWhatsNew}
+        onClose={() => setShowTelemetryConsent(false)}
       />
     </Layout>
   );
