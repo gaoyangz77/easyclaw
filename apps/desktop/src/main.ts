@@ -201,6 +201,14 @@ app.on("second-instance", () => {
   }
 });
 
+// macOS: clicking the dock icon when the window is hidden should re-show it
+app.on("activate", () => {
+  if (mainWindow) {
+    mainWindow.show();
+    mainWindow.focus();
+  }
+});
+
 app.whenReady().then(async () => {
   enableFileLogging();
   log.info("EasyClaw desktop starting");
@@ -672,6 +680,19 @@ app.whenReady().then(async () => {
   }
 
   tray.setToolTip("EasyClaw");
+
+  // Windows/Linux: clicking the tray icon should show/hide the window
+  // (macOS uses the context menu on click, so this is a no-op there)
+  tray.on("click", () => {
+    if (!mainWindow) return;
+    if (mainWindow.isVisible()) {
+      mainWindow.hide();
+    } else {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
+
   updateTray("stopped");
 
   // Create main panel window (hidden initially, loaded when gateway starts)
