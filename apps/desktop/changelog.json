@@ -1,5 +1,25 @@
 [
   {
+    "version": "1.1.5",
+    "date": "2026-02-11",
+    "en": [
+      "Telemetry: client-side tracking with consent dialog and 21-event taxonomy",
+      "Locale-based endpoint routing (auto-select CN/US telemetry server)",
+      "Dev telemetry toggle for testing",
+      "Generate CN update manifest in release script",
+      "Fix: chat timeout only applies before first streaming delta",
+      "Cleanup: remove leftover wildcard permission code"
+    ],
+    "zh": [
+      "遥测：客户端埋点，含用户同意弹窗和 21 种事件分类",
+      "按语言环境自动路由遥测端点（中国/美国服务器）",
+      "开发模式遥测开关",
+      "发布脚本新增生成中国区更新清单",
+      "修复：聊天超时仅在首次流式响应前生效",
+      "清理：移除多余的通配符权限代码"
+    ]
+  },
+  {
     "version": "1.1.4",
     "date": "2026-02-10",
     "en": [
