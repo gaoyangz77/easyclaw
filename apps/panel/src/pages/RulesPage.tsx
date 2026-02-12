@@ -14,29 +14,18 @@ const EXAMPLE_RULE_KEYS = [
 function StatusBadge({ status }: { status?: Rule["artifactStatus"] }) {
   const { t } = useTranslation();
 
-  const styles: Record<string, { background: string; color: string; label: string }> = {
-    ok: { background: "#e6f4ea", color: "#1e7e34", label: t("rules.compiled") },
-    failed: { background: "#fce8e6", color: "#c5221f", label: t("rules.failed") },
-    pending: { background: "#fef7e0", color: "#b06000", label: t("rules.pending") },
+  const variants: Record<string, { className: string; label: string }> = {
+    ok: { className: "badge-success", label: t("rules.compiled") },
+    failed: { className: "badge-danger", label: t("rules.failed") },
+    pending: { className: "badge-warning", label: t("rules.pending") },
   };
 
-  const info = status ? styles[status] : undefined;
-  const background = info?.background ?? "#f1f3f4";
-  const color = info?.color ?? "#5f6368";
+  const info = status ? variants[status] : undefined;
+  const badgeClass = info?.className ?? "badge-default";
   const label = info?.label ?? t("rules.notCompiled");
 
   return (
-    <span
-      style={{
-        display: "inline-block",
-        padding: "2px 8px",
-        borderRadius: 12,
-        fontSize: 12,
-        fontWeight: 500,
-        background,
-        color,
-      }}
-    >
+    <span className={`badge ${badgeClass}`}>
       {label}
     </span>
   );
@@ -134,49 +123,25 @@ export function RulesPage() {
       {/* Add Rule — examples left, input right */}
       <div className="section-card">
         <h3>{t("rules.addRule")}</h3>
-        <div style={{ display: "flex", gap: 24, marginBottom: 12 }}>
+        <div className="rules-create-section mb-sm">
           {/* Left: label */}
-          <div style={{ flex: "0 0 40%", fontSize: 12, color: "#888" }}>
+          <div className="rules-label-col text-muted text-sm">
             {t("onboarding.tryExample")}
           </div>
           <div style={{ flex: 1 }} />
         </div>
-        <div style={{ display: "flex", gap: 24, alignItems: "stretch" }}>
+        <div className="rules-examples-row">
           {/* Left: examples */}
-          <div style={{ flex: "0 0 40%", display: "flex", flexDirection: "column", gap: 8 }}>
+          <div className="rules-examples-col">
             {EXAMPLE_RULE_KEYS.map((ruleKey, index) => {
               const text = t(ruleKey);
               return (
                 <button
                   key={ruleKey}
+                  className={"rule-example-btn " + (newRuleText === text ? "rule-example-selected" : "rule-example-unselected")}
                   onClick={() => {
                     setNewRuleText(text);
                     trackEvent("rule.preset_used", { presetIndex: index });
-                  }}
-                  style={{
-                    padding: "10px 14px",
-                    borderRadius: 6,
-                    border: "1px solid",
-                    backgroundColor: newRuleText === text ? "#e8f0fe" : "#fafafa",
-                    borderColor: newRuleText === text ? "#1a73e8" : "#e0e0e0",
-                    fontSize: 13,
-                    cursor: "pointer",
-                    color: "#333",
-                    textAlign: "left",
-                    transition: "all 0.15s ease",
-                    lineHeight: 1.5,
-                  }}
-                  onMouseEnter={(e) => {
-                    if (newRuleText !== text) {
-                      e.currentTarget.style.backgroundColor = "#f0f0f0";
-                      e.currentTarget.style.borderColor = "#1a73e8";
-                    }
-                  }}
-                  onMouseLeave={(e) => {
-                    if (newRuleText !== text) {
-                      e.currentTarget.style.backgroundColor = "#fafafa";
-                      e.currentTarget.style.borderColor = "#e0e0e0";
-                    }
                   }}
                 >
                   {text}
@@ -186,25 +151,25 @@ export function RulesPage() {
           </div>
 
           {/* Divider */}
-          <div style={{ width: 1, backgroundColor: "#e2e5e9", flexShrink: 0 }} />
+          <div className="rules-divider" />
 
           {/* Right: text input */}
-          <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+          <div className="rules-editor-col">
             <textarea
+              className="input-full"
               value={newRuleText}
               onChange={(e) => setNewRuleText(e.target.value)}
               placeholder={t("rules.placeholder")}
               rows={8}
-              style={{ width: "100%", flex: 1, display: "block", resize: "vertical", minHeight: 160 }}
+              style={{ minHeight: 160 }}
             />
           </div>
         </div>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+        <div className="form-actions">
           <button
             className="btn btn-primary"
             onClick={handleCreate}
             disabled={!newRuleText.trim()}
-            style={{ padding: "8px 24px", fontSize: 13 }}
           >
             {t("rules.addRule")}
           </button>
@@ -216,7 +181,7 @@ export function RulesPage() {
         <table>
           <thead>
             <tr>
-              <th style={{ width: "45%" }}>{t("rules.colRule")}</th>
+              <th>{t("rules.colRule")}</th>
               <th>{t("rules.colStatus")}</th>
               <th>{t("rules.colType")}</th>
               <th>{t("rules.colCreated")}</th>
@@ -226,7 +191,7 @@ export function RulesPage() {
         <tbody>
           {rules.length === 0 ? (
             <tr>
-              <td colSpan={5} style={{ textAlign: "center", color: "#888", padding: "24px 14px" }}>
+              <td colSpan={5} className="empty-cell">
                 {t("rules.emptyState")}
               </td>
             </tr>
@@ -237,12 +202,12 @@ export function RulesPage() {
                   {editingId === rule.id ? (
                     <div>
                       <textarea
+                        className="input-full mb-sm"
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
                         rows={3}
-                        style={{ width: "100%", marginBottom: 6, display: "block", fontSize: 13 }}
                       />
-                      <button className="btn btn-primary" onClick={() => handleSaveEdit(rule.id)} style={{ marginRight: 6 }}>
+                      <button className="btn btn-primary btn-sm" onClick={() => handleSaveEdit(rule.id)}>
                         {t("common.save")}
                       </button>
                       <button className="btn btn-secondary" onClick={handleCancelEdit}>
@@ -261,12 +226,12 @@ export function RulesPage() {
                 <td>
                   {rule.artifactType ?? "—"}
                 </td>
-                <td style={{ fontSize: 12, color: "#666", whiteSpace: "nowrap" }}>
+                <td className="td-date">
                   {new Date(rule.createdAt).toLocaleDateString()}
                 </td>
-                <td>
+                <td className="td-actions">
                   {editingId !== rule.id && (
-                    <div style={{ display: "flex", gap: 6 }}>
+                    <div className="td-actions">
                       <button
                         className="btn btn-secondary"
                         onClick={() => handleStartEdit(rule)}

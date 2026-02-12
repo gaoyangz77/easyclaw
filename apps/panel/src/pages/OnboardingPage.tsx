@@ -11,20 +11,13 @@ import { PricingTable } from "../components/PricingTable.js";
 function StepDot({ step, currentStep }: { step: number; currentStep: number }) {
   const isActive = step === currentStep;
   const isCompleted = step < currentStep;
+  const highlight = isCompleted || isActive;
   return (
     <div
+      className="onboarding-step-dot"
       style={{
-        width: 32,
-        height: 32,
-        borderRadius: "50%",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor:
-          isCompleted || isActive ? "#1a73e8" : "#e0e0e0",
-        color: isCompleted || isActive ? "#fff" : "#888",
-        fontWeight: 600,
-        fontSize: 14,
+        backgroundColor: highlight ? "var(--color-primary)" : "var(--color-border)",
+        color: highlight ? "#fff" : "var(--color-text-muted)",
       }}
     >
       {isCompleted ? "\u2713" : step + 1}
@@ -140,114 +133,67 @@ export function OnboardingPage({
   }
 
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "#f8f9fa",
-        padding: 24,
-        position: "relative",
-      }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          top: 20,
-          right: 28,
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
-        }}
-      >
+    <div className="onboarding-page">
+      <div className="onboarding-top-controls">
         <button
+          className="btn btn-secondary btn-sm"
           onClick={() => i18n.changeLanguage(i18n.language === "zh" ? "en" : "zh")}
-          style={{
-            padding: "4px 12px",
-            border: "1px solid #e0e0e0",
-            borderRadius: 4,
-            backgroundColor: "transparent",
-            cursor: "pointer",
-            fontSize: 13,
-            color: "#555",
-          }}
         >
           {i18n.language === "zh" ? "English" : "中文"}
         </button>
         <button
+          className="btn-ghost"
           onClick={onComplete}
-          style={{
-            background: "none",
-            border: "none",
-            color: "#888",
-            fontSize: 14,
-            cursor: "pointer",
-            textDecoration: "underline",
-          }}
         >
           {t("onboarding.skipSetup")}
         </button>
       </div>
 
       <div
-        style={{
-          backgroundColor: "#fff",
-          borderRadius: 12,
-          padding: "48px 40px",
-          maxWidth: currentStep === 0 ? 960 : 560,
-          width: "100%",
-          boxShadow: "0 2px 8px rgba(0,0,0,0.08)",
-          transition: "max-width 0.3s ease",
-        }}
+        className="onboarding-card"
+        style={{ maxWidth: currentStep === 0 ? 960 : 560 }}
       >
         {/* Step indicator */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            gap: 16,
-            marginBottom: 36,
-          }}
-        >
+        <div className="onboarding-steps">
           <StepDot step={0} currentStep={currentStep} />
-          <div style={{ width: 40, height: 2, backgroundColor: currentStep > 0 ? "#1a73e8" : "#e0e0e0" }} />
+          <div
+            className="onboarding-connector"
+            style={{ backgroundColor: currentStep > 0 ? "var(--color-primary)" : "var(--color-border)" }}
+          />
           <StepDot step={1} currentStep={currentStep} />
         </div>
 
         {/* Step 0: Welcome + Provider */}
         {currentStep === 0 && (
-          <div style={{ display: "flex", gap: 28, alignItems: "stretch" }}>
+          <div className="page-two-col">
             {/* Left: form */}
-            <div ref={formRef} style={{ flex: 1, minWidth: 0 }}>
-            <h1 style={{ fontSize: 24, margin: "0 0 8px" }}>
+            <div ref={formRef} className="flex-1">
+            <h1>
               {t("onboarding.welcomeTitle")}
             </h1>
-            <p style={{ color: "#5f6368", marginBottom: 24 }}>
+            <p>
               {t("onboarding.welcomeDesc")}
             </p>
 
             {providerError && (
-              <div style={{ color: "red", marginBottom: 12 }}>
+              <div className="text-danger mb-sm">
                 {t(providerError.key)}{providerError.detail ? ` (${providerError.detail})` : ""}
               </div>
             )}
 
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ marginBottom: 4 }}>{t("onboarding.providerLabel")}</div>
+            <div className="form-group">
+              <div className="form-label">{t("onboarding.providerLabel")}</div>
               <ProviderSelect value={provider} onChange={handleProviderChange} />
-              <div style={{ marginTop: 6, fontSize: 12 }}>
+              <div className="form-help-sm" style={{ marginTop: 6 }}>
                 {t(`providers.hint_${provider}`, { cmd: "", defaultValue: "" }) ? (
-                  <span style={{ color: "#5f6368" }}>
+                  <span className="text-secondary">
                     {(() => {
                       const cmd = provider === "anthropic" ? "claude setup-token" : provider === "amazon-bedrock" ? "aws configure" : "";
                       const hint = t(`providers.hint_${provider}`, { cmd });
                       if (!cmd) return hint;
                       const parts = hint.split(cmd);
                       return parts.length === 2 ? (
-                        <>{parts[0]}<code style={{ backgroundColor: "#f1f3f4", padding: "1px 5px", borderRadius: 3, fontFamily: "monospace" }}>{cmd}</code>{parts[1]}</>
+                        <>{parts[0]}<code>{cmd}</code>{parts[1]}</>
                       ) : hint;
                     })()}
                     {" "}
@@ -257,85 +203,58 @@ export function OnboardingPage({
                   href={PROVIDER_API_KEY_URLS[provider as LLMProvider]}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{ color: "#1a73e8" }}
                 >
                   {t("providers.getApiKey")} &rarr;
                 </a>
               </div>
             </div>
 
-            <div style={{ marginBottom: 12 }}>
-              <div style={{ marginBottom: 4 }}>{t("onboarding.modelLabel")}</div>
+            <div className="form-group">
+              <div className="form-label">{t("onboarding.modelLabel")}</div>
               <ModelSelect provider={provider} value={model} onChange={setModel} />
             </div>
 
-            <label style={{ display: "block", marginBottom: 20 }}>
+            <label className="form-group" style={{ display: "block" }}>
               {provider === "anthropic" ? t("onboarding.anthropicTokenLabel") : t("onboarding.apiKeyLabel")}
               <input
+                className="input-full input-mono"
                 type="text"
                 autoComplete="off"
                 data-1p-ignore
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={provider === "anthropic" ? t("onboarding.anthropicTokenPlaceholder") : t("onboarding.apiKeyPlaceholder")}
-                style={{
-                  display: "block",
-                  width: "100%",
-                  marginTop: 4,
-                  padding: 8,
-                  borderRadius: 4,
-                  border: "1px solid #e0e0e0",
-                  boxSizing: "border-box",
-                  fontFamily: "monospace",
-                }}
+                style={{ display: "block", marginTop: 4 }}
               />
-              <small style={{ color: "#888" }}>
+              <small className="form-help-sm">
                 {t("onboarding.apiKeyHelp")}
               </small>
               {provider === "anthropic" && (
-                <div style={{ marginTop: 8, padding: "8px 12px", backgroundColor: "#fff8e1", borderRadius: 4, fontSize: 12, color: "#7a6200", lineHeight: 1.5 }}>
+                <div className="info-box info-box-yellow" style={{ marginTop: 8 }}>
                   {t("providers.anthropicTokenWarning")}
                 </div>
               )}
             </label>
 
-            <div style={{ marginBottom: 20 }}>
+            <div className="mb-md">
               <button
+                className="advanced-toggle"
                 onClick={() => setShowAdvanced(!showAdvanced)}
-                style={{
-                  padding: "6px 0",
-                  background: "none",
-                  border: "none",
-                  color: "#1a73e8",
-                  cursor: "pointer",
-                  fontSize: 13,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
               >
-                <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>▶</span>
+                <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>&#9654;</span>
                 {t("providers.advancedSettings")}
               </button>
               {showAdvanced && (
-                <div style={{ marginTop: 8, paddingLeft: 12, borderLeft: "2px solid #e0e0e0" }}>
-                  <div style={{ fontSize: 13, marginBottom: 4, color: "#555" }}>{t("providers.proxyLabel")}</div>
+                <div className="advanced-content">
+                  <div className="form-label text-secondary">{t("providers.proxyLabel")}</div>
                   <input
+                    className="input-full input-mono"
                     type="text"
                     value={proxyUrl}
                     onChange={(e) => setProxyUrl(e.target.value)}
                     placeholder={t("providers.proxyPlaceholder")}
-                    style={{
-                      width: "100%",
-                      padding: 8,
-                      borderRadius: 4,
-                      border: "1px solid #e0e0e0",
-                      fontSize: 13,
-                      fontFamily: "monospace",
-                      boxSizing: "border-box",
-                    }}
                   />
-                  <small style={{ color: "#888", fontSize: 11 }}>
+                  <small className="form-help-sm">
                     {t("providers.proxyHelp")}
                   </small>
                 </div>
@@ -343,26 +262,16 @@ export function OnboardingPage({
             </div>
 
             <button
+              className="btn btn-primary"
               onClick={handleSaveProvider}
               disabled={saving || validating}
-              style={{
-                padding: "10px 24px",
-                backgroundColor: "#1a73e8",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                fontSize: 14,
-                fontWeight: 500,
-                cursor: saving || validating ? "default" : "pointer",
-                opacity: saving || validating ? 0.7 : 1,
-              }}
             >
               {validating ? t("onboarding.validating") : saving ? t("onboarding.saving") : t("onboarding.saveAndContinue")}
             </button>
             </div>
 
             {/* Right: pricing table */}
-            <div style={{ width: 320, flexShrink: 0, height: formHeight }}>
+            <div className="page-col-side" style={{ height: formHeight }}>
               <PricingTable provider={provider} pricingList={pricingList} loading={pricingLoading} />
             </div>
           </div>
@@ -371,26 +280,21 @@ export function OnboardingPage({
         {/* Step 1: All set */}
         {currentStep === 1 && (
           <div>
-            <h1 style={{ fontSize: 24, margin: "0 0 8px" }}>
+            <h1>
               {t("onboarding.allSetTitle")}
             </h1>
-            <p style={{ color: "#5f6368", marginBottom: 20 }}>
+            <p>
               {t("onboarding.allSetDesc")}
             </p>
 
-            <div style={{ marginBottom: 24 }}>
+            <div className="mb-lg">
               {panelSections.map((s) => (
                 <div
                   key={s.name}
-                  style={{
-                    padding: "10px 12px",
-                    marginBottom: 6,
-                    borderRadius: 6,
-                    backgroundColor: "#f8f9fa",
-                  }}
+                  className="onboarding-section-item"
                 >
                   <strong>{s.name}</strong>
-                  <span style={{ color: "#5f6368", marginLeft: 8 }}>
+                  <span className="text-secondary" style={{ marginLeft: 8 }}>
                     — {s.desc}
                   </span>
                 </div>
@@ -398,19 +302,10 @@ export function OnboardingPage({
             </div>
 
             <button
+              className="btn btn-primary"
               onClick={() => {
                 trackEvent("onboarding.completed");
                 onComplete();
-              }}
-              style={{
-                padding: "10px 24px",
-                backgroundColor: "#1a73e8",
-                color: "#fff",
-                border: "none",
-                borderRadius: 6,
-                fontSize: 14,
-                fontWeight: 500,
-                cursor: "pointer",
               }}
             >
               {t("onboarding.goToDashboard")}

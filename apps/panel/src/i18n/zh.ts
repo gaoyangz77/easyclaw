@@ -574,6 +574,11 @@ export default {
       },
     },
   },
+  theme: {
+    system: "自动",
+    light: "浅色",
+    dark: "深色",
+  },
   update: {
     bannerText: "新版本 {{version}} 已发布。",
     download: "下载",

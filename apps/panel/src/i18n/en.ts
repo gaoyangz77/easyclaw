@@ -574,6 +574,11 @@ export default {
       },
     },
   },
+  theme: {
+    system: "Auto",
+    light: "Light",
+    dark: "Dark",
+  },
   update: {
     bannerText: "New version {{version}} is available.",
     download: "Download",

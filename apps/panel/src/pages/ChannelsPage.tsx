@@ -27,18 +27,11 @@ const CHINA_BLOCKED_CHANNELS = new Set([
 ]);
 
 function StatusBadge({ status }: { status: boolean | null | undefined }) {
-  const color = status === true ? "#4caf50" : status === false ? "#f44336" : "#9e9e9e";
+  const variant = status === true ? "badge-success" : status === false ? "badge-danger" : "badge-warning";
   const text = status === true ? "Yes" : status === false ? "No" : "Unknown";
 
   return (
-    <span style={{
-      fontSize: 12,
-      color,
-      fontWeight: 600,
-      backgroundColor: `${color}15`,
-      padding: "3px 8px",
-      borderRadius: 3,
-    }}>
+    <span className={`badge ${variant}`}>
       {text}
     </span>
   );
@@ -188,7 +181,7 @@ export function ChannelsPage() {
     return (
       <div>
         <h1>{t("channels.title")}</h1>
-        <div style={{ padding: "40px", textAlign: "center", color: "#666" }}>
+        <div className="centered-muted">
           {t("channels.loading")}
         </div>
       </div>
@@ -215,7 +208,7 @@ export function ChannelsPage() {
     return (
       <div>
         <h1>{t("channels.title")}</h1>
-        <div style={{ padding: "40px", textAlign: "center", color: "#666" }}>
+        <div className="centered-muted">
           Gateway not connected
         </div>
       </div>
@@ -248,8 +241,8 @@ export function ChannelsPage() {
   return (
     <div>
       {/* Header */}
-      <div style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 4 }}>
+      <div className="channel-header">
+        <div className="channel-title-row">
           <h1 style={{ margin: 0 }}>{t("channels.title")}</h1>
           <button
             className="btn btn-secondary"
@@ -259,17 +252,17 @@ export function ChannelsPage() {
             {refreshing ? "Refreshing..." : `↻ ${t("channels.refreshButton")}`}
           </button>
         </div>
-        <p style={{ margin: "4px 0 0 0", color: "#666", fontSize: 14 }}>
+        <p className="channel-subtitle">
           {t("channels.statusSubtitle")}
         </p>
       </div>
 
       {/* Add Account Section */}
-      <div className="section-card" style={{ marginBottom: 20 }}>
+      <div className="section-card channel-add-section">
         <h3>{t("channels.addAccount")}</h3>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 12 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <label style={{ fontSize: 13, fontWeight: 500, color: "#666" }}>
+        <div className="channel-selector-col">
+          <div className="channel-selector-row">
+            <label className="channel-selector-label">
               {t("channels.selectChannelType")}
             </label>
             <Select
@@ -297,18 +290,8 @@ export function ChannelsPage() {
             if (!selected) return null;
 
             return (
-              <div style={{
-                padding: "10px 12px",
-                backgroundColor: "#e8f4f8",
-                borderLeft: "3px solid #1976d2",
-                borderRadius: 4,
-                fontSize: 13,
-                lineHeight: 1.6,
-                minWidth: 400,
-                maxWidth: 600,
-                textAlign: "left",
-              }}>
-                <div style={{ color: "#555", marginBottom: 6 }}>
+              <div className="channel-info-box">
+                <div className="channel-info-title">
                   ℹ️ {t(selected.tooltip)}
                 </div>
                 <div>
@@ -316,11 +299,7 @@ export function ChannelsPage() {
                     href={selected.tutorialUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    style={{
-                      color: "#1976d2",
-                      textDecoration: "none",
-                      fontWeight: 500,
-                    }}
+                    className="font-medium"
                   >
                     📖 {t("channels.viewTutorial")} →
                   </a>
@@ -351,34 +330,34 @@ export function ChannelsPage() {
           <tbody>
             {allAccounts.length === 0 ? (
               <tr>
-                <td colSpan={9} style={{ textAlign: "center", color: "#888", padding: "24px 14px" }}>
+                <td colSpan={9} className="empty-cell">
                   {t("channels.noAccountsConfigured")}
                 </td>
               </tr>
             ) : (
               allAccounts.map(({ channelId, channelLabel, account }) => (
                 <tr key={`${channelId}-${account.accountId}`} className="table-hover-row">
-                  <td style={{ fontWeight: 500 }}>{channelLabel}</td>
+                  <td className="font-medium">{channelLabel}</td>
                   <td>
-                    <code style={{ fontSize: 12, color: "#666" }}>{account.accountId}</code>
+                    <code className="td-meta">{account.accountId}</code>
                   </td>
                   <td>{account.name || "—"}</td>
                   <td><StatusBadge status={account.configured} /></td>
                   <td><StatusBadge status={account.running} /></td>
                   <td><StatusBadge status={account.connected} /></td>
-                  <td style={{ fontSize: 12, color: "#666" }}>
+                  <td className="td-meta">
                     {account.dmPolicy || "—"}
                   </td>
-                  <td style={{ fontSize: 12, color: "#666" }}>
+                  <td className="td-meta">
                     {account.mode || "—"}
                     {account.lastError && (
-                      <div style={{ fontSize: 11, color: "#c62828", marginTop: 2 }}>
+                      <div className="text-xs text-danger" style={{ marginTop: 2 }}>
                         ⚠️ {account.lastError}
                       </div>
                     )}
                   </td>
                   <td>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    <div className="td-actions">
                       <button
                         className="btn btn-secondary"
                         onClick={() => handleEditAccount(channelId, account)}
@@ -408,7 +387,7 @@ export function ChannelsPage() {
       </div>
 
       {/* Last Updated */}
-      <div style={{ marginTop: 16, textAlign: "right", fontSize: 12, color: "#999" }}>
+      <div className="channel-last-updated">
         {t("channels.lastUpdated")} {new Date(snapshot.ts).toLocaleString()}
       </div>
 

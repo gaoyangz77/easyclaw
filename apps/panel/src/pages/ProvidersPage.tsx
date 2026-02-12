@@ -285,18 +285,18 @@ export function ProvidersPage() {
     const cmd = provider === "anthropic" ? "claude setup-token" : provider === "amazon-bedrock" ? "aws configure" : "";
     const hint = t(`providers.hint_${provider}`, { cmd, defaultValue: "" });
     if (!hint) return null;
-    if (!cmd) return <span style={{ color: "#5f6368" }}>{hint} </span>;
+    if (!cmd) return <span className="text-secondary">{hint} </span>;
     const parts = hint.split(cmd);
     if (parts.length === 2) {
       return (
-        <span style={{ color: "#5f6368" }}>
+        <span className="text-secondary">
           {parts[0]}
-          <code style={{ backgroundColor: "#f1f3f4", padding: "1px 5px", borderRadius: 3, fontFamily: "monospace" }}>{cmd}</code>
+          <code>{cmd}</code>
           {parts[1]}{" "}
         </span>
       );
     }
-    return <span style={{ color: "#5f6368" }}>{hint} </span>;
+    return <span className="text-secondary">{hint} </span>;
   }
 
   function handleNewProviderChange(p: string) {
@@ -319,20 +319,20 @@ export function ProvidersPage() {
       )}
 
       {/* Section A: Add Key — left form + right pricing table */}
-      <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
-      <div ref={leftCardRef} className="section-card" style={{ flex: 1, maxWidth: 680, minWidth: 320 }}>
+      <div className="page-two-col">
+      <div ref={leftCardRef} className="section-card page-col-main">
         <h3>{t("providers.addTitle")}</h3>
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("onboarding.providerLabel")}</div>
+        <div className="mb-sm">
+          <div className="form-label text-secondary">{t("onboarding.providerLabel")}</div>
           <ProviderSelect value={newProvider} onChange={handleNewProviderChange} />
           {newProvider !== "google-gemini-cli" && (
-          <div style={{ marginTop: 6, fontSize: 12 }}>
+          <div className="text-sm" style={{ marginTop: 6 }}>
             {renderHint(newProvider)}
             <a
               href={PROVIDER_API_KEY_URLS[newProvider as LLMProvider]}
               target="_blank"
               rel="noopener noreferrer"
-              style={{ color: "#1a73e8", fontSize: 12 }}
+              className="text-sm"
             >
               {t("providers.getApiKey")} &rarr;
             </a>
@@ -343,26 +343,19 @@ export function ProvidersPage() {
         {newProvider === "google-gemini-cli" ? (
           <>
             {/* OAuth form — label, model, token (or info), proxy, sign-in/save */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+            <div className="form-row mb-sm">
               <div style={{ flex: 4 }}>
-                <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("providers.keyLabel")}</div>
+                <div className="form-label text-secondary">{t("providers.keyLabel")}</div>
                 <input
                   type="text"
                   value={newLabel}
                   onChange={(e) => setNewLabel(e.target.value)}
                   placeholder={t("providers.labelPlaceholder")}
-                  style={{
-                    width: "100%",
-                    padding: 8,
-                    borderRadius: 4,
-                    border: "1px solid #e0e0e0",
-                    fontSize: 13,
-                    boxSizing: "border-box",
-                  }}
+                  className="input-full"
                 />
               </div>
               <div style={{ flex: 6 }}>
-                <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("providers.modelLabel")}</div>
+                <div className="form-label text-secondary">{t("providers.modelLabel")}</div>
                 <ModelSelect
                   provider={newProvider}
                   value={newModel || (getDefaultModelForProvider(newProvider as LLMProvider)?.modelId ?? "")}
@@ -372,87 +365,57 @@ export function ProvidersPage() {
             </div>
 
             {oauthTokenPreview ? (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>
+              <div className="mb-sm">
+                <div className="form-label text-secondary">
                   {t("providers.oauthTokenLabel")}
                 </div>
                 <input
                   type="text"
                   readOnly
                   value={oauthTokenPreview}
-                  style={{
-                    width: "100%",
-                    padding: 8,
-                    borderRadius: 4,
-                    border: "1px solid #e0e0e0",
-                    fontSize: 13,
-                    fontFamily: "monospace",
-                    boxSizing: "border-box",
-                    backgroundColor: "#f5f5f5",
-                    color: "#555",
-                    cursor: "default",
-                  }}
+                  className="input-full input-mono input-readonly"
                 />
-                <small style={{ color: "#888", fontSize: 11 }}>
+                <small className="form-help-sm">
                   {t("providers.oauthTokenHelp")}
                 </small>
               </div>
             ) : (
-              <div style={{ marginBottom: 8, padding: "10px 14px", backgroundColor: "#e8f5e9", borderRadius: 4, fontSize: 12, color: "#2e7d32", lineHeight: 1.5 }}>
+              <div className="info-box info-box-green">
                 {t("providers.oauthGeminiInfo")}
               </div>
             )}
 
-            <div style={{ marginBottom: 8 }}>
+            <div className="mb-sm">
               <button
                 onClick={() => setShowAdvanced(!showAdvanced)}
-                style={{
-                  padding: "6px 0",
-                  background: "none",
-                  border: "none",
-                  color: "#1a73e8",
-                  cursor: "pointer",
-                  fontSize: 12,
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 4,
-                }}
+                className="advanced-toggle"
               >
                 <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>▶</span>
                 {t("providers.advancedSettings")}
               </button>
               {showAdvanced && (
-                <div style={{ marginTop: 8, paddingLeft: 12, borderLeft: "2px solid #e0e0e0" }}>
-                  <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("providers.proxyLabel")}</div>
+                <div className="advanced-content">
+                  <div className="form-label text-secondary">{t("providers.proxyLabel")}</div>
                   <input
                     type="text"
                     value={newProxyUrl}
                     onChange={(e) => setNewProxyUrl(e.target.value)}
                     placeholder={t("providers.proxyPlaceholder")}
-                    style={{
-                      width: "100%",
-                      padding: 8,
-                      borderRadius: 4,
-                      border: "1px solid #e0e0e0",
-                      fontSize: 13,
-                      fontFamily: "monospace",
-                      boxSizing: "border-box",
-                    }}
+                    className="input-full input-mono"
                   />
-                  <small style={{ color: "#888", fontSize: 11 }}>
+                  <small className="form-help-sm">
                     {t("providers.proxyHelp")}
                   </small>
                 </div>
               )}
             </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <div className="form-actions">
               {oauthTokenPreview ? (
                 <button
                   className="btn btn-primary"
                   onClick={handleOAuthSave}
                   disabled={saving || validating}
-                  style={{ padding: "8px 16px", fontSize: 13 }}
                 >
                   {validating ? t("providers.validating") : saving ? "..." : t("common.save")}
                 </button>
@@ -461,7 +424,6 @@ export function ProvidersPage() {
                   className="btn btn-primary"
                   onClick={handleGeminiOAuth}
                   disabled={oauthLoading}
-                  style={{ padding: "8px 20px", fontSize: 13 }}
                 >
                   {oauthLoading ? t("providers.oauthLoading") : t("providers.oauthSignIn")}
                 </button>
@@ -471,31 +433,24 @@ export function ProvidersPage() {
         ) : (
         <>
         {newProvider === "anthropic" && (
-          <div style={{ marginBottom: 8, padding: "6px 10px", backgroundColor: "#fff8e1", borderRadius: 4, fontSize: 11, color: "#7a6200", lineHeight: 1.5 }}>
+          <div className="info-box info-box-yellow">
             {t("providers.anthropicTokenWarning")}
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+        <div className="form-row mb-sm">
           <div style={{ flex: 4 }}>
-            <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("providers.keyLabel")}</div>
+            <div className="form-label text-secondary">{t("providers.keyLabel")}</div>
             <input
               type="text"
               value={newLabel}
               onChange={(e) => setNewLabel(e.target.value)}
               placeholder={t("providers.labelPlaceholder")}
-              style={{
-                width: "100%",
-                padding: 8,
-                borderRadius: 4,
-                border: "1px solid #e0e0e0",
-                fontSize: 13,
-                boxSizing: "border-box",
-              }}
+              className="input-full"
             />
           </div>
           <div style={{ flex: 6 }}>
-            <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("providers.modelLabel")}</div>
+            <div className="form-label text-secondary">{t("providers.modelLabel")}</div>
             <ModelSelect
               provider={newProvider}
               value={newModel || (getDefaultModelForProvider(newProvider as LLMProvider)?.modelId ?? "")}
@@ -504,9 +459,9 @@ export function ProvidersPage() {
           </div>
         </div>
 
-        <div style={{ marginBottom: 8 }}>
-          <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>
-            {newProvider === "anthropic" ? t("providers.anthropicTokenLabel") : t("providers.apiKeyLabel")} <span style={{ color: "#d32f2f" }}>*</span>
+        <div className="mb-sm">
+          <div className="form-label text-secondary">
+            {newProvider === "anthropic" ? t("providers.anthropicTokenLabel") : t("providers.apiKeyLabel")} <span className="required">*</span>
           </div>
           <input
             type="text"
@@ -515,70 +470,43 @@ export function ProvidersPage() {
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder={newProvider === "anthropic" ? t("providers.anthropicTokenPlaceholder") : t("providers.apiKeyPlaceholder")}
-            style={{
-              width: "100%",
-              padding: 8,
-              borderRadius: 4,
-              border: "1px solid #e0e0e0",
-              fontSize: 13,
-              fontFamily: "monospace",
-              boxSizing: "border-box",
-            }}
+            className="input-full input-mono"
           />
-          <small style={{ color: "#888", fontSize: 11 }}>
+          <small className="form-help-sm">
             {t("providers.apiKeyHelp")}
           </small>
         </div>
 
-        <div style={{ marginBottom: 8 }}>
+        <div className="mb-sm">
           <button
             onClick={() => setShowAdvanced(!showAdvanced)}
-            style={{
-              padding: "6px 0",
-              background: "none",
-              border: "none",
-              color: "#1a73e8",
-              cursor: "pointer",
-              fontSize: 12,
-              display: "flex",
-              alignItems: "center",
-              gap: 4,
-            }}
+            className="advanced-toggle"
           >
             <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>▶</span>
             {t("providers.advancedSettings")}
           </button>
           {showAdvanced && (
-            <div style={{ marginTop: 8, paddingLeft: 12, borderLeft: "2px solid #e0e0e0" }}>
-              <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("providers.proxyLabel")}</div>
+            <div className="advanced-content">
+              <div className="form-label text-secondary">{t("providers.proxyLabel")}</div>
               <input
                 type="text"
                 value={newProxyUrl}
                 onChange={(e) => setNewProxyUrl(e.target.value)}
                 placeholder={t("providers.proxyPlaceholder")}
-                style={{
-                  width: "100%",
-                  padding: 8,
-                  borderRadius: 4,
-                  border: "1px solid #e0e0e0",
-                  fontSize: 13,
-                  fontFamily: "monospace",
-                  boxSizing: "border-box",
-                }}
+                className="input-full input-mono"
               />
-              <small style={{ color: "#888", fontSize: 11 }}>
+              <small className="form-help-sm">
                 {t("providers.proxyHelp")}
               </small>
             </div>
           )}
         </div>
 
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+        <div className="form-actions">
           <button
             className="btn btn-primary"
             onClick={() => handleAddKey(newProvider)}
             disabled={saving || validating || !apiKey.trim()}
-            style={{ padding: "8px 16px", fontSize: 13 }}
           >
             {validating ? t("providers.validating") : saving ? "..." : t("common.save")}
           </button>
@@ -588,7 +516,7 @@ export function ProvidersPage() {
       </div>
 
       {/* Right: Pricing table */}
-      <div style={{ width: 380, flexShrink: 0, height: leftHeight }}>
+      <div className="page-col-side" style={{ height: leftHeight }}>
         <PricingTable provider={newProvider} pricingList={pricingList} loading={pricingLoading} />
       </div>
       </div>
@@ -597,7 +525,7 @@ export function ProvidersPage() {
       <div className="section-card">
         <h3>{t("providers.configuredKeysTitle")}</h3>
         {keys.length === 0 ? (
-          <div style={{ textAlign: "center", color: "#888", padding: "24px 14px" }}>
+          <div className="empty-cell">
             {t("providers.noKeys")}
           </div>
         ) : (
@@ -608,21 +536,16 @@ export function ProvidersPage() {
               return (
                 <div
                   key={k.id}
-                  style={{
-                    padding: "12px 16px",
-                    borderBottom: "1px solid #f0f0f0",
-                    borderLeft: isActive ? "3px solid #1a73e8" : "3px solid transparent",
-                    backgroundColor: isActive ? "#f0f6ff" : "transparent",
-                  }}
+                  className={`key-card ${isActive ? "key-card-active" : "key-card-inactive"}`}
                 >
                   {/* Row: info left, actions right */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div className="key-row">
                     {/* Left: provider info */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <div className="key-info">
+                      <div className="key-meta">
                         <strong style={{ fontSize: 13 }}>{t(`providers.label_${k.provider}`)}</strong>
                         {isActive && (
-                          <span style={{ padding: "1px 7px", borderRadius: 10, fontSize: 10, fontWeight: 500, backgroundColor: "#c2d9fc", color: "#1a56c4" }}>
+                          <span className="badge badge-active">
                             {t("providers.active")}
                           </span>
                         )}
@@ -635,11 +558,11 @@ export function ProvidersPage() {
                           </span>
                         )}
                         {savedId === k.id && (
-                          <span style={{ color: "green", fontSize: 11 }}>{t("common.saved")}</span>
+                          <span className="badge-saved">{t("common.saved")}</span>
                         )}
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 4 }}>
-                        <span style={{ fontSize: 12, color: "#666", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", width: 240, flexShrink: 0 }}>
+                      <div className="key-details">
+                        <span className="key-label">
                           {k.label}
                         </span>
                         <ModelSelect
@@ -651,20 +574,19 @@ export function ProvidersPage() {
                     </div>
 
                     {/* Right: action buttons */}
-                    <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <div className="td-actions">
                       {!isActive && (
-                        <button className="btn btn-outline" style={{ fontSize: 12, padding: "4px 10px" }} onClick={() => handleActivate(k.id, k.provider)}>
+                        <button className="btn btn-outline btn-sm" onClick={() => handleActivate(k.id, k.provider)}>
                           {t("providers.activate")}
                         </button>
                       )}
                       {k.authType === "oauth" ? (
-                        <button className="btn btn-secondary" style={{ fontSize: 12, padding: "4px 10px" }} onClick={handleGeminiOAuth} disabled={oauthLoading}>
+                        <button className="btn btn-secondary btn-sm" onClick={handleGeminiOAuth} disabled={oauthLoading}>
                           {oauthLoading ? t("providers.oauthLoading") : t("providers.oauthReauthenticate")}
                         </button>
                       ) : (
                         <button
-                          className="btn btn-secondary"
-                          style={{ fontSize: 12, padding: "4px 10px" }}
+                          className="btn btn-secondary btn-sm"
                           onClick={() => {
                             setExpandedKeyId(isExp ? null : k.id);
                             setApiKey("");
@@ -674,7 +596,7 @@ export function ProvidersPage() {
                           {t("providers.updateKey")}
                         </button>
                       )}
-                      <button className="btn btn-danger" style={{ fontSize: 12, padding: "4px 10px" }} onClick={() => handleRemoveKey(k.id)}>
+                      <button className="btn btn-danger btn-sm" onClick={() => handleRemoveKey(k.id)}>
                         {t("providers.removeKey")}
                       </button>
                     </div>
@@ -682,8 +604,8 @@ export function ProvidersPage() {
 
                   {/* Expanded: update key / proxy form */}
                   {isExp && (
-                    <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid #f0f0f0" }}>
-                      <div style={{ display: "flex", gap: 8 }}>
+                    <div className="key-expanded">
+                      <div className="form-row">
                         <input
                           type="text"
                           autoComplete="off"
@@ -691,43 +613,41 @@ export function ProvidersPage() {
                           value={apiKey}
                           onChange={(e) => setApiKey(e.target.value)}
                           placeholder={k.provider === "anthropic" ? t("providers.anthropicUpdatePlaceholder") : t("providers.updateKeyPlaceholder")}
-                          style={{ flex: 1, padding: 8, borderRadius: 4, border: "1px solid #e0e0e0", fontSize: 13, fontFamily: "monospace" }}
+                          className="flex-1 input-mono"
                         />
                         <button
                           className="btn btn-primary"
                           onClick={() => handleUpdateKey(k.id, k.provider)}
                           disabled={saving || validating || !apiKey.trim()}
-                          style={{ padding: "8px 16px", fontSize: 13 }}
                         >
                           {validating ? t("providers.validating") : saving ? "..." : t("common.save")}
                         </button>
                       </div>
-                      <small style={{ color: "#888", fontSize: 11 }}>{t("providers.apiKeyHelp")}</small>
+                      <small className="form-help-sm">{t("providers.apiKeyHelp")}</small>
                       {k.provider === "anthropic" && (
-                        <div style={{ marginTop: 6, padding: "6px 10px", backgroundColor: "#fff8e1", borderRadius: 4, fontSize: 11, color: "#7a6200", lineHeight: 1.5 }}>
+                        <div className="info-box info-box-yellow" style={{ marginTop: 6 }}>
                           {t("providers.anthropicTokenWarning")}
                         </div>
                       )}
-                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #e0e0e0" }}>
-                        <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>{t("providers.proxyLabel")}</div>
-                        <div style={{ display: "flex", gap: 8 }}>
+                      <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid var(--color-border)` }}>
+                        <div className="form-label text-secondary">{t("providers.proxyLabel")}</div>
+                        <div className="form-row">
                           <input
                             type="text"
                             value={editProxyUrl}
                             onChange={(e) => setEditProxyUrl(e.target.value)}
                             placeholder={t("providers.proxyPlaceholder")}
-                            style={{ flex: 1, padding: 8, borderRadius: 4, border: "1px solid #e0e0e0", fontSize: 13, fontFamily: "monospace" }}
+                            className="flex-1 input-mono"
                           />
                           <button
                             className="btn btn-primary"
                             onClick={() => handleProxyChange(k.id, editProxyUrl)}
                             disabled={saving || editProxyUrl === (k.proxyUrl || "")}
-                            style={{ padding: "8px 16px", fontSize: 13 }}
                           >
                             {saving ? "..." : t("common.save")}
                           </button>
                         </div>
-                        <small style={{ color: "#888", fontSize: 11 }}>{t("providers.proxyHelp")}</small>
+                        <small className="form-help-sm">{t("providers.proxyHelp")}</small>
                       </div>
                     </div>
                   )}

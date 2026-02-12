@@ -139,13 +139,17 @@ export function App() {
     return <OnboardingPage onComplete={handleOnboardingComplete} />;
   }
 
-  const OtherPage = currentPath !== "/" ? PAGES[currentPath] : null;
+  const OtherPage = currentPath !== "/" && currentPath !== "/channels" ? PAGES[currentPath] : null;
   return (
     <Layout currentPath={currentPath} onNavigate={navigate}>
       {/* Keep ChatPage always mounted so its WebSocket connection and pending
           message state survive navigation to other pages (e.g. ProvidersPage). */}
       <div style={{ display: currentPath === "/" ? "contents" : "none" }}>
         <ChatPage />
+      </div>
+      {/* Keep ChannelsPage mounted to avoid re-fetching channel status on every visit. */}
+      <div style={{ display: currentPath === "/channels" ? "contents" : "none" }}>
+        <ChannelsPage />
       </div>
       {OtherPage && <OtherPage />}
       <WhatsNewModal

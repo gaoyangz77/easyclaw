@@ -18,16 +18,6 @@ interface PathEntry {
 }
 
 
-const switcherBtnStyle = (active: boolean): React.CSSProperties => ({
-  padding: "8px 16px",
-  border: "1px solid #ccc",
-  backgroundColor: active ? "#1a73e8" : "transparent",
-  color: active ? "#fff" : "#555",
-  cursor: "pointer",
-  fontSize: 13,
-  fontWeight: active ? 500 : 400,
-});
-
 /**
  * Merge readPaths/writePaths into a unified PathEntry list.
  * - path in readPaths only → "read"
@@ -72,18 +62,12 @@ function PermissionSwitcher({
   disabled?: boolean;
 }) {
   return (
-    <div style={{ display: "inline-flex", borderRadius: 4, overflow: "hidden" }}>
+    <div className="perm-switcher">
       <button
         type="button"
         onClick={() => onChange("read")}
         disabled={disabled}
-        style={{
-          ...switcherBtnStyle(value === "read"),
-          borderRadius: "4px 0 0 4px",
-          borderRight: "none",
-          opacity: disabled ? 0.5 : 1,
-          cursor: disabled ? "not-allowed" : "pointer",
-        }}
+        className={`perm-switcher-btn perm-switcher-btn-left ${value === "read" ? "perm-switcher-btn-active" : "perm-switcher-btn-inactive"}`}
       >
         {t("permissions.readOnly")}
       </button>
@@ -91,12 +75,7 @@ function PermissionSwitcher({
         type="button"
         onClick={() => onChange("readwrite")}
         disabled={disabled}
-        style={{
-          ...switcherBtnStyle(value === "readwrite"),
-          borderRadius: "0 4px 4px 0",
-          opacity: disabled ? 0.5 : 1,
-          cursor: disabled ? "not-allowed" : "pointer",
-        }}
+        className={`perm-switcher-btn perm-switcher-btn-right ${value === "readwrite" ? "perm-switcher-btn-active" : "perm-switcher-btn-inactive"}`}
       >
         {t("permissions.readWrite")}
       </button>
@@ -112,7 +91,6 @@ export function PermissionsPage() {
   const [selectedPath, setSelectedPath] = useState<string>("");
   const [selectedPerm, setSelectedPerm] = useState<PermLevel>("read");
   const [workspacePath, setWorkspacePath] = useState<string | null>(null);
-  const [showTooltip, setShowTooltip] = useState(false);
   const [fullAccess, setFullAccess] = useState(true);
 
   useEffect(() => {
@@ -235,48 +213,32 @@ export function PermissionsPage() {
       )}
 
       {saving && (
-        <div style={{ color: "#1a73e8", marginBottom: 16, fontSize: 13 }}>
+        <div className="text-sm text-secondary mb-md">
           ⟳ {t("common.saving") || "Saving..."}
         </div>
       )}
 
       {/* Full Access Toggle */}
-      <div className="section-card" style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div className="section-card mb-md">
+        <div className="perm-full-access-row">
           <div>
-            <strong style={{ fontSize: 14 }}>{t("permissions.fullAccessLabel")}</strong>
-            <p style={{ margin: "4px 0 0", fontSize: 13, color: "#5f6368" }}>
+            <strong>{t("permissions.fullAccessLabel")}</strong>
+            <p className="text-sm text-secondary" style={{ margin: "4px 0 0" }}>
               {t("permissions.fullAccessDescription")}
             </p>
           </div>
-          <label style={{ position: "relative", display: "inline-block", width: 44, height: 24, flexShrink: 0, marginLeft: 16 }}>
+          <label className="toggle-switch" style={{ marginLeft: 16 }}>
             <input
               type="checkbox"
               checked={fullAccess}
               onChange={(e) => handleToggleFullAccess(e.target.checked)}
               disabled={saving}
-              style={{ opacity: 0, width: 0, height: 0 }}
             />
             <span
-              style={{
-                position: "absolute",
-                cursor: saving ? "not-allowed" : "pointer",
-                top: 0, left: 0, right: 0, bottom: 0,
-                backgroundColor: fullAccess ? "#1a73e8" : "#ccc",
-                borderRadius: 24,
-                transition: "background-color 0.2s",
-              }}
+              className={`toggle-track ${fullAccess ? "toggle-track-on" : "toggle-track-off"} ${saving ? "toggle-track-disabled" : ""}`}
             >
               <span
-                style={{
-                  position: "absolute",
-                  height: 18, width: 18,
-                  left: fullAccess ? 22 : 3,
-                  bottom: 3,
-                  backgroundColor: "#fff",
-                  borderRadius: "50%",
-                  transition: "left 0.2s",
-                }}
+                className={`toggle-thumb ${fullAccess ? "toggle-thumb-on" : "toggle-thumb-off"}`}
               />
             </span>
           </label>
@@ -285,29 +247,16 @@ export function PermissionsPage() {
 
       <div className="section-card" style={{ opacity: fullAccess ? 0.5 : 1, pointerEvents: fullAccess ? "none" : "auto" }}>
         {/* Add path area */}
-        <div style={{ marginBottom: 16, display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+        <div className="perm-add-path-row">
           {selectedPath && (
-            <code
-              style={{
-                backgroundColor: "#f1f3f4",
-                padding: "8px 12px",
-                borderRadius: 4,
-                fontSize: 13,
-                maxWidth: 400,
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                border: "1px solid #e0e0e0",
-              }}
-            >
+            <code className="perm-path-display">
               {selectedPath}
             </code>
           )}
           <button
-            className="btn btn-outline"
+            className="btn btn-outline btn-sm"
             onClick={handleBrowse}
             disabled={saving}
-            style={{ padding: "8px 16px", fontSize: 13, whiteSpace: "nowrap" }}
           >
             {t("permissions.browsePath")}
           </button>
@@ -318,10 +267,9 @@ export function PermissionsPage() {
             disabled={saving || !selectedPath}
           />
           <button
-            className="btn btn-primary"
+            className="btn btn-primary btn-sm"
             onClick={handleAdd}
             disabled={saving || !selectedPath}
-            style={{ padding: "8px 16px", fontSize: 13, whiteSpace: "nowrap" }}
           >
             {t("common.add")}
           </button>
@@ -333,80 +281,26 @@ export function PermissionsPage() {
             <tr>
               <th>{t("permissions.colPath")}</th>
               <th>{t("permissions.colPermission")}</th>
-              <th style={{ width: 80 }}>{t("permissions.colActions")}</th>
+              <th className="td-actions">{t("permissions.colActions")}</th>
             </tr>
           </thead>
           <tbody>
             {/* Workspace row - always shown first, non-editable */}
             {workspacePath && (
-              <tr style={{ backgroundColor: "#f8f9fa" }}>
+              <tr className="perm-workspace-row">
                 <td>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <code style={{ backgroundColor: "#e8f0fe", padding: "1px 5px", borderRadius: 3, fontSize: 13 }}>
+                    <code className="perm-path-display">
                       {workspacePath}
                     </code>
-                    <span style={{ fontSize: 11, color: "#5f6368", fontStyle: "italic" }}>
+                    <span className="perm-workspace-label">
                       (Workspace)
                     </span>
                     <span
-                      style={{ position: "relative", display: "inline-block" }}
-                      onMouseEnter={() => setShowTooltip(true)}
-                      onMouseLeave={() => setShowTooltip(false)}
+                      className="has-tooltip"
+                      data-tooltip={t("permissions.workspaceTooltip")}
                     >
-                      <span
-                        style={{
-                          display: "inline-block",
-                          width: 14,
-                          height: 14,
-                          borderRadius: "50%",
-                          backgroundColor: "#1a73e8",
-                          color: "#fff",
-                          fontSize: 10,
-                          lineHeight: "14px",
-                          textAlign: "center",
-                          cursor: "help",
-                          fontWeight: "bold",
-                          fontFamily: "monospace",
-                        }}
-                      >
-                        i
-                      </span>
-                      {showTooltip && (
-                        <span
-                          style={{
-                            position: "absolute",
-                            bottom: "100%",
-                            left: "50%",
-                            transform: "translateX(-50%)",
-                            marginBottom: 8,
-                            padding: "8px 12px",
-                            backgroundColor: "#333",
-                            color: "#fff",
-                            fontSize: 12,
-                            lineHeight: "1.4",
-                            borderRadius: 6,
-                            whiteSpace: "nowrap",
-                            boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
-                            zIndex: 1000,
-                            pointerEvents: "none",
-                          }}
-                        >
-                          {t("permissions.workspaceTooltip")}
-                          <span
-                            style={{
-                              position: "absolute",
-                              top: "100%",
-                              left: "50%",
-                              transform: "translateX(-50%)",
-                              width: 0,
-                              height: 0,
-                              borderLeft: "6px solid transparent",
-                              borderRight: "6px solid transparent",
-                              borderTop: "6px solid #333",
-                            }}
-                          />
-                        </span>
-                      )}
+                      i
                     </span>
                   </div>
                 </td>
@@ -414,7 +308,7 @@ export function PermissionsPage() {
                   <PermissionSwitcher value="readwrite" onChange={() => {}} t={t} disabled={true} />
                 </td>
                 <td>
-                  <span style={{ fontSize: 11, color: "#888" }}>—</span>
+                  <span className="text-muted text-xs">&mdash;</span>
                 </td>
               </tr>
             )}
@@ -422,7 +316,7 @@ export function PermissionsPage() {
             {/* User-configured paths */}
             {entries.length === 0 && !workspacePath ? (
               <tr>
-                <td colSpan={3} style={{ textAlign: "center", color: "#888", padding: "24px 14px" }}>
+                <td colSpan={3} className="empty-cell">
                   {t("permissions.noPaths")}
                 </td>
               </tr>
@@ -430,7 +324,7 @@ export function PermissionsPage() {
               entries.map((entry, i) => (
                 <tr key={entry.path} className="table-hover-row">
                   <td>
-                    <code style={{ backgroundColor: "#f1f3f4", padding: "1px 5px", borderRadius: 3, fontSize: 13 }}>
+                    <code className="perm-path-display">
                       {entry.path}
                     </code>
                   </td>

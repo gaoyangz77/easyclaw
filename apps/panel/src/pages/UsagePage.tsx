@@ -81,28 +81,20 @@ export function UsagePage() {
       <p>{t("usage.description")}</p>
 
       {/* Time range filter and refresh button */}
-      <div style={{ marginBottom: 24, display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between" }}>
-        <div style={{ display: "flex", gap: 8 }}>
+      <div className="form-row mb-lg" style={{ alignItems: "center", justifyContent: "space-between" }}>
+        <div className="form-row">
           {(["7d", "30d", "all"] as TimeRange[]).map((range) => (
             <button
               key={range}
+              className={timeRange === range ? "btn btn-outline" : "btn btn-secondary"}
               onClick={() => setTimeRange(range)}
-              style={{
-                padding: "6px 16px",
-                borderRadius: 4,
-                border: "1px solid #ccc",
-                backgroundColor: timeRange === range ? "#1a73e8" : "#fff",
-                color: timeRange === range ? "#fff" : "#333",
-                cursor: "pointer",
-                fontWeight: timeRange === range ? 600 : 400,
-              }}
             >
               {rangeLabels[range]}
             </button>
           ))}
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <span style={{ fontSize: 12, color: "#888" }}>
+        <div className="form-row" style={{ alignItems: "center" }}>
+          <span className="text-sm text-muted">
             Last updated: {lastRefresh.toLocaleTimeString()}
           </span>
           <button
@@ -119,19 +111,12 @@ export function UsagePage() {
         <div className="error-alert">{t(error.key)}{error.detail ?? ""}</div>
       )}
 
-      {loading && <p style={{ color: "#888" }}>{t("usage.loadingData")}</p>}
+      {loading && <p className="text-muted">{t("usage.loadingData")}</p>}
 
       {!loading && !error && summary && (
         <>
           {/* Summary cards */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-              gap: 16,
-              marginBottom: 32,
-            }}
-          >
+          <div className="stat-grid">
             <SummaryCard
               label={t("usage.totalTokens")}
               value={formatTokens(summary.totalTokens)}
@@ -154,7 +139,7 @@ export function UsagePage() {
             />
           </div>
 
-          <div style={{ fontSize: 12, color: "#999", marginBottom: 16 }}>
+          <div className="text-sm text-muted mb-md">
             {t("usage.costDisclaimer")}
           </div>
 
@@ -162,7 +147,7 @@ export function UsagePage() {
           <div className="section-card">
           <h3>{t("usage.byModel")}</h3>
           {Object.keys(summary.byModel).length === 0 ? (
-            <p style={{ color: "#888" }}>{t("usage.noData")}</p>
+            <p className="text-muted">{t("usage.noData")}</p>
           ) : (
             <table>
               <thead>
@@ -195,7 +180,7 @@ export function UsagePage() {
           <div className="section-card">
           <h3>{t("usage.byProvider")}</h3>
           {Object.keys(summary.byProvider).length === 0 ? (
-            <p style={{ color: "#888" }}>{t("usage.noData")}</p>
+            <p className="text-muted">{t("usage.noData")}</p>
           ) : (
             <table>
               <thead>
@@ -229,18 +214,9 @@ export function UsagePage() {
       )}
 
       {!loading && !error && summary && summary.recordCount === 0 && (
-        <div
-          style={{
-            padding: 24,
-            border: "1px solid #e0e0e0",
-            borderRadius: 4,
-            backgroundColor: "#fafafa",
-            textAlign: "center",
-            color: "#888",
-          }}
-        >
+        <div className="empty-state">
           <p>{t("usage.noRecords")}</p>
-          <p style={{ fontSize: 12 }}>
+          <p className="text-sm">
             {t("usage.noRecordsHelp")}
           </p>
         </div>
@@ -251,19 +227,11 @@ export function UsagePage() {
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <div
-      className="card"
-      style={{
-        padding: 16,
-        border: "1px solid #e0e0e0",
-        borderRadius: 4,
-        backgroundColor: "#fafafa",
-      }}
-    >
-      <div style={{ fontSize: 12, color: "#888", marginBottom: 4 }}>
+    <div className="stat-card">
+      <div className="stat-label">
         {label}
       </div>
-      <div style={{ fontSize: 24, fontWeight: 600 }}>{value}</div>
+      <div className="stat-value">{value}</div>
     </div>
   );
 }
