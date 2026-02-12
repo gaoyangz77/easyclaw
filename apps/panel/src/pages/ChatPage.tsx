@@ -695,7 +695,6 @@ export function ChatPage() {
     <div className="chat-container">
       {messages.length === 0 && !streaming ? (
         <div className="chat-empty">
-          {agentName && <div className="chat-empty-agent">{agentName}</div>}
           <div>{t("chat.emptyState")}</div>
         </div>
       ) : (

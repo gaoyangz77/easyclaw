@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Tray, shell, dialog, Notification } from "electron";
+import { app, BrowserWindow, Menu, Tray, shell, dialog, Notification } from "electron";
 import { createLogger, enableFileLogging } from "@easyclaw/logger";
 import {
   GatewayLauncher,
@@ -215,6 +215,7 @@ app.on("activate", () => {
 });
 
 app.whenReady().then(async () => {
+  Menu.setApplicationMenu(null);
   enableFileLogging();
   log.info("EasyClaw desktop starting");
 
