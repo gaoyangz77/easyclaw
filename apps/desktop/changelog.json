@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.1.10",
+    "date": "2026-02-12",
+    "en": [
+      "Fix model dropdown clipping and simplify provider setup links",
+      "Resolve npm absolute path before launching gateway",
+      "Default device management policy to pairing mode when not configured"
+    ],
+    "zh": [
+      "修复模型下拉菜单裁剪问题并简化服务商设置链接",
+      "启动网关前解析 npm 绝对路径",
+      "未配置时默认设备管理策略为配对模式"
+    ]
+  },
+  {
     "version": "1.1.9",
     "date": "2026-02-12",
     "en": [
