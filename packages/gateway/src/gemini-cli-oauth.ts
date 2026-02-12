@@ -133,9 +133,43 @@ export function extractGeminiCliCredentials(): { clientId: string; clientSecret:
   return null;
 }
 
+/**
+ * Build an enriched PATH that includes common Node.js/npm install locations.
+ * Packaged Electron apps on macOS inherit a minimal PATH (e.g. /usr/bin:/bin)
+ * that doesn't include Homebrew, nvm, volta, fnm, etc.
+ */
+function enrichedPath(): string {
+  const base = process.env.PATH ?? "";
+  const home = homedir();
+  const extra: string[] = [
+    "/usr/local/bin",               // Homebrew (Intel Mac) / system installs
+    "/opt/homebrew/bin",            // Homebrew (Apple Silicon)
+    join(home, ".nvm", "current", "bin"),  // nvm (symlink alias)
+    join(home, ".volta", "bin"),    // Volta
+    join(home, ".fnm", "aliases", "default", "bin"), // fnm
+    join(home, ".local", "bin"),    // pipx / user-local installs
+  ];
+
+  // nvm: also check versioned directories (pick the first one found)
+  const nvmVersions = join(home, ".nvm", "versions", "node");
+  try {
+    const versions = readdirSync(nvmVersions).filter((v) => v.startsWith("v")).sort().reverse();
+    if (versions.length > 0) {
+      extra.push(join(nvmVersions, versions[0], "bin"));
+    }
+  } catch {
+    // nvm not installed
+  }
+
+  const existing = new Set(base.split(delimiter));
+  const additions = extra.filter((d) => !existing.has(d) && existsSync(d));
+  if (additions.length === 0) return base;
+  return base + delimiter + additions.join(delimiter);
+}
+
 function findInPath(name: string): string | null {
   const exts = process.platform === "win32" ? [".cmd", ".bat", ".exe", ""] : [""];
-  for (const dir of (process.env.PATH ?? "").split(delimiter)) {
+  for (const dir of enrichedPath().split(delimiter)) {
     for (const ext of exts) {
       const p = join(dir, name + ext);
       if (existsSync(p)) {
@@ -218,7 +252,7 @@ export async function installGeminiCliLocal(
     const child = execFile(
       "npm",
       ["install", "--prefix", LOCAL_GEMINI_DIR, "@google/gemini-cli"],
-      { timeout: 120_000, env: { ...process.env, NODE_ENV: "" } },
+      { timeout: 120_000, env: { ...process.env, NODE_ENV: "", PATH: enrichedPath() } },
       (err) => {
         if (err) {
           onProgress?.(`Gemini CLI install failed: ${err.message}`);
