@@ -17,15 +17,18 @@ EasyClaw wraps OpenClaw into a desktop app that **anyone can use**: install, lau
 ## Features
 
 - **Natural Language Rules**: Write rules in plain language—they compile to policy, guards, or skills and take effect immediately (no restart)
-- **Multi-Provider LLM Support**: 15+ providers (OpenAI, Anthropic, DeepSeek, Zhipu, Moonshot, Qwen, etc.) with multi-key management and region-aware defaults
+- **Multi-Provider LLM Support**: 17+ providers (OpenAI, Anthropic, Google Gemini, DeepSeek, Zhipu/Z.ai, Moonshot, Qwen, Groq, Mistral, xAI, OpenRouter, MiniMax, Venice AI, Xiaomi, Volcengine/Doubao, Amazon Bedrock, etc.) with multi-key management and region-aware defaults
+- **Gemini CLI OAuth**: Sign in with Google for free-tier Gemini access—no API key needed. Auto-detects or installs Gemini CLI credentials
 - **Per-Provider Proxy Support**: Configure HTTP/SOCKS5 proxies per LLM provider or API key, with automatic routing and hot reload—essential for restricted regions
-- **Multi-Account Channels**: Configure Telegram, Discord, Slack, WhatsApp, etc. through UI with secure secret storage (Keychain/DPAPI)
+- **WeChat Messaging (WeCom)**: Chat with your agent from WeChat via a WeCom Customer Service relay. Open-source relay server included (`apps/wecom-relay`)
+- **Multi-Account Channels**: Configure Telegram, Discord, Slack, WhatsApp, DingTalk, and more through UI with secure secret storage (Keychain/DPAPI)
 - **Token Usage Tracking**: Real-time statistics by model and provider, auto-refreshed from OpenClaw session files
-- **Speech-to-Text**: Region-aware STT integration for voice messages
+- **Speech-to-Text**: Region-aware STT integration for voice messages (Groq, Volcengine)
 - **Visual Permissions**: Control file read/write access through UI
-- **Zero-Restart Updates**: API key and proxy changes apply instantly via hot reload—no gateway restart needed
+- **Zero-Restart Updates**: API key, proxy, and channel changes apply instantly via hot reload—no gateway restart needed
 - **Local-First & Private**: All data stays on your machine; secrets never stored in plaintext
 - **Auto-Update**: Client update checker with static manifest hosting
+- **Privacy-First Telemetry**: Optional anonymous usage analytics—no PII collected
 
 ### How File Permissions Work
 
@@ -67,20 +70,25 @@ This starts the Electron tray app, which spawns the OpenClaw gateway and serves 
 easyclaw/
 ├── apps/
 │   ├── desktop/          # Electron tray app (main process)
-│   └── panel/            # React management UI (served by desktop)
+│   ├── panel/            # React management UI (served by desktop)
+│   └── wecom-relay/      # WeCom Customer Service relay server (self-hosted)
 ├── packages/
 │   ├── core/             # Shared types & Zod schemas
-│   ├── gateway/          # Gateway lifecycle, config writer, secret injection
+│   ├── device-id/        # Machine fingerprinting for device identity
+│   ├── gateway/          # Gateway lifecycle, config writer, secret injection, OAuth flows
 │   ├── logger/           # Structured logging (tslog)
 │   ├── storage/          # SQLite persistence (better-sqlite3)
 │   ├── rules/            # Rule compilation & skill file writer
 │   ├── secrets/          # Keychain / DPAPI / file-based secret stores
 │   ├── updater/          # Auto-update client
-│   ├── stt/              # Speech-to-text abstraction
+│   ├── stt/              # Speech-to-text abstraction (Groq, Volcengine)
+│   ├── proxy-router/     # HTTP CONNECT proxy multiplexer for restricted regions
+│   ├── telemetry/        # Privacy-first anonymous analytics client
+│   ├── file-permissions-plugin/  # OpenClaw plugin for file access control
 │   └── openclaw-plugin/  # OpenClaw plugin SDK
 ├── extensions/
 │   ├── dingtalk/         # DingTalk channel integration
-│   └── wecom/            # WeCom channel integration
+│   └── wecom/            # WeCom channel plugin (runs inside gateway)
 ├── scripts/
 │   └── release.sh        # Build installers + update website
 ├── vendor/
@@ -94,27 +102,36 @@ The monorepo uses pnpm workspaces (`apps/*`, `packages/*`, `extensions/*`) with 
 
 ### Apps
 
-| Package             | Description                                                                                                            |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `@easyclaw/desktop` | Electron 35 tray app. Manages gateway lifecycle, hosts the panel server on port 3210, stores data in SQLite.           |
-| `@easyclaw/panel`   | React 19 + Vite 6 SPA. Pages for rules, providers, channels, permissions, usage, and a first-launch onboarding wizard. |
+| Package                  | Description                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| `@easyclaw/desktop`      | Electron 35 tray app. Manages gateway lifecycle, hosts the panel server on port 3210, stores data in SQLite.           |
+| `@easyclaw/panel`        | React 19 + Vite 6 SPA. Pages for rules, providers, channels, permissions, usage, and a first-launch onboarding wizard. |
+| `@easyclaw/wecom-relay`  | WeCom Customer Service relay server. Bridges WeChat users to the gateway via WebSocket. Deploy with Docker.            |
+
+### Extensions
+
+| Package              | Description                                                                                                                    |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `@easyclaw/wecom`    | WeCom channel plugin. Connects to the relay server via WebSocket, receives/sends messages, and registers as an OpenClaw channel. |
+| `@easyclaw/dingtalk` | DingTalk channel integration (placeholder).                                                                                    |
 
 ### Packages
 
-| Package                     | Description                                                                                                                                                                            |
-| --------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@easyclaw/core`            | Zod-validated types: `Rule`, `ChannelConfig`, `PermissionConfig`, `ModelConfig`, LLM provider definitions (OpenAI, Anthropic, DeepSeek, Zhipu, Moonshot, Qwen), region-aware defaults. |
-| `@easyclaw/gateway`         | `GatewayLauncher` (spawn/stop/restart with exponential backoff), config writer, secret injection from system keychain, skills directory watcher for hot reload.                        |
-| `@easyclaw/logger`          | tslog-based logger. Writes to `~/.easyclaw/logs/`.                                                                                                                                     |
-| `@easyclaw/storage`         | SQLite via better-sqlite3. Repositories for rules, artifacts, channels, permissions, settings. Migration system included. DB at `~/.easyclaw/easyclaw.db`.                             |
-| `@easyclaw/rules`           | Rule compilation, skill lifecycle (activate/deactivate), skill file writer that materializes rules as SKILL.md files for OpenClaw.                                                     |
-| `@easyclaw/secrets`         | Platform-aware secret storage. macOS Keychain, file-based fallback, in-memory for tests.                                                                                               |
-| `@easyclaw/updater`         | Checks `update-manifest.json` on the website, notifies user of new versions.                                                                                                           |
-| `@easyclaw/stt`                     | Speech-to-text provider abstraction.                                                                                                                                                   |
-| `@easyclaw/proxy-router`           | HTTP CONNECT proxy that routes requests to different upstream proxies based on per-provider domain configuration.                                                                       |
-| `@easyclaw/telemetry`              | Privacy-first telemetry client with batch uploads and retry logic; no PII collected.                                                                                                   |
-| `@easyclaw/file-permissions-plugin` | OpenClaw plugin that enforces file access permissions by intercepting and validating tool calls before execution.                                                                      |
-| `@easyclaw/openclaw-plugin`        | OpenClaw plugin SDK integration.                                                                                                                                                       |
+| Package                            | Description                                                                                                                                                                                         |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `@easyclaw/core`                   | Zod-validated types: `Rule`, `ChannelConfig`, `PermissionConfig`, `ModelConfig`, LLM provider definitions (OpenAI, Anthropic, Google Gemini, DeepSeek, Zhipu, Moonshot, Qwen, and more), region-aware defaults. |
+| `@easyclaw/gateway`                | `GatewayLauncher` (spawn/stop/restart with exponential backoff), config writer, secret injection from system keychain, Gemini CLI OAuth flow, auth profile sync, skills directory watcher for hot reload. |
+| `@easyclaw/logger`                 | tslog-based logger. Writes to `~/.easyclaw/logs/`.                                                                                                                                                  |
+| `@easyclaw/storage`                | SQLite via better-sqlite3. Repositories for rules, artifacts, channels, permissions, settings. Migration system included. DB at `~/.easyclaw/easyclaw.db`.                                          |
+| `@easyclaw/rules`                  | Rule compilation, skill lifecycle (activate/deactivate), skill file writer that materializes rules as SKILL.md files for OpenClaw.                                                                  |
+| `@easyclaw/secrets`                | Platform-aware secret storage. macOS Keychain, file-based fallback, in-memory for tests.                                                                                                            |
+| `@easyclaw/updater`                | Checks `update-manifest.json` on the website, notifies user of new versions.                                                                                                                        |
+| `@easyclaw/device-id`              | Machine fingerprinting (SHA-256 of hardware UUID) for device identity and quota enforcement.                                                                                                        |
+| `@easyclaw/stt`                    | Speech-to-text provider abstraction (Groq for international, Volcengine for China).                                                                                                                 |
+| `@easyclaw/proxy-router`           | HTTP CONNECT proxy that routes requests to different upstream proxies based on per-provider domain configuration.                                                                                    |
+| `@easyclaw/telemetry`              | Privacy-first telemetry client with batch uploads and retry logic; no PII collected.                                                                                                                |
+| `@easyclaw/file-permissions-plugin` | OpenClaw plugin that enforces file access permissions by intercepting and validating tool calls before execution.                                                                                   |
+| `@easyclaw/openclaw-plugin`        | OpenClaw plugin SDK integration.                                                                                                                                                                    |
 
 ## Scripts
 
@@ -158,6 +175,7 @@ pnpm --filter @easyclaw/gateway test
 │  │   ├── Static files (panel dist/)     │
 │  │   └── REST API (/api/*)              │
 │  ├── SQLite Storage                     │
+│  ├── Auth Profile Sync                  │
 │  └── Auto-Updater                       │
 └─────────────────────────────────────────┘
          │                    ▲
@@ -167,28 +185,37 @@ pnpm --filter @easyclaw/gateway test
 │  Gateway    │    │  localhost:3210  │
 │  Process    │    └─────────────────┘
 └─────────────┘
+         │ (extensions/wecom plugin via WebSocket)
+         ▼
+┌──────────────────────┐      ┌────────────┐
+│  WeCom Relay Server  │◄─────│  WeChat    │
+│  (apps/wecom-relay)  │      │  Users     │
+└──────────────────────┘      └────────────┘
 ```
 
 The desktop app runs as a **tray-only** application (hidden from the dock on macOS). It:
 
 1. Spawns the OpenClaw gateway from `vendor/openclaw/`
 2. Serves the panel UI and REST API on `localhost:3210`
-3. Writes gateway config to `~/.openclaw/gateway/config.yml`
-4. Injects secrets from the system keychain at runtime
+3. Writes gateway config and auth profiles to `~/.openclaw/`
+4. Injects secrets (API keys + OAuth tokens) from the system keychain at runtime
 5. Watches `~/.openclaw/skills/` for hot-reload of rule-generated skill files
+6. Syncs refreshed OAuth tokens back to keychain on shutdown
 
 ### REST API
 
 The panel server exposes these endpoints:
 
-| Endpoint           | Methods                | Description                               |
-| ------------------ | ---------------------- | ----------------------------------------- |
-| `/api/rules`       | GET, POST, PUT, DELETE | CRUD for rules                            |
-| `/api/channels`    | GET, POST, PUT, DELETE | Channel management                        |
-| `/api/permissions` | GET, POST, PUT, DELETE | Permission management                     |
-| `/api/settings`    | GET, PUT               | Key-value settings store                  |
-| `/api/providers`   | GET                    | Available LLM providers                   |
-| `/api/status`      | GET                    | System status (rule count, gateway state) |
+| Endpoint             | Methods                | Description                               |
+| -------------------- | ---------------------- | ----------------------------------------- |
+| `/api/rules`         | GET, POST, PUT, DELETE | CRUD for rules                            |
+| `/api/channels`      | GET, POST, PUT, DELETE | Channel management                        |
+| `/api/permissions`   | GET, POST, PUT, DELETE | Permission management                     |
+| `/api/settings`      | GET, PUT               | Key-value settings store                  |
+| `/api/providers`     | GET                    | Available LLM providers                   |
+| `/api/provider-keys` | GET, POST, PUT, DELETE | API key and OAuth credential management   |
+| `/api/oauth`         | POST                   | Gemini CLI OAuth flow (acquire/save)      |
+| `/api/status`        | GET                    | System status (rule count, gateway state) |
 
 ### Data Directories
 

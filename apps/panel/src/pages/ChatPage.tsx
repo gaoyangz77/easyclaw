@@ -34,7 +34,9 @@ const FETCH_BATCH = 200;
  */
 function cleanMessageText(text: string): string {
   // Remove "Conversation info (untrusted metadata):" and its JSON block
-  let cleaned = text.replace(/Conversation info \(untrusted metadata\):\s*\{[\s\S]*?\}\s*/g, "").trim();
+  let cleaned = text.replace(/Conversation info \(untrusted metadata\):\s*```json\s*\{[\s\S]*?\}\s*```\s*/g, "").trim();
+  // Fallback: also strip the variant without code fences
+  cleaned = cleaned.replace(/Conversation info \(untrusted metadata\):\s*\{[\s\S]*?\}\s*/g, "").trim();
 
   // Strip reasoning/thinking tags (<think>, <thinking>, <thought>, <antthinking>, <final>)
   // using OpenClaw's battle-tested implementation that respects code blocks
