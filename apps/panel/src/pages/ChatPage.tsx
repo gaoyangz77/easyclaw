@@ -154,7 +154,7 @@ function parseRawMessages(
   return parsed;
 }
 
-export function ChatPage() {
+export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: string | null) => void }) {
   const { t } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -412,6 +412,17 @@ export function ChatPage() {
     return () => clearTimeout(timer);
   }, [runId]);
 
+  function refreshAgentName(client: GatewayChatClient, cancelled?: boolean) {
+    client.request<{ name?: string }>("agent.identity.get", {
+      sessionKey: sessionKeyRef.current,
+    }).then((res) => {
+      if (!cancelled && res?.name) {
+        setAgentName(res.name);
+        onAgentNameChange?.(res.name);
+      }
+    }).catch(() => {});
+  }
+
   // Initialize connection
   useEffect(() => {
     let cancelled = false;
@@ -443,11 +454,7 @@ export function ChatPage() {
               }
             });
             // Fetch agent display name
-            client.request<{ name?: string }>("agent.identity.get", {
-              sessionKey: sessionKeyRef.current,
-            }).then((res) => {
-              if (!cancelled && res?.name) setAgentName(res.name);
-            }).catch(() => {});
+            refreshAgentName(client, cancelled);
           },
           onDisconnected: () => {
             if (cancelled) return;
@@ -479,8 +486,14 @@ export function ChatPage() {
 
     init();
 
+    // Poll agent identity every 5 minutes so name changes show up without refresh
+    const nameTimer = setInterval(() => {
+      if (clientRef.current) refreshAgentName(clientRef.current);
+    }, 5 * 60 * 1000);
+
     return () => {
       cancelled = true;
+      clearInterval(nameTimer);
       clientRef.current?.stop();
       clientRef.current = null;
     };

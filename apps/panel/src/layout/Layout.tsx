@@ -64,10 +64,12 @@ export function Layout({
   children,
   currentPath,
   onNavigate,
+  agentName,
 }: {
   children: ReactNode;
   currentPath: string;
   onNavigate: (path: string) => void;
+  agentName?: string | null;
 }) {
   const { t } = useTranslation();
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -182,7 +184,7 @@ export function Layout({
             <img src="/logo.png" alt="" className="sidebar-brand-logo" />
             {!collapsed && (
               <>
-                <span className="sidebar-brand-text">{t("common.brandName")}</span>
+                <span className="sidebar-brand-text">{agentName && agentName !== "Assistant" ? agentName : t("common.brandName")}</span>
                 {currentVersion && (
                   <span className="sidebar-version">v{currentVersion}</span>
                 )}

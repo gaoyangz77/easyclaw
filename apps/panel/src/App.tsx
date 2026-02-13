@@ -17,7 +17,7 @@ import { fetchSettings, fetchChangelog, trackEvent } from "./api.js";
 import type { ChangelogEntry } from "./api.js";
 
 const PAGES: Record<string, () => ReactNode> = {
-  "/": ChatPage,
+  "/": () => null, // ChatPage is always rendered directly (not via PAGES) to keep its WS alive
   "/rules": RulesPage,
   "/providers": ProvidersPage,
   "/channels": ChannelsPage,
@@ -44,6 +44,7 @@ export function App() {
   const [showTelemetryConsent, setShowTelemetryConsent] = useState(false);
   const [changelogEntries, setChangelogEntries] = useState<ChangelogEntry[]>([]);
   const [currentVersion, setCurrentVersion] = useState("");
+  const [agentName, setAgentName] = useState<string | null>(null);
 
   // Keep state in sync when user presses browser Back / Forward
   useEffect(() => {
@@ -145,11 +146,11 @@ export function App() {
 
   const OtherPage = currentPath !== "/" && currentPath !== "/channels" ? PAGES[currentPath] : null;
   return (
-    <Layout currentPath={currentPath} onNavigate={navigate}>
+    <Layout currentPath={currentPath} onNavigate={navigate} agentName={agentName}>
       {/* Keep ChatPage always mounted so its WebSocket connection and pending
           message state survive navigation to other pages (e.g. ProvidersPage). */}
       <div style={{ display: currentPath === "/" ? "contents" : "none" }}>
-        <ChatPage />
+        <ChatPage onAgentNameChange={setAgentName} />
       </div>
       {/* Keep ChannelsPage mounted to avoid re-fetching channel status on every visit. */}
       <div style={{ display: currentPath === "/channels" ? "contents" : "none" }}>
