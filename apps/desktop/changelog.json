@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.2.1",
+    "date": "2026-02-13",
+    "en": [
+      "Show agent name in sidebar header",
+      "Strip internal metadata from chat messages",
+      "Updated documentation with WeCom relay and Gemini OAuth details"
+    ],
+    "zh": [
+      "侧边栏显示 Agent 名称",
+      "聊天消息中去除内部元数据",
+      "更新文档：企业微信 Relay 和 Gemini OAuth 说明"
+    ]
+  },
+  {
     "version": "1.2.0",
     "date": "2026-02-13",
     "en": [
