@@ -453,7 +453,7 @@ export function ProvidersPage() {
             {newProvider === "anthropic" ? t("providers.anthropicTokenLabel") : t("providers.apiKeyLabel")} <span className="required">*</span>
           </div>
           <input
-            type="text"
+            type="password"
             autoComplete="off"
             data-1p-ignore
             value={apiKey}
@@ -596,7 +596,7 @@ export function ProvidersPage() {
                     <div className="key-expanded">
                       <div className="form-row">
                         <input
-                          type="text"
+                          type="password"
                           autoComplete="off"
                           data-1p-ignore
                           value={apiKey}

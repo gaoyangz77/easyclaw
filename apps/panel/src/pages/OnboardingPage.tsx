@@ -213,7 +213,7 @@ export function OnboardingPage({
               {provider === "anthropic" ? t("onboarding.anthropicTokenLabel") : t("onboarding.apiKeyLabel")}
               <input
                 className="input-full input-mono"
-                type="text"
+                type="password"
                 autoComplete="off"
                 data-1p-ignore
                 value={apiKey}
