@@ -1,0 +1,5 @@
+{
+  "id": "search-browser-fallback",
+  "name": "Search Browser Fallback",
+  "description": "Falls back to browser-based Google search when no search API key is configured"
+}
