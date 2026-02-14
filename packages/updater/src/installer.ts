@@ -1,24 +1,78 @@
 import { spawn } from "node:child_process";
 import { writeFile, mkdir, access, constants } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { createLogger } from "@easyclaw/logger";
 
 const log = createLogger("updater:installer");
 
 /**
- * Launch the downloaded NSIS installer in silent mode and quit the app.
- * The NSIS installer handles killing the old process and replacing files.
+ * Write a helper batch script that:
+ * 1. Waits for the current app process to fully exit (releasing file locks)
+ * 2. Runs the NSIS installer silently
+ * 3. Relaunches the app
+ * 4. Cleans up temp files
  */
-export function installWindows(exePath: string, quitApp: () => void): void {
-  log.info(`Launching NSIS installer: ${exePath} /S`);
+export async function installWindows(exePath: string, quitApp: () => void): Promise<void> {
+  const tempDir = dirname(exePath);
+  const scriptPath = join(tempDir, "easyclaw-update.cmd");
+  const appExePath = process.execPath;
+  const installerName = basename(exePath);
 
-  const child = spawn(exePath, ["/S"], {
+  log.info(`Writing update helper script: ${scriptPath}`);
+
+  const script = `@echo off\r
+:: EasyClaw auto-update helper script\r
+\r
+:: Wait for the old process to exit (max 30s)\r
+set WAIT=0\r
+:waitapp\r
+tasklist /fi "pid eq ${process.pid}" /nh 2>nul | find "${process.pid}" >nul\r
+if not errorlevel 1 (\r
+  if %WAIT% GEQ 30 goto timeout\r
+  timeout /t 1 /nobreak >nul\r
+  set /a WAIT+=1\r
+  goto waitapp\r
+)\r
+\r
+:: Extra delay to ensure all file handles are released\r
+timeout /t 2 /nobreak >nul\r
+\r
+:: Run NSIS installer silently (blocks until complete)\r
+"${exePath}" /S\r
+\r
+:: Wait for installer process to finish (in case it detaches)\r
+:waitinst\r
+tasklist /fi "imagename eq ${installerName}" /nh 2>nul | find /i "${installerName}" >nul\r
+if not errorlevel 1 (\r
+  timeout /t 1 /nobreak >nul\r
+  goto waitinst\r
+)\r
+\r
+timeout /t 2 /nobreak >nul\r
+\r
+:: Relaunch the app\r
+start "" "${appExePath}"\r
+\r
+:: Cleanup\r
+del "${exePath}" 2>nul\r
+del "%~f0"\r
+goto :eof\r
+\r
+:timeout\r
+echo Timeout waiting for process to exit\r
+del "%~f0"\r
+`;
+
+  await writeFile(scriptPath, script);
+
+  log.info(`Spawning update helper script: ${scriptPath}`);
+  const child = spawn("cmd.exe", ["/c", scriptPath], {
     detached: true,
     stdio: "ignore",
+    windowsHide: true,
   });
   child.unref();
 
-  // Give the installer a moment to start, then quit
   setTimeout(() => {
     quitApp();
   }, 500);

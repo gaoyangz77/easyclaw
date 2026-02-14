@@ -517,7 +517,7 @@ app.whenReady().then(async () => {
 
     isQuitting = true; // prevent close-to-tray
     if (platform === "win") {
-      installWindows(filePath, () => app.quit());
+      await installWindows(filePath, () => app.quit());
     } else {
       const appBundlePath = resolveAppBundlePath();
       await installMacOS(filePath, appBundlePath, () => app.quit());
