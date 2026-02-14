@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.2.6",
+    "date": "2026-02-14",
+    "en": [
+      "WeCom rebind warning and channel lifecycle events",
+      "Fixed updater: fire-and-forget download, un-dismiss banner on active download",
+      "Moved search-browser-fallback plugin to extensions/",
+      "TypeScript strict-mode and React 19 compatibility fixes",
+      "Dependency updates (undici, @types/ws)"
+    ],
+    "zh": [
+      "企业微信重新绑定警告和频道生命周期事件",
+      "修复更新器：后台下载、下载中重新显示更新横幅",
+      "搜索浏览器回退插件移至 extensions/",
+      "TypeScript 严格模式和 React 19 兼容性修复",
+      "依赖更新（undici、@types/ws）"
+    ]
+  },
+  {
     "version": "1.2.5",
     "date": "2026-02-14",
     "en": [
