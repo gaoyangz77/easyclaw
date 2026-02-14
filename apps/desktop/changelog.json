@@ -1,5 +1,21 @@
 [
   {
+    "version": "1.2.2",
+    "date": "2026-02-13",
+    "en": [
+      "Fix proxy routing for API key validation",
+      "Improve Windows compatibility",
+      "Polish onboarding OAuth UI flow",
+      "Telemetry: add device ID tracking and fix engagement funnel"
+    ],
+    "zh": [
+      "修复 API Key 验证的代理路由问题",
+      "改进 Windows 兼容性",
+      "优化引导页 OAuth 登录流程",
+      "遥测：添加设备 ID 追踪并修复用户活跃漏斗"
+    ]
+  },
+  {
     "version": "1.2.1",
     "date": "2026-02-13",
     "en": [
