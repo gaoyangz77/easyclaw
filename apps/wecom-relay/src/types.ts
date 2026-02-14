@@ -26,6 +26,16 @@ export interface ReplyFrame {
   content: string;
 }
 
+export interface ImageReplyFrame {
+  type: "image_reply";
+  id: string;
+  external_user_id: string;
+  /** Base64-encoded image data. */
+  image_data: string;
+  /** MIME type (e.g. "image/png"). */
+  image_mime: string;
+}
+
 export interface AckFrame {
   type: "ack";
   id: string;
@@ -62,6 +72,7 @@ export type WSFrame =
   | HelloFrame
   | InboundFrame
   | ReplyFrame
+  | ImageReplyFrame
   | AckFrame
   | ErrorFrame
   | CreateBindingFrame

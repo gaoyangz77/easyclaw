@@ -5,11 +5,11 @@ import type { Config } from "../config.js";
 import { ConnectionRegistry } from "./registry.js";
 import { decodeFrame, encodeFrame } from "./protocol.js";
 import { startHeartbeat } from "./heartbeat.js";
-import { handleOutboundReply } from "../relay/outbound.js";
+import { handleOutboundReply, handleOutboundImageReply } from "../relay/outbound.js";
 import { getBindingStore } from "../index.js";
 import { getAccessToken } from "../wecom/access-token.js";
 import { getContactWayUrl, endCustomerSession } from "../wecom/send-message.js";
-import type { HelloFrame, ReplyFrame, CreateBindingFrame, UnbindAllFrame } from "../types.js";
+import type { HelloFrame, ReplyFrame, ImageReplyFrame, CreateBindingFrame, UnbindAllFrame } from "../types.js";
 
 const log = createLogger("ws:server");
 
@@ -85,6 +85,15 @@ export function createWSServer(config: Config): WebSocketServer {
           handleOutboundReply(reply, config).catch((err) => {
             log.error(`Error handling reply from ${gatewayId}:`, err);
             ws.send(encodeFrame({ type: "error", message: "Failed to send reply" }));
+          });
+          return;
+        }
+
+        if (frame.type === "image_reply") {
+          const imageReply = frame as ImageReplyFrame;
+          handleOutboundImageReply(imageReply, config).catch((err) => {
+            log.error(`Error handling image reply from ${gatewayId}:`, err);
+            ws.send(encodeFrame({ type: "error", message: "Failed to send image reply" }));
           });
           return;
         }

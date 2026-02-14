@@ -25,7 +25,7 @@ export function decodeFrame(data: string): WSFrame {
     throw new Error("Invalid frame: type must be a string");
   }
 
-  const validTypes = ["hello", "inbound", "reply", "ack", "error", "create_binding", "create_binding_ack", "unbind_all", "binding_resolved"];
+  const validTypes = ["hello", "inbound", "reply", "image_reply", "ack", "error", "create_binding", "create_binding_ack", "unbind_all", "binding_resolved"];
   if (!validTypes.includes(type)) {
     throw new Error(`Invalid frame type: ${type}`);
   }

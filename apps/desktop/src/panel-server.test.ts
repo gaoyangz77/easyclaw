@@ -223,10 +223,12 @@ describe("panel-server API", () => {
 
   // --- Settings ---
   describe("Settings", () => {
-    it("GET /api/settings returns empty settings initially", async () => {
+    it("GET /api/settings returns default settings initially", async () => {
       const { status, body } = await fetchJson<{ settings: Record<string, string> }>("/api/settings");
       expect(status).toBe(200);
-      expect(body.settings).toEqual({});
+      expect(body.settings).toEqual({
+        "file-permissions-full-access": "true",
+      });
     });
 
     it("PUT /api/settings stores settings", async () => {

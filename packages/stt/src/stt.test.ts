@@ -187,6 +187,29 @@ describe("GroqSttProvider", () => {
 describe("VolcengineSttProvider", () => {
   const originalFetch = globalThis.fetch;
 
+  /** Helper to create a mock Response with headers */
+  function mockResponse(opts: {
+    ok: boolean;
+    status: number;
+    statusCode?: string;
+    message?: string;
+    json?: unknown;
+    text?: string;
+  }): Response {
+    const headers = new Headers();
+    if (opts.statusCode !== undefined)
+      headers.set("x-api-status-code", opts.statusCode);
+    if (opts.message !== undefined)
+      headers.set("x-api-message", opts.message);
+    return {
+      ok: opts.ok,
+      status: opts.status,
+      headers,
+      json: async () => opts.json ?? {},
+      text: async () => opts.text ?? "",
+    } as unknown as Response;
+  }
+
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
   });
@@ -196,40 +219,35 @@ describe("VolcengineSttProvider", () => {
     vi.useRealTimers();
   });
 
-  it("submits audio and polls until completion, returning text", async () => {
+  it("submits audio and polls until completion, returning text", { timeout: 15_000 }, async () => {
     let callIndex = 0;
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
       callIndex++;
       if (url.includes("submit")) {
-        return {
+        return mockResponse({
           ok: true,
           status: 200,
-          json: async () => ({
-            resp: { code: 0, msg: "ok", id: "task-123" },
-          }),
-          text: async () => "",
-        } as unknown as Response;
+          statusCode: "20000000",
+          message: "ok",
+        });
       }
       // First query: still processing
       if (callIndex === 2) {
-        return {
+        return mockResponse({
           ok: true,
           status: 200,
-          json: async () => ({
-            resp: { code: 1000, msg: "processing" },
-          }),
-          text: async () => "",
-        } as unknown as Response;
+          statusCode: "40000003",
+          message: "processing",
+        });
       }
       // Second query: done
-      return {
+      return mockResponse({
         ok: true,
         status: 200,
-        json: async () => ({
-          resp: { code: 0, msg: "ok", text: "Transcribed text from Volcengine" },
-        }),
-        text: async () => "",
-      } as unknown as Response;
+        statusCode: "20000000",
+        message: "ok",
+        json: { result: { text: "Transcribed text from Volcengine" } },
+      });
     });
 
     globalThis.fetch = fetchMock;
@@ -246,44 +264,42 @@ describe("VolcengineSttProvider", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3); // submit + 2 queries
     const [submitUrl, submitOptions] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(submitUrl).toBe(
-      "https://openspeech.bytedance.com/api/v3/auc/bigmodel/idle/submit",
+      "https://openspeech.bytedance.com/api/v3/auc/bigmodel/submit",
     );
     expect(submitOptions.method).toBe("POST");
     const submitHeaders = submitOptions.headers as Record<string, string>;
     expect(submitHeaders["X-Api-App-Key"]).toBe("app-key");
     expect(submitHeaders["X-Api-Access-Key"]).toBe("access-key");
-    expect(submitHeaders["X-Api-Resource-Id"]).toBe("volc.bigasr.auc_idle");
+    expect(submitHeaders["X-Api-Resource-Id"]).toBe("volc.seedasr.auc");
 
-    // Verify body contains data URL
+    // Verify body contains base64 audio data
     const submitBody = JSON.parse(submitOptions.body as string);
-    expect(submitBody.audio.url).toMatch(/^data:audio\/wav;base64,/);
+    expect(submitBody.audio.data).toBe(audio.toString("base64"));
+    expect(submitBody.audio.format).toBe("wav");
     expect(submitBody.request.model_name).toBe("bigmodel");
   });
 
   it("returns concatenated utterances when text field is absent", async () => {
     const fetchMock = vi.fn().mockImplementation(async (url: string) => {
       if (url.includes("submit")) {
-        return {
+        return mockResponse({
           ok: true,
           status: 200,
-          json: async () => ({
-            resp: { code: 0, msg: "ok", id: "task-456" },
-          }),
-          text: async () => "",
-        } as unknown as Response;
+          statusCode: "20000000",
+          message: "ok",
+        });
       }
-      return {
+      return mockResponse({
         ok: true,
         status: 200,
-        json: async () => ({
-          resp: {
-            code: 0,
-            msg: "ok",
+        statusCode: "20000000",
+        message: "ok",
+        json: {
+          result: {
             utterances: [{ text: "Hello " }, { text: "world" }],
           },
-        }),
-        text: async () => "",
-      } as unknown as Response;
+        },
+      });
     });
 
     globalThis.fetch = fetchMock;
@@ -294,12 +310,15 @@ describe("VolcengineSttProvider", () => {
   });
 
   it("throws on submit HTTP error", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: false,
-      status: 500,
-      json: async () => ({}),
-      text: async () => "Internal Server Error",
-    } as unknown as Response);
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      mockResponse({
+        ok: false,
+        status: 500,
+        statusCode: "50000000",
+        message: "Internal Server Error",
+        text: "Internal Server Error",
+      }),
+    );
 
     const provider = new VolcengineSttProvider("app", "key");
     await expect(
@@ -307,20 +326,21 @@ describe("VolcengineSttProvider", () => {
     ).rejects.toThrow("Volcengine submit failed: HTTP 500");
   });
 
-  it("throws on submit API error (non-zero code)", async () => {
-    globalThis.fetch = vi.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({
-        resp: { code: 1001, msg: "Invalid request" },
+  it("throws on submit API error (bad status code)", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      mockResponse({
+        ok: true,
+        status: 200,
+        statusCode: "40000001",
+        message: "Invalid request",
+        text: "",
       }),
-      text: async () => "",
-    } as unknown as Response);
+    );
 
     const provider = new VolcengineSttProvider("app", "key");
     await expect(
       provider.transcribe(Buffer.from("audio"), "wav"),
-    ).rejects.toThrow("Volcengine submit error: code=1001");
+    ).rejects.toThrow("Volcengine submit failed: HTTP 200");
   });
 
   it("throws on query HTTP error", async () => {
@@ -329,22 +349,21 @@ describe("VolcengineSttProvider", () => {
       callIndex++;
       if (callIndex === 1) {
         // submit succeeds
-        return {
+        return mockResponse({
           ok: true,
           status: 200,
-          json: async () => ({
-            resp: { code: 0, msg: "ok", id: "task-789" },
-          }),
-          text: async () => "",
-        } as unknown as Response;
+          statusCode: "20000000",
+          message: "ok",
+        });
       }
       // query fails
-      return {
+      return mockResponse({
         ok: false,
         status: 503,
-        json: async () => ({}),
-        text: async () => "Service Unavailable",
-      } as unknown as Response;
+        statusCode: "50300000",
+        message: "Service Unavailable",
+        text: "Service Unavailable",
+      });
     });
 
     const provider = new VolcengineSttProvider("app", "key");
@@ -353,33 +372,30 @@ describe("VolcengineSttProvider", () => {
     ).rejects.toThrow("Volcengine query failed: HTTP 503");
   });
 
-  it("throws on query API error (unexpected code)", async () => {
+  it("throws on query API error (unexpected status code)", async () => {
     let callIndex = 0;
     globalThis.fetch = vi.fn().mockImplementation(async () => {
       callIndex++;
       if (callIndex === 1) {
-        return {
+        return mockResponse({
           ok: true,
           status: 200,
-          json: async () => ({
-            resp: { code: 0, msg: "ok", id: "task-err" },
-          }),
-          text: async () => "",
-        } as unknown as Response;
+          statusCode: "20000000",
+          message: "ok",
+        });
       }
-      return {
+      return mockResponse({
         ok: true,
         status: 200,
-        json: async () => ({
-          resp: { code: 2000, msg: "Processing failed" },
-        }),
-        text: async () => "",
-      } as unknown as Response;
+        statusCode: "40000099",
+        message: "Processing failed",
+        text: "",
+      });
     });
 
     const provider = new VolcengineSttProvider("app", "key");
     await expect(
       provider.transcribe(Buffer.from("audio"), "wav"),
-    ).rejects.toThrow("Volcengine query error: code=2000");
+    ).rejects.toThrow("Volcengine query failed: HTTP 200");
   });
 });

@@ -130,8 +130,17 @@ export async function handleInboundMessages(
         msgType = "text";
         break;
       case "image":
-        content = msg.media_id;
+        content = "";
         msgType = "image";
+        try {
+          const accessToken = await getAccessToken(config.WECOM_CORPID, config.WECOM_APP_SECRET);
+          const media = await downloadMedia(accessToken, msg.media_id);
+          mediaData = media.data.toString("base64");
+          mediaMime = media.contentType;
+        } catch (err) {
+          log.error(`Failed to download image media ${msg.media_id}: ${err}`);
+          content = "[图片 - 下载失败]";
+        }
         break;
       case "voice":
         content = msg.media_id;

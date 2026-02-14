@@ -114,6 +114,9 @@ let wecomRelayState: {
 // the original WeCom external_userid (which is case-sensitive) for replies.
 const wecomUserIdCaseMap = new Map<string, string>();
 
+// Map runId → externalUserId for routing agent replies back to WeCom users.
+const wecomRunIdMap = new Map<string, string>();
+
 // === WeCom Relay Persistent Connection ===
 // Maintains a long-lived WS to the relay server so that messages from
 // WeCom users are forwarded to the local AI agent and replies flow back.
@@ -287,11 +290,11 @@ async function handleWeComInbound(frame: {
     return;
   }
 
-  const sessionKey = `agent:main:wecom:${frame.external_user_id}`;
   wecomUserIdCaseMap.set(frame.external_user_id.toLowerCase(), frame.external_user_id);
   log.info(`WeCom: forwarding ${frame.msg_type} from ${frame.external_user_id} to agent`);
 
   let message = frame.content;
+  let attachments: Array<{ type: string; mimeType: string; content: string }> | undefined;
 
   // Transcribe voice messages using the STT manager
   if (frame.msg_type === "voice" && frame.media_data) {
@@ -328,13 +331,27 @@ async function handleWeComInbound(frame: {
     }
   }
 
+  // Pass image data as attachments so the agent can see the image
+  if (frame.msg_type === "image" && frame.media_data && frame.media_mime) {
+    message = message || "[图片]";
+    attachments = [{
+      type: "image",
+      mimeType: frame.media_mime,
+      content: frame.media_data,
+    }];
+  }
+
   try {
-    await wecomGatewayRpc.request("agent", {
-      sessionKey,
-      channel: "webchat",
+    const result = await wecomGatewayRpc.request<{ runId?: string }>("agent", {
+      sessionKey: "agent:main:main",
+      channel: "wechat",
       message,
+      attachments,
       idempotencyKey: frame.id,
     });
+    if (result?.runId) {
+      wecomRunIdMap.set(result.runId, frame.external_user_id);
+    }
   } catch (err) {
     log.error("WeCom: agent request failed:", err);
   }
@@ -343,36 +360,79 @@ async function handleWeComInbound(frame: {
 /** Handle a gateway 'chat' event — extract the AI reply and send it back to WeCom. */
 function handleWeComChatEvent(payload: unknown): void {
   const p = payload as Record<string, unknown> | null;
-  if (!p || p.state !== "final") return;
+  if (!p) return;
 
-  const sessionKey = p.sessionKey as string | undefined;
-  if (!sessionKey?.startsWith("agent:main:wecom:")) return;
+  const runId = p.runId as string | undefined;
+  if (!runId || !wecomRunIdMap.has(runId)) return;
 
-  const rawUserId = sessionKey.slice("agent:main:wecom:".length);
+  const rawUserId = wecomRunIdMap.get(runId)!;
   const externalUserId = wecomUserIdCaseMap.get(rawUserId.toLowerCase()) ?? rawUserId;
+
+  if (p.state === "error") {
+    wecomRunIdMap.delete(runId);
+    const errorMsg = (p.errorMessage as string) ?? "An error occurred";
+    log.warn(`WeCom: agent error for ${externalUserId}: ${errorMsg}`);
+    if (wecomRelayWs && wecomRelayWs.readyState === WebSocket.OPEN) {
+      wecomRelayWs.send(JSON.stringify({
+        type: "reply",
+        id: randomUUID(),
+        external_user_id: externalUserId,
+        content: `⚠ ${errorMsg}`,
+      }));
+    }
+    return;
+  }
+
+  if (p.state !== "final") return;
+
+  wecomRunIdMap.delete(runId);
   const message = p.message as Record<string, unknown> | undefined;
   const content = message?.content;
 
   if (!Array.isArray(content)) return;
 
-  const texts = content
-    .filter((c: unknown) => {
-      const block = c as Record<string, unknown>;
-      return block.type === "text" && typeof block.text === "string";
-    })
-    .map((c: unknown) => (c as { text: string }).text);
+  const texts: string[] = [];
+  const images: Array<{ data: string; mimeType: string }> = [];
 
-  const replyText = texts.join("\n\n").trim();
-  if (!replyText) return;
+  for (const c of content) {
+    const block = c as Record<string, unknown>;
+    if (block.type === "text" && typeof block.text === "string") {
+      texts.push(block.text as string);
+    } else if (block.type === "image") {
+      const source = block.source as Record<string, unknown> | undefined;
+      if (source?.type === "base64" && typeof source.data === "string") {
+        images.push({
+          data: source.data as string,
+          mimeType: (source.media_type as string) ?? "image/png",
+        });
+      }
+    }
+  }
 
   if (wecomRelayWs && wecomRelayWs.readyState === WebSocket.OPEN) {
-    wecomRelayWs.send(JSON.stringify({
-      type: "reply",
-      id: randomUUID(),
-      external_user_id: externalUserId,
-      content: replyText,
-    }));
-    log.info(`WeCom: reply sent to ${externalUserId} (${replyText.length} chars)`);
+    // Send text reply
+    const replyText = texts.join("\n\n").trim();
+    if (replyText) {
+      wecomRelayWs.send(JSON.stringify({
+        type: "reply",
+        id: randomUUID(),
+        external_user_id: externalUserId,
+        content: replyText,
+      }));
+      log.info(`WeCom: reply sent to ${externalUserId} (${replyText.length} chars)`);
+    }
+
+    // Send image replies
+    for (const img of images) {
+      wecomRelayWs.send(JSON.stringify({
+        type: "image_reply",
+        id: randomUUID(),
+        external_user_id: externalUserId,
+        image_data: img.data,
+        image_mime: img.mimeType,
+      }));
+      log.info(`WeCom: image reply sent to ${externalUserId} (${img.mimeType})`);
+    }
   } else {
     log.warn(`WeCom: relay WS not open, cannot send reply to ${externalUserId}`);
   }
