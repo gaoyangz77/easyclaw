@@ -16,6 +16,11 @@ const BINDING_SUCCESS_MSG: Record<string, string> = {
   en: "You're all set! From now on, just message me here on WeChat — you focus on the big picture, and I'll keep your computer in tip-top shape!",
 };
 
+const REBIND_WARNING_MSG: Record<string, string> = {
+  zh: "⚠️ 提醒：EasyClaw（爪爪）仅支持一个微信号连接一个实例。本次扫码成功后，你之前绑定的 EasyClaw 实例将不再能收到你的微信消息。如需清理，请在之前的 EasyClaw 客户端中删除已失效的微信绑定。",
+  en: "⚠️ Heads up: EasyClaw only supports connecting one WeChat account to one instance. After this new binding, your previously linked EasyClaw instance will no longer receive your WeChat messages. To clean up, please remove the invalid WeChat binding from your previous EasyClaw client.",
+};
+
 /**
  * Handle inbound messages from WeCom sync_msg.
  *
@@ -37,9 +42,19 @@ export async function handleInboundMessages(
       if (msg.event_type === "enter_session" && msg.scene_param) {
         const sceneGatewayId = store.resolvePendingBinding(msg.scene_param);
         if (sceneGatewayId) {
+          const previousGatewayId = store.lookup(msg.external_userid);
+          const isRebind = previousGatewayId && previousGatewayId !== sceneGatewayId;
           store.bind(msg.external_userid, sceneGatewayId);
           try {
             const accessToken = await getAccessToken(config.WECOM_CORPID, config.WECOM_APP_SECRET);
+            if (isRebind) {
+              await sendTextMessage(
+                accessToken,
+                msg.external_userid,
+                config.WECOM_OPEN_KFID,
+                REBIND_WARNING_MSG[config.LOCALE] ?? REBIND_WARNING_MSG.zh,
+              );
+            }
             await sendTextMessage(
               accessToken,
               msg.external_userid,
@@ -79,9 +94,19 @@ export async function handleInboundMessages(
 
       if (gatewayId) {
         // Execute binding: associate this external user with the gateway
+        const previousGatewayId = store.lookup(externalUserId);
+        const isRebind = previousGatewayId && previousGatewayId !== gatewayId;
         store.bind(externalUserId, gatewayId);
 
         const accessToken = await getAccessToken(config.WECOM_CORPID, config.WECOM_APP_SECRET);
+        if (isRebind) {
+          await sendTextMessage(
+            accessToken,
+            externalUserId,
+            config.WECOM_OPEN_KFID,
+            REBIND_WARNING_MSG[config.LOCALE] ?? REBIND_WARNING_MSG.zh,
+          );
+        }
         await sendTextMessage(
           accessToken,
           externalUserId,

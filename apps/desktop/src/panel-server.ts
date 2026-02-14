@@ -303,7 +303,7 @@ async function handleWeComInbound(frame: {
   if (frame.msg_type === "voice" && frame.media_data) {
     if (wecomSttManager?.isEnabled()) {
       try {
-        let audioBuffer = Buffer.from(frame.media_data, "base64");
+        let audioBuffer: Buffer = Buffer.from(frame.media_data, "base64");
         // WeCom voice is AMR format; extract format hint from MIME or default to "amr"
         let format = frame.media_mime?.split("/").pop()?.split(";")[0] ?? "amr";
 
@@ -1048,7 +1048,7 @@ export interface PanelServerOptions {
   /** Gateway RPC client getter (returns null if gateway not connected) */
   getRpcClient?: () => GatewayRpcClient | null;
   /** Callback fired when a rule is created, updated, or deleted. */
-  onRuleChange?: (action: "created" | "updated" | "deleted", ruleId: string) => void;
+  onRuleChange?: (action: "created" | "updated" | "deleted" | "channel-created" | "channel-deleted", ruleId: string) => void;
   /**
    * Callback fired when provider settings change.
    * @param hint.configOnly - true if only the config file changed (e.g. model switch).
@@ -1475,7 +1475,7 @@ async function handleApiRoute(
   storage: Storage,
   secretStore: SecretStore,
   getRpcClient?: () => GatewayRpcClient | null,
-  onRuleChange?: (action: "created" | "updated" | "deleted", ruleId: string) => void,
+  onRuleChange?: (action: "created" | "updated" | "deleted" | "channel-created" | "channel-deleted", ruleId: string) => void,
   onProviderChange?: (hint?: { configOnly?: boolean; keyOnly?: boolean }) => void,
   onOpenFileDialog?: () => Promise<string | null>,
   sttManager?: {
@@ -2006,7 +2006,7 @@ async function handleApiRoute(
 
         // If model or proxy changed on the active key of the active provider, trigger gateway update
         const activeProvider = storage.settings.get("llm-provider");
-        const modelChanged = body.model && body.model !== existing.model;
+        const modelChanged = !!(body.model && body.model !== existing.model);
         const proxyChanged = proxyBaseUrl !== undefined && proxyBaseUrl !== existing.proxyBaseUrl;
         if (existing.isDefault && existing.provider === activeProvider && (modelChanged || proxyChanged)) {
           // Model-only change can use SIGUSR1 reload (config file only, no env var change)

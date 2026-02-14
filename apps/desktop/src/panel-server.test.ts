@@ -33,6 +33,7 @@ beforeAll(async () => {
     port: 0, // random port
     panelDistDir: "/tmp/nonexistent-panel-dist", // no static files needed for API tests
     storage,
+    secretStore: { get: async () => null, set: async () => {}, delete: async () => {} } as any,
     onRuleChange: (action, ruleId) => {
       ruleChanges.push({ action, ruleId });
     },

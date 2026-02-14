@@ -8,6 +8,8 @@ export type {
   ProviderKeyEntry,
   ProviderKeyAuthType,
   EasyClawConfig,
+  ChannelsStatusSnapshot,
+  ChannelAccountSnapshot,
   SttProvider,
   SttSettings,
 } from "./types/index.js";
