@@ -20,6 +20,8 @@
     "@easyclaw/core": "workspace:*",
     "@easyclaw/logger": "workspace:*",
     "@easyclaw/secrets": "workspace:*",
+    "@easyclaw/storage": "workspace:*",
+    "undici": "^7.21.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {

@@ -67,7 +67,7 @@ importers:
         specifier: ^11.9.1
         version: 11.10.0
       undici:
-        specifier: ^7.2.0
+        specifier: ^7.21.0
         version: 7.21.0
       ws:
         specifier: ^8.18.0
@@ -79,6 +79,9 @@ importers:
       '@electron/rebuild':
         specifier: ^4.0.3
         version: 4.0.3
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       electron:
         specifier: ^35.1.2
         version: 35.7.5
@@ -266,6 +269,12 @@ importers:
       '@easyclaw/secrets':
         specifier: workspace:*
         version: link:../secrets
+      '@easyclaw/storage':
+        specifier: workspace:*
+        version: link:../storage
+      undici:
+        specifier: ^7.21.0
+        version: 7.21.0
       ws:
         specifier: ^8.18.0
         version: 8.19.0
