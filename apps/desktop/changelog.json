@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.2.8",
+    "date": "2026-02-15",
+    "en": [
+      "Unified extension loading via single extensionsDir path",
+      "Fixed search-browser-fallback plugin path in packaged app"
+    ],
+    "zh": [
+      "统一扩展加载路径（单一 extensionsDir）",
+      "修复打包后搜索浏览器回退插件路径问题"
+    ]
+  },
+  {
     "version": "1.2.7",
     "date": "2026-02-15",
     "en": [
