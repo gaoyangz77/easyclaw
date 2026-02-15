@@ -50,11 +50,9 @@ export const test = base.extend<ElectronFixtures>({
   },
 
   window: async ({ electronApp }, use) => {
-    const isProd = !!process.env.E2E_PROD;
-    const launchTimeout = isProd ? 90_000 : 45_000;
-    const window = await electronApp.firstWindow({ timeout: launchTimeout });
+    const window = await electronApp.firstWindow({ timeout: 45_000 });
     await window.waitForLoadState("domcontentloaded");
-    await window.waitForSelector(".sidebar-brand", { timeout: launchTimeout });
+    await window.waitForSelector(".sidebar-brand", { timeout: 45_000 });
     await use(window);
   },
 });

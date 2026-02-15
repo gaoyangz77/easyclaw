@@ -105,6 +105,8 @@ fi
 
 # ---- Step 5: Pack (unpacked app for prod e2e) ----
 step "Pack application (electron-builder --dir)"
+# Clean stale release dirs to avoid picking up wrong binary in prod E2E
+rm -rf "$RELEASE_DIR"
 (cd "$DESKTOP_DIR" && pnpm run pack)
 info "Pack complete."
 
