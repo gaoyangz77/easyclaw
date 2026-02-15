@@ -7,12 +7,76 @@ End-to-end integration tests for the EasyClaw Electron desktop app, powered by [
 ```
 e2e/
 ├── playwright.config.ts   # Playwright config (timeouts, workers, reporter)
-├── electron-fixture.ts    # Custom test fixture — launches Electron in dev or prod mode
-├── global-setup.ts        # Kills stale EasyClaw processes before each run
-├── smoke.spec.ts          # Smoke tests (add more *.spec.ts files as needed)
+├── electron-fixture.ts    # Custom fixtures — `test` (returning user) & `freshTest` (fresh user)
+├── global-setup.ts        # Loads e2e/.env, kills stale EasyClaw processes
+├── smoke.spec.ts          # Returning-user smoke tests (uses `test` fixture)
+├── onboarding.spec.ts     # Fresh-user onboarding tests (uses `freshTest` fixture)
+├── .env                   # API keys for testing (gitignored)
 ├── package.json           # { "type": "commonjs" } override for Playwright compatibility
 └── README.md              # This file
 ```
+
+## Data Isolation
+
+Each test runs with a **fresh, isolated temp directory**. Three env vars redirect all persistent state:
+
+| Env Var | Points to | Isolates |
+|---------|-----------|----------|
+| `EASYCLAW_DB_PATH` | `<tempdir>/db.sqlite` | SQLite database |
+| `EASYCLAW_SECRETS_DIR` | `<tempdir>/secrets/` | API keys (bypasses macOS Keychain) |
+| `OPENCLAW_STATE_DIR` | `<tempdir>/openclaw/` | Gateway state files |
+
+The temp directory is deleted after each test via `rmSync`, ensuring tests are **idempotent**.
+
+## Two Fixtures, Two User Flows
+
+| Fixture | Import | Simulates | Entry Point |
+|---------|--------|-----------|-------------|
+| `test` | `import { test } from "./electron-fixture.js"` | Returning user (has a provider key) | Main page with sidebar |
+| `freshTest` | `import { freshTest as test } from "./electron-fixture.js"` | Brand-new user (empty database) | Onboarding page |
+
+**Returning user (`test`)**: Seeds a Volcengine provider key via the gateway REST API (`POST /api/provider-keys` + `PUT /api/settings`), then reloads. If `E2E_VOLCENGINE_API_KEY` is not set, falls back to clicking "Skip setup" so basic smoke tests still work without real API keys.
+
+**Fresh user (`freshTest`)**: Launches with an empty database so the app shows the onboarding page. Requires `E2E_ZHIPU_API_KEY` for the full onboarding test (otherwise that test is skipped).
+
+## Test Suites
+
+### `onboarding.spec.ts` — Fresh User Onboarding (2 tests)
+
+Uses the `freshTest` fixture (empty database, lands on onboarding page).
+
+| # | Test | Steps | Requires API Key |
+|---|------|-------|-----------------|
+| 1 | Fresh user completes onboarding with GLM API key | Switch to API tab -> Select "Zhipu (GLM) - China" -> Select "GLM-4.7-Flash" -> Fill API key -> Click "Save & Continue" -> Wait for "All Set" page -> Click "Go to Dashboard" -> Verify sidebar loads | `E2E_ZHIPU_API_KEY` |
+| 2 | Fresh user can skip onboarding | Click "Skip setup" -> Verify sidebar loads | No |
+
+### `smoke.spec.ts` — Returning User Smoke Tests (6 tests)
+
+Uses the `test` fixture (pre-seeded Volcengine key, lands on main page).
+
+| # | Test | Steps | Requires API Key |
+|---|------|-------|-----------------|
+| 1 | App launches and window is visible | Verify 1 window exists -> Check title is "EasyClaw" | No |
+| 2 | Panel renders with sidebar navigation | Verify `.sidebar-brand-text` visible -> Verify >= 5 nav buttons | No |
+| 3 | Chat page is default and gateway connects | Verify first nav has `nav-active` -> Wait for `.chat-status-dot-connected` -> Verify stable for 3s | No |
+| 4 | LLM Providers page: dropdowns and pricing | Dismiss modals -> Navigate to LLM Providers -> Verify Subscription tab active -> Open provider dropdown (2-3 options) -> Verify pricing card -> Switch to API tab -> Open provider dropdown (10-18 options) -> Verify pricing table | No |
+| 5 | Add second key and switch active provider | Dismiss modals -> Navigate to LLM Providers -> Verify 1 active volcengine key -> Add GLM key via form (API tab, Zhipu, GLM-4.7-Flash) -> Verify 2 keys (volcengine active, zhipu inactive) -> Click "Activate" on zhipu -> Verify zhipu active, volcengine inactive | `E2E_ZHIPU_API_KEY` + `E2E_VOLCENGINE_API_KEY` |
+| 6 | Window has correct web preferences | Verify `nodeIntegration: false` and `contextIsolation: true` | No |
+
+## API Keys
+
+Tests that interact with real LLM providers require API keys. Place them in `e2e/.env` (gitignored):
+
+```
+E2E_ZHIPU_API_KEY=your-zhipu-key-here
+E2E_VOLCENGINE_API_KEY=your-volcengine-key-here
+```
+
+`global-setup.ts` auto-loads this file before tests. CLI env vars take priority over `.env` values.
+
+**Without API keys**: 6 tests pass, 2 are skipped (onboarding completion + key management).
+
+## Dev vs Prod Modes
 
 The same test suite runs against **two modes**:
 
@@ -27,7 +91,6 @@ The same test suite runs against **two modes**:
    ```bash
    pnpm run build
    ```
-   This compiles all workspace packages and the panel UI. The Electron app serves the built panel from disk, so it must be built first.
 
 2. **Dependencies** are already declared in `apps/desktop/package.json`:
    - `@playwright/test` — test runner
@@ -44,8 +107,6 @@ All commands run from `apps/desktop/`.
 ```bash
 pnpm run test:e2e:dev
 ```
-
-This launches the Electron binary from `node_modules` with `dist/main.cjs` as the entry point. It tests the same code path as `pnpm run dev`, minus the Vite dev server.
 
 ### Prod mode (after packaging)
 
@@ -69,51 +130,14 @@ E2E_EXECUTABLE_PATH=release/win-unpacked/EasyClaw.exe \
 
 ### Full release pipeline
 
-The `scripts/release-local.sh` script automates the entire flow:
-
-```bash
-# From repo root:
-./scripts/release-local.sh 1.2.9
-
-# Pipeline:
-#   1. pnpm run build          — compile all packages
-#   2. pnpm run test           — unit tests (vitest)
-#   3. test:e2e:dev            — e2e against dev build
-#   4. pnpm run pack           — electron-builder --dir
-#   5. test:e2e:prod           — e2e against packaged app (auto-detects path)
-#   6. dist:mac / dist:win     — create distributable installers
-#   7. gh release upload       — upload to GitHub Release (draft)
-
-# Flags:
-./scripts/release-local.sh 1.2.9 --skip-tests    # skip unit + e2e, build only
-./scripts/release-local.sh 1.2.9 --skip-upload   # skip GitHub upload
-```
-
-## How the Fixture Works
-
-`electron-fixture.ts` exports a custom Playwright `test` object with two fixtures:
-
-### `electronApp`
-
-Launches the Electron application. Mode is controlled by environment variables:
-
-- **Dev mode** (default): Uses `require("electron")` to resolve the binary path, then launches with `dist/main.cjs` as the argument.
-- **Prod mode** (`E2E_PROD=1`): Uses `E2E_EXECUTABLE_PATH` as the binary.
-
-Both modes:
-- Pass `--lang=en` to force English locale (so text assertions work on any system).
-- Strip `ELECTRON_RUN_AS_NODE` from the environment (this variable is set by VS Code / Claude Code terminals and would cause Electron to run as plain Node.js instead of a browser).
-- Call `app.close()` in teardown to release the single-instance lock.
-
-### `window`
-
-Waits for the app to be fully ready:
-
-1. `electronApp.firstWindow()` — waits for the BrowserWindow to be created.
-2. `waitForLoadState("domcontentloaded")` — waits for the page to load.
-3. `waitForSelector(".sidebar-brand")` — waits up to 45 seconds for the React panel to render. This selector only appears after the gateway process starts and the panel URL is loaded, so it serves as the "app is ready" signal.
+Both dev and prod E2E are included in `scripts/release-local.sh`. See the script header for the full 9-step pipeline and available flags (`--skip-tests`, `--skip-upload`, `--upload-only`).
 
 ## Writing New Tests
+
+### Choosing a fixture
+
+- **`test`** (from `electron-fixture.js`) — for tests that need the main page with a pre-seeded provider. Import as: `import { test, expect } from "./electron-fixture.js"`
+- **`freshTest`** (from `electron-fixture.js`) — for tests that need the onboarding page. Import as: `import { freshTest as test, expect } from "./electron-fixture.js"`
 
 ### Basic structure
 
@@ -134,55 +158,30 @@ test("description of what you're testing", async ({ window }) => {
 | `window` | `Page` | UI interactions — click, type, assert elements |
 | `electronApp` | `ElectronApplication` | Main process — evaluate BrowserWindow, app APIs |
 
-### Examples
-
-```typescript
-// Navigate to a page and verify content
-test("rules page shows section card", async ({ window }) => {
-  // Dismiss any blocking modal first
-  const backdrop = window.locator(".modal-backdrop");
-  if (await backdrop.isVisible({ timeout: 1_000 }).catch(() => false)) {
-    await backdrop.click({ position: { x: 5, y: 5 } });
-    await backdrop.waitFor({ state: "hidden", timeout: 3_000 });
-  }
-
-  await window.locator(".nav-btn", { hasText: "Rules" }).click();
-  await expect(window.locator(".section-card")).toBeVisible();
-});
-
-// Check a main-process property
-test("app version matches package.json", async ({ electronApp }) => {
-  const version = await electronApp.evaluate(({ app }) => app.getVersion());
-  expect(version).toMatch(/^\d+\.\d+\.\d+$/);
-});
-```
-
-### Organizing tests
-
-Add new `*.spec.ts` files in this directory. Playwright auto-discovers them:
-
-```
-e2e/
-├── smoke.spec.ts       # Launch, sidebar, navigation
-├── providers.spec.ts   # Provider setup flows
-├── rules.spec.ts       # Rule CRUD operations
-└── settings.spec.ts    # Settings page interactions
-```
-
-All spec files should import from `./electron-fixture.js`.
-
 ### Tips
 
 - **Workers = 1**: The app enforces a single-instance lock, so tests run serially. Don't try to parallelize.
 - **Timeout = 60s per test**: The gateway takes a few seconds to start. If you add tests that trigger slow operations, increase the timeout with `test.setTimeout(90_000)`.
-- **Modals**: The app may show modals (What's New, telemetry consent) that block clicks. Dismiss them before interacting with the UI behind them.
+- **Modals**: Prod builds may show modals (What's New, telemetry consent) that block clicks. Dismiss them before interacting:
+  ```typescript
+  for (let i = 0; i < 3; i++) {
+    const backdrop = window.locator(".modal-backdrop");
+    if (!await backdrop.isVisible({ timeout: 3_000 }).catch(() => false)) break;
+    await backdrop.click({ position: { x: 5, y: 5 }, force: true });
+    await backdrop.waitFor({ state: "hidden", timeout: 3_000 }).catch(() => {});
+  }
+  ```
 - **CSS selectors**: Use class names from `apps/panel/src/styles.css` and `apps/panel/src/layout/Layout.tsx`. Key selectors:
   - `.sidebar-brand`, `.sidebar-brand-text` — brand/logo area
   - `.nav-list .nav-btn` — navigation buttons
   - `.nav-active` — currently active nav button
-  - `.nav-label` — text label inside nav button
   - `.section-card` — content cards on pages
-  - `.modal-backdrop` — modal overlay (click to dismiss)
+  - `.modal-backdrop` — modal overlay
+  - `.key-card`, `.key-card-active`, `.key-card-inactive` — provider key cards
+  - `.provider-select-trigger`, `.provider-select-option` — provider dropdown
+  - `.custom-select-trigger`, `.custom-select-option` — model dropdown
+  - `.tab-btn`, `.tab-btn-active` — tab buttons
+  - `.pricing-card`, `.pricing-inner-table` — pricing display
 
 ## Troubleshooting
 
