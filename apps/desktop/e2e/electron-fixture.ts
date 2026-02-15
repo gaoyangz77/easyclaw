@@ -38,17 +38,11 @@ async function launchElectronApp(
 ) {
   const tempDir = createTempDir();
   const env = buildEnv(tempDir);
-  const isProd = !!process.env.E2E_PROD;
+  const execPath = process.env.E2E_EXECUTABLE_PATH;
   let app: ElectronApplication;
 
-  if (isProd) {
-    const execPath = process.env.E2E_EXECUTABLE_PATH;
-    if (!execPath) {
-      throw new Error(
-        "E2E_PROD is set but E2E_EXECUTABLE_PATH is missing. " +
-          "Set it to the packaged app binary path.",
-      );
-    }
+  if (execPath) {
+    // Prod mode: launch the packaged app binary
     app = await _electron.launch({
       executablePath: execPath,
       args: ["--lang=en"],
@@ -66,6 +60,22 @@ async function launchElectronApp(
   await use(app);
   await app.close();
   rmSync(tempDir, { recursive: true, force: true });
+}
+
+/**
+ * Force the Electron window to the foreground.
+ * On Windows, background processes cannot call SetForegroundWindow directly.
+ * The setAlwaysOnTop trick bypasses this restriction.
+ */
+async function bringWindowToFront(electronApp: ElectronApplication) {
+  await electronApp.evaluate(({ BrowserWindow }) => {
+    const win = BrowserWindow.getAllWindows()[0];
+    if (!win) return;
+    win.setAlwaysOnTop(true);
+    win.show();
+    win.focus();
+    win.setAlwaysOnTop(false);
+  });
 }
 
 /** Seed a provider key via the gateway REST API. */
@@ -119,6 +129,7 @@ export const test = base.extend<ElectronFixtures>({
     await window.waitForSelector(".onboarding-page, .sidebar-brand", {
       timeout: 45_000,
     });
+    await bringWindowToFront(electronApp);
 
     // If onboarding is shown, either seed a real provider or skip
     if (await window.locator(".onboarding-page").isVisible()) {
@@ -154,6 +165,7 @@ export const freshTest = base.extend<ElectronFixtures>({
     const window = await electronApp.firstWindow({ timeout: 45_000 });
     await window.waitForLoadState("domcontentloaded");
     await window.waitForSelector(".onboarding-page", { timeout: 45_000 });
+    await bringWindowToFront(electronApp);
 
     await use(window);
   },

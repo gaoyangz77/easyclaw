@@ -12,7 +12,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "test:e2e:dev": "playwright test --config e2e/playwright.config.ts",
-    "test:e2e:prod": "E2E_PROD=1 playwright test --config e2e/playwright.config.ts",
+    "test:e2e:prod": "playwright test --config e2e/playwright.config.ts",
     "pack": "electron-builder --dir",
     "dist:mac": "node scripts/prune-vendor-deps.cjs && electron-builder --mac",
     "dist:mac:arm64": "node scripts/prune-vendor-deps.cjs && electron-builder --mac dmg --arm64 && node scripts/sign-arm64.cjs",
