@@ -65,7 +65,7 @@ describe("config-writer", () => {
       const result = resolveOpenClawConfigPath({
         OPENCLAW_STATE_DIR: "/my/state",
       });
-      expect(result).toBe("/my/state/openclaw.json");
+      expect(result).toBe(join("/my/state", "openclaw.json"));
     });
 
     it("uses default state dir when neither env var is set", () => {

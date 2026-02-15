@@ -182,7 +182,7 @@ describe("GatewayLauncher", () => {
   // ── Reload (SIGUSR1) ──
 
   describe("reload()", () => {
-    it("sends SIGUSR1 when the gateway is running", async () => {
+    it.skipIf(process.platform === "win32")("sends SIGUSR1 when the gateway is running", async () => {
       const launcher = createLauncher();
       await launcher.start();
 

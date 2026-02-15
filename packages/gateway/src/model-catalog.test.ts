@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { join } from "node:path";
 import type { CatalogModelEntry } from "./model-catalog.js";
 import { PROVIDERS, ALL_PROVIDERS } from "@easyclaw/core";
 
@@ -175,7 +176,7 @@ describe("readFullModelCatalog", () => {
   it("should merge gateway models with EXTRA_MODELS", async () => {
     // existsSync: true for gateway models.json path, false for vendor
     mocks.existsSync.mockImplementation((p: string) =>
-      String(p).includes("agents/main/agent/models.json"),
+      String(p).includes(join("agents", "main", "agent", "models.json")),
     );
     mocks.readFileSync.mockReturnValue(JSON.stringify({
       providers: {
@@ -208,7 +209,7 @@ describe("readFullModelCatalog", () => {
 
   it("should populate KNOWN_MODELS with gateway models", async () => {
     mocks.existsSync.mockImplementation((p: string) =>
-      String(p).includes("agents/main/agent/models.json"),
+      String(p).includes(join("agents", "main", "agent", "models.json")),
     );
     mocks.readFileSync.mockReturnValue(JSON.stringify({
       providers: {

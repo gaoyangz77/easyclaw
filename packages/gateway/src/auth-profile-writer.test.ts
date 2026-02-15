@@ -23,7 +23,7 @@ function readJsonFile(path: string): unknown {
 describe("resolveAuthProfilePath", () => {
   it("returns the correct path structure", () => {
     const result = resolveAuthProfilePath("/home/user/.easyclaw/openclaw");
-    expect(result).toBe("/home/user/.easyclaw/openclaw/agents/main/agent/auth-profiles.json");
+    expect(result).toBe(join("/home/user/.easyclaw/openclaw", "agents", "main", "agent", "auth-profiles.json"));
   });
 });
 

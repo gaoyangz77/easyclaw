@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { existsSync } from "node:fs";
 import {
   resolveVendorDir,
@@ -21,12 +21,12 @@ describe("resolveVendorDir", () => {
 
   it("returns the override path when provided", () => {
     const dir = resolveVendorDir("/tmp/test-vendor");
-    expect(dir).toBe("/tmp/test-vendor");
+    expect(dir).toBe(resolve("/tmp/test-vendor"));
   });
 
   it("resolves relative override paths to absolute", () => {
     const dir = resolveVendorDir("relative/path");
-    expect(dir).toMatch(/^\/.*relative\/path$/);
+    expect(dir).toBe(resolve("relative/path"));
   });
 });
 
@@ -38,7 +38,7 @@ describe("resolveVendorEntryPath", () => {
 
   it("uses custom vendor dir when provided", () => {
     const entryPath = resolveVendorEntryPath("/tmp/custom-vendor");
-    expect(entryPath).toBe("/tmp/custom-vendor/openclaw.mjs");
+    expect(entryPath).toBe(join(resolve("/tmp/custom-vendor"), "openclaw.mjs"));
   });
 });
 
