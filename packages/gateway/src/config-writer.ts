@@ -445,59 +445,72 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
     // Add file permissions plugin if enabled
     if (options.enableFilePermissions !== undefined) {
       const pluginPath = options.filePermissionsPluginPath ?? resolveFilePermissionsPluginPath();
-      const existingLoad =
-        typeof merged.load === "object" && merged.load !== null
-          ? (merged.load as Record<string, unknown>)
-          : {};
-      const existingPaths = Array.isArray(existingLoad.paths) ? existingLoad.paths : [];
 
-      // Replace any stale file-permissions plugin paths with the current resolved one
-      const filteredPaths = existingPaths.filter(
-        (p: unknown) => typeof p !== "string" || !p.includes("easyclaw-file-permissions"),
-      );
-      merged.load = {
-        ...existingLoad,
-        paths: [...filteredPaths, pluginPath],
-      };
+      if (existsSync(pluginPath)) {
+        const existingLoad =
+          typeof merged.load === "object" && merged.load !== null
+            ? (merged.load as Record<string, unknown>)
+            : {};
+        const existingPaths = Array.isArray(existingLoad.paths) ? existingLoad.paths : [];
 
-      // Enable the plugin in entries
-      const existingEntries =
-        typeof merged.entries === "object" && merged.entries !== null
-          ? (merged.entries as Record<string, unknown>)
-          : {};
-      merged.entries = {
-        ...existingEntries,
-        "easyclaw-file-permissions": { enabled: options.enableFilePermissions },
-      };
+        // Replace any stale file-permissions plugin paths with the current resolved one
+        const filteredPaths = existingPaths.filter(
+          (p: unknown) => typeof p !== "string" || !p.includes("easyclaw-file-permissions"),
+        );
+        merged.load = {
+          ...existingLoad,
+          paths: [...filteredPaths, pluginPath],
+        };
+
+        // Enable the plugin in entries
+        const existingEntries =
+          typeof merged.entries === "object" && merged.entries !== null
+            ? (merged.entries as Record<string, unknown>)
+            : {};
+        merged.entries = {
+          ...existingEntries,
+          "easyclaw-file-permissions": { enabled: options.enableFilePermissions },
+        };
+      } else {
+        log.warn(`file-permissions plugin not found at ${pluginPath}, skipping`);
+      }
     }
 
     // Add search-browser-fallback plugin if enabled
     if (options.enableSearchBrowserFallback !== undefined) {
       const pluginPath = options.searchBrowserFallbackPath ?? resolveSearchBrowserFallbackPath();
-      const existingLoad =
-        typeof merged.load === "object" && merged.load !== null
-          ? (merged.load as Record<string, unknown>)
-          : {};
-      const existingPaths = Array.isArray(existingLoad.paths) ? existingLoad.paths : [];
 
-      // Replace any stale search-browser-fallback paths with the current resolved one
-      const filteredPaths = existingPaths.filter(
-        (p: unknown) => typeof p !== "string" || !p.includes("search-browser-fallback"),
-      );
-      merged.load = {
-        ...existingLoad,
-        paths: [...filteredPaths, pluginPath],
-      };
+      // Only add the plugin if the path actually exists on disk.
+      // In packaged apps where searchBrowserFallbackPath wasn't provided,
+      // the auto-resolved path may be invalid (no monorepo root).
+      if (existsSync(pluginPath)) {
+        const existingLoad =
+          typeof merged.load === "object" && merged.load !== null
+            ? (merged.load as Record<string, unknown>)
+            : {};
+        const existingPaths = Array.isArray(existingLoad.paths) ? existingLoad.paths : [];
 
-      // Enable the plugin in entries
-      const existingEntries =
-        typeof merged.entries === "object" && merged.entries !== null
-          ? (merged.entries as Record<string, unknown>)
-          : {};
-      merged.entries = {
-        ...existingEntries,
-        "search-browser-fallback": { enabled: options.enableSearchBrowserFallback },
-      };
+        // Replace any stale search-browser-fallback paths with the current resolved one
+        const filteredPaths = existingPaths.filter(
+          (p: unknown) => typeof p !== "string" || !p.includes("search-browser-fallback"),
+        );
+        merged.load = {
+          ...existingLoad,
+          paths: [...filteredPaths, pluginPath],
+        };
+
+        // Enable the plugin in entries
+        const existingEntries =
+          typeof merged.entries === "object" && merged.entries !== null
+            ? (merged.entries as Record<string, unknown>)
+            : {};
+        merged.entries = {
+          ...existingEntries,
+          "search-browser-fallback": { enabled: options.enableSearchBrowserFallback },
+        };
+      } else {
+        log.warn(`search-browser-fallback plugin not found at ${pluginPath}, skipping`);
+      }
     }
 
     // Enable google-gemini-cli-auth plugin (bundled in OpenClaw extensions/)

@@ -39,6 +39,12 @@ extraResources:
     filter:
       - "easyclaw-file-permissions.mjs"
       - "openclaw.plugin.json"
+  # Search-browser-fallback plugin — loaded by OpenClaw at runtime
+  - from: "../../extensions/search-browser-fallback"
+    to: "search-browser-fallback"
+    filter:
+      - "index.ts"
+      - "openclaw.plugin.json"
   # Panel UI static files
   - from: "../panel/dist"
     to: "panel-dist"
