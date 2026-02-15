@@ -16,7 +16,7 @@ const expectedVendorDir = join(import.meta.dirname, "../../../vendor/openclaw");
 describe("resolveVendorDir", () => {
   it("returns a path ending in vendor/openclaw when no override is given", () => {
     const dir = resolveVendorDir();
-    expect(dir).toMatch(/vendor\/openclaw$/);
+    expect(dir).toMatch(/vendor[/\\]openclaw$/);
   });
 
   it("returns the override path when provided", () => {
