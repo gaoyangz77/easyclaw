@@ -14,6 +14,13 @@ const log = createLogger("secrets:factory");
  * - other  -> FileSecretStore (encrypted file-based fallback)
  */
 export function createSecretStore(): SecretStore {
+  // Allow overriding secrets directory via env var (e.g. for E2E tests)
+  const customDir = process.env.EASYCLAW_SECRETS_DIR;
+  if (customDir) {
+    log.info("using FileSecretStore with custom dir: " + customDir);
+    return new FileSecretStore(customDir);
+  }
+
   const os = platform();
   log.info("creating secret store for platform: " + os);
 

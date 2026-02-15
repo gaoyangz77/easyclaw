@@ -1,14 +1,29 @@
 import { test as base, type ElectronApplication, type Page } from "@playwright/test";
 import { _electron } from "playwright";
 import path from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const electronPath = require("electron") as unknown as string;
 
-/** Build a clean env for Electron (strip ELECTRON_RUN_AS_NODE from host). */
-function cleanEnv(): Record<string, string> {
+const API_BASE = "http://127.0.0.1:3210";
+
+/** Create a unique temp directory for data isolation. */
+function createTempDir(): string {
+  return mkdtempSync(path.join(tmpdir(), "easyclaw-e2e-"));
+}
+
+/** Build a clean env for Electron with data isolation via temp dir. */
+function buildEnv(tempDir: string): Record<string, string> {
   const env = { ...process.env } as Record<string, string>;
   delete env.ELECTRON_RUN_AS_NODE;
+
+  // Isolate all persistent state to the temp directory
+  env.EASYCLAW_DB_PATH = path.join(tempDir, "db.sqlite");
+  env.EASYCLAW_SECRETS_DIR = path.join(tempDir, "secrets");
+  env.OPENCLAW_STATE_DIR = path.join(tempDir, "openclaw");
+
   return env;
 }
 
@@ -17,42 +32,129 @@ type ElectronFixtures = {
   window: Page;
 };
 
+/** Shared logic to launch Electron with data isolation. */
+async function launchElectronApp(
+  use: (app: ElectronApplication) => Promise<void>,
+) {
+  const tempDir = createTempDir();
+  const env = buildEnv(tempDir);
+  const isProd = !!process.env.E2E_PROD;
+  let app: ElectronApplication;
+
+  if (isProd) {
+    const execPath = process.env.E2E_EXECUTABLE_PATH;
+    if (!execPath) {
+      throw new Error(
+        "E2E_PROD is set but E2E_EXECUTABLE_PATH is missing. " +
+          "Set it to the packaged app binary path.",
+      );
+    }
+    app = await _electron.launch({
+      executablePath: execPath,
+      args: ["--lang=en"],
+      env,
+    });
+  } else {
+    const mainPath = path.resolve("dist/main.cjs");
+    app = await _electron.launch({
+      executablePath: electronPath,
+      args: ["--lang=en", mainPath],
+      env,
+    });
+  }
+
+  await use(app);
+  await app.close();
+  rmSync(tempDir, { recursive: true, force: true });
+}
+
+/** Seed a provider key via the gateway REST API. */
+async function seedProvider(opts: {
+  provider: string;
+  model: string;
+  apiKey: string;
+}): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/provider-keys`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider: opts.provider,
+      label: "E2E Test Key",
+      model: opts.model,
+      apiKey: opts.apiKey,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to seed provider key: ${res.status} ${text}`);
+  }
+
+  const settingsRes = await fetch(`${API_BASE}/api/settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ "llm-provider": opts.provider }),
+  });
+  if (!settingsRes.ok) {
+    throw new Error(`Failed to set active provider: ${settingsRes.status}`);
+  }
+}
+
+/**
+ * Returning-user fixture: seeds a volcengine provider key via the
+ * gateway API when E2E_VOLCENGINE_API_KEY is set. Otherwise, skips
+ * onboarding so basic smoke tests still work without real API keys.
+ *
+ * Always lands on the main page with sidebar visible.
+ */
 export const test = base.extend<ElectronFixtures>({
   electronApp: async ({}, use) => {
-    const isProd = !!process.env.E2E_PROD;
-    let app: ElectronApplication;
-    const env = cleanEnv();
-
-    if (isProd) {
-      const execPath = process.env.E2E_EXECUTABLE_PATH;
-      if (!execPath) {
-        throw new Error(
-          "E2E_PROD is set but E2E_EXECUTABLE_PATH is missing. " +
-            "Set it to the packaged app binary path.",
-        );
-      }
-      app = await _electron.launch({
-        executablePath: execPath,
-        args: ["--lang=en"],
-        env,
-      });
-    } else {
-      const mainPath = path.resolve("dist/main.cjs");
-      app = await _electron.launch({
-        executablePath: electronPath,
-        args: ["--lang=en", mainPath],
-        env,
-      });
-    }
-
-    await use(app);
-    await app.close();
+    await launchElectronApp(use);
   },
 
   window: async ({ electronApp }, use) => {
     const window = await electronApp.firstWindow({ timeout: 45_000 });
     await window.waitForLoadState("domcontentloaded");
-    await window.waitForSelector(".sidebar-brand", { timeout: 45_000 });
+
+    // Wait for the page to render (onboarding or main page)
+    await window.waitForSelector(".onboarding-page, .sidebar-brand", {
+      timeout: 45_000,
+    });
+
+    // If onboarding is shown, either seed a real provider or skip
+    if (await window.locator(".onboarding-page").isVisible()) {
+      const apiKey = process.env.E2E_VOLCENGINE_API_KEY;
+      if (apiKey) {
+        await seedProvider({
+          provider: "volcengine",
+          model: "doubao-seed-1-6-flash-250828",
+          apiKey,
+        });
+        await window.reload();
+      } else {
+        // No API key available — skip onboarding to reach the main page
+        await window.locator(".btn-ghost").click();
+      }
+      await window.waitForSelector(".sidebar-brand", { timeout: 45_000 });
+    }
+
+    await use(window);
+  },
+});
+
+/**
+ * Fresh-user fixture: launches with an empty database so the app
+ * shows the onboarding page.
+ */
+export const freshTest = base.extend<ElectronFixtures>({
+  electronApp: async ({}, use) => {
+    await launchElectronApp(use);
+  },
+
+  window: async ({ electronApp }, use) => {
+    const window = await electronApp.firstWindow({ timeout: 45_000 });
+    await window.waitForLoadState("domcontentloaded");
+    await window.waitForSelector(".onboarding-page", { timeout: 45_000 });
+
     await use(window);
   },
 });
