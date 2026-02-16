@@ -57,9 +57,21 @@ async function launchElectronApp(
     });
   }
 
-  await use(app);
-  await app.close();
-  rmSync(tempDir, { recursive: true, force: true });
+  let testFailed = false;
+  try {
+    await use(app);
+  } catch (err) {
+    testFailed = true;
+    throw err;
+  } finally {
+    await app.close();
+    if (testFailed) {
+      // Keep temp dir for debugging — print its path
+      console.log(`[e2e] Test FAILED — temp dir preserved: ${tempDir}`);
+    } else {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  }
 }
 
 /**
