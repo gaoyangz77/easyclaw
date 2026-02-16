@@ -1856,6 +1856,7 @@ async function handleApiRoute(
       model?: string;
       apiKey?: string;
       proxyUrl?: string;
+      authType?: "api_key" | "oauth";
     };
     if (!body.provider || !body.apiKey) {
       sendJson(res, 400, { error: "Missing required fields: provider, apiKey" });
@@ -1901,6 +1902,7 @@ async function handleApiRoute(
       model,
       isDefault: isFirst,
       proxyBaseUrl,
+      authType: body.authType ?? "api_key",
       createdAt: "",
       updatedAt: "",
     });

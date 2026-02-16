@@ -128,6 +128,8 @@ export default {
     colLabel: "Label",
     colModel: "Model",
     active: "Active",
+    authTypeSubscription: "Subscription",
+    authTypeApiKey: "API Key",
     noKeys: "No API keys configured yet. Add one below.",
     pricingTitle: "Model Pricing",
     pricingRecommended: "Recommended",

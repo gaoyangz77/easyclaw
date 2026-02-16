@@ -128,6 +128,8 @@ export default {
     colLabel: "标签",
     colModel: "模型",
     active: "Active",
+    authTypeSubscription: "订阅",
+    authTypeApiKey: "API 密钥",
     noKeys: "暂无已配置的 API 密钥，请在下方添加。",
     pricingTitle: "模型定价",
     pricingRecommended: "推荐",

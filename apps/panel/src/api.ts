@@ -141,6 +141,7 @@ export async function createProviderKey(data: {
   model: string;
   apiKey: string;
   proxyUrl?: string;
+  authType?: "api_key" | "oauth";
 }): Promise<ProviderKeyEntry> {
   const result = await fetchJson<ProviderKeyEntry>("/provider-keys", {
     method: "POST",

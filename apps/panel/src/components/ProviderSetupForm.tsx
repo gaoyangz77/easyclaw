@@ -135,6 +135,7 @@ export function ProviderSetupForm({
         model: model || (getDefaultModelForProvider(provider as LLMProvider)?.modelId ?? ""),
         apiKey: apiKey.trim(),
         proxyUrl: proxy,
+        authType: tab === "subscription" ? "oauth" : "api_key",
       });
 
       // Auto-activate if this is the first key

@@ -940,10 +940,6 @@ tbody td {
 }
 
 .custom-select-dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  right: 0;
   max-height: 280px;
   overflow-y: auto;
   background: linear-gradient(
@@ -1311,6 +1307,11 @@ tbody td {
 .badge-danger {
   background-color: var(--color-danger-light);
   color: var(--color-danger);
+}
+
+.badge-muted {
+  background-color: var(--color-bg-alt);
+  color: var(--color-text-muted);
 }
 
 .badge-info {

@@ -58,6 +58,7 @@ export function ProvidersPage() {
         label: existing?.label || t("providers.labelDefault"),
         model: existing?.model || (getDefaultModelForProvider(provider as LLMProvider)?.modelId ?? ""),
         apiKey: updateApiKey.trim(),
+        authType: existing?.authType,
       });
 
       if (existing?.isDefault) {
@@ -192,6 +193,11 @@ export function ProvidersPage() {
                     <div className="key-info">
                       <div className="key-meta">
                         <strong style={{ fontSize: 13 }}>{t(`providers.label_${k.provider}`)}</strong>
+                        <span className="badge badge-muted">
+                          {k.authType === "oauth"
+                            ? t("providers.authTypeSubscription")
+                            : t("providers.authTypeApiKey")}
+                        </span>
                         {isActive && (
                           <span className="badge badge-active">
                             {t("providers.active")}
