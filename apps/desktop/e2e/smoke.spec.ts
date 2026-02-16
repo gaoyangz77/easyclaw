@@ -261,7 +261,9 @@ test.describe("EasyClaw Smoke Tests", () => {
     await expect(window.locator(".error-alert")).not.toBeVisible();
 
     // --- Verify Today's Usage table (section with "Today" title) ---
-    const todaySection = window.locator(".section-card").first();
+    // Use :has(.usage-section-title) to target only Usage page cards, not hidden cards from other pages
+    const usageSectionCards = window.locator(".section-card:has(.usage-section-title)");
+    const todaySection = usageSectionCards.first();
     await expect(todaySection).toBeVisible({ timeout: 10_000 });
     // Today's section should have the "Today's Usage" heading
     await expect(todaySection.locator(".usage-section-title")).toContainText(/Today|今日/);
@@ -271,13 +273,12 @@ test.describe("EasyClaw Smoke Tests", () => {
     await expect(todaySection).toContainText("gpt-4o");
 
     // --- Verify Historical Usage table (section-card after time range bar) ---
-    const allSectionCards = window.locator(".section-card");
-    const cardCount = await allSectionCards.count();
+    const cardCount = await usageSectionCards.count();
     // Should have at least 2 cards: today table + historical table
     expect(cardCount).toBeGreaterThanOrEqual(2);
 
     // Historical table (second card) should contain all providers and models
-    const historySection = allSectionCards.nth(1);
+    const historySection = usageSectionCards.nth(1);
     await expect(historySection.locator(".usage-key-block").first()).toBeVisible();
 
     // Verify both providers appear in key block headers
