@@ -69,10 +69,7 @@ mac:
   # Vendor node_modules may contain Mach-O binaries (esbuild, etc.)
   # that are identical in both x64/arm64 builds. Tell the universal
   # merge to skip lipo for these files.
-  x64ArchFiles:
-    - "Contents/Resources/vendor/openclaw/node_modules/**"
-    - "Contents/Resources/app.asar.unpacked/node_modules/better-sqlite3/**"
-
+  x64ArchFiles: "Contents/Resources/{vendor/openclaw/node_modules,app.asar.unpacked/node_modules/better-sqlite3}/**"
 dmg:
   background: build/dmg-background.png
   iconSize: 80
