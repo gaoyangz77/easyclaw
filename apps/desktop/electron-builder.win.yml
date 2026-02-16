@@ -21,6 +21,7 @@ win:
         - x64
 
 nsis:
+  artifactName: "${productName}.Setup.${version}.${ext}"
   oneClick: false
   allowToChangeInstallationDirectory: true
   installerSidebar: build/installerSidebar.png
