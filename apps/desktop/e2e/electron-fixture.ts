@@ -152,6 +152,12 @@ export const test = base.extend<ElectronFixtures>({
           model: "doubao-seed-1-6-flash-250828",
           apiKey,
         });
+        // Wait for gateway to complete all restart cycles after provider seeding.
+        // On Windows, provider seeding triggers multiple restarts (config + model change),
+        // each requiring a full stop+start since SIGUSR1 is not supported.
+        await window.waitForTimeout(10000);
+        // Reload to trigger onboarding check — the app needs to re-mount to detect
+        // the newly configured provider and transition to the main page.
         await window.reload();
       } else {
         // No API key available — skip onboarding to reach the main page
