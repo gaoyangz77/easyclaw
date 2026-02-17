@@ -703,6 +703,7 @@ app.whenReady().then(async () => {
     extraProviders: buildExtraProviderConfigs(),
     forceStandaloneBrowser: true,
     agentWorkspace: join(stateDir, "workspace"),
+    extraSkillDirs: [join(stateDir, "skills")],
   });
 
   // Clean up any existing openclaw processes before starting (both openclaw and openclaw-gateway)

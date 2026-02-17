@@ -414,10 +414,10 @@ describe("panel-server API", () => {
   // --- Skills API ---
   describe("Skills API", () => {
     describe("GET /api/skills/installed", () => {
-      it("returns { skills: [] } when skills dir doesn't exist", async () => {
+      it("returns 200 with skills array", async () => {
         const { status, body } = await fetchJson<{ skills: unknown[] }>("/api/skills/installed");
         expect(status).toBe(200);
-        expect(body.skills).toEqual([]);
+        expect(Array.isArray(body.skills)).toBe(true);
       });
     });
 

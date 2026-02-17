@@ -172,8 +172,8 @@ export function Layout({
     { path: "/channels", label: t("nav.channels") },
     { path: "/permissions", label: t("nav.permissions") },
     { path: "/stt", label: t("nav.stt") },
-    { path: "/usage", label: t("nav.usage") },
     { path: "/skills", label: t("nav.skills") },
+    { path: "/usage", label: t("nav.usage") },
     // { path: "/settings", label: t("nav.settings") },
   ];
 

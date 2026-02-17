@@ -3539,6 +3539,12 @@ tbody td {
   margin-top: 8px;
 }
 
+.skills-installed-header {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+
 .skills-installed-list {
   display: flex;
   flex-direction: column;

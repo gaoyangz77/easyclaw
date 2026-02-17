@@ -804,10 +804,14 @@ export async function fetchInstalledSkills(): Promise<InstalledSkill[]> {
   }, 5000);
 }
 
-export async function installSkill(slug: string, lang?: string): Promise<{ ok: boolean; error?: string }> {
+export async function installSkill(
+  slug: string,
+  lang?: string,
+  meta?: { name?: string; description?: string; author?: string; version?: string },
+): Promise<{ ok: boolean; error?: string }> {
   const result = await fetchJson<{ ok: boolean; error?: string }>("/skills/install", {
     method: "POST",
-    body: JSON.stringify({ slug, lang }),
+    body: JSON.stringify({ slug, lang, meta }),
   });
   invalidateCache("installed-skills");
   return result;
@@ -820,4 +824,15 @@ export async function deleteSkill(slug: string): Promise<{ ok: boolean; error?: 
   });
   invalidateCache("installed-skills");
   return result;
+}
+
+export async function openSkillsFolder(): Promise<void> {
+  await fetchJson("/skills/open-folder", { method: "POST" });
+}
+
+export async function fetchBundledSlugs(): Promise<Set<string>> {
+  return cachedFetch("bundled-slugs", async () => {
+    const data = await fetchJson<{ slugs: string[] }>("/skills/bundled-slugs");
+    return new Set(data.slugs);
+  }, 60_000);
 }

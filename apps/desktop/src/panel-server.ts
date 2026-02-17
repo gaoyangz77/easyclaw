@@ -23,6 +23,9 @@ import { UsageQueryService } from "./usage-query-service.js";
 
 const log = createLogger("panel-server");
 
+/** Directory where user-installed skills are stored. */
+const USER_SKILLS_DIR = join(homedir(), ".easyclaw", "openclaw", "skills");
+
 /** Supported formats that Groq Whisper accepts directly (no conversion needed). */
 const STT_SUPPORTED_FORMATS = new Set(["flac", "mp3", "mp4", "mpeg", "mpga", "m4a", "ogg", "wav", "webm"]);
 
@@ -3032,8 +3035,24 @@ async function handleApiRoute(
     }
     return;
   }
+  if (pathname === "/api/skills/bundled-slugs" && req.method === "GET") {
+    const resolvedVendorDir = vendorDir ?? join(import.meta.dirname, "..", "..", "..", "vendor", "openclaw");
+    const bundledSkillsDir = join(resolvedVendorDir, "skills");
+    try {
+      const entries = await fs.readdir(bundledSkillsDir);
+      const slugs: string[] = [];
+      for (const entry of entries) {
+        const stat = await fs.stat(join(bundledSkillsDir, entry));
+        if (stat.isDirectory()) slugs.push(entry);
+      }
+      sendJson(res, 200, { slugs });
+    } catch {
+      sendJson(res, 200, { slugs: [] });
+    }
+    return;
+  }
   if (pathname === "/api/skills/installed" && req.method === "GET") {
-    const skillsDir = join(homedir(), ".easyclaw", "openclaw", "skills");
+    const skillsDir = USER_SKILLS_DIR;
     try {
       let entries: string[];
       try {
@@ -3042,20 +3061,33 @@ async function handleApiRoute(
         sendJson(res, 200, { skills: [] });
         return;
       }
+
       const skills: Array<{ slug: string; name?: string; description?: string; author?: string; version?: string }> = [];
       for (const entry of entries) {
         const entryPath = join(skillsDir, entry);
         const stat = await fs.stat(entryPath);
         if (!stat.isDirectory()) continue;
-        const skillMdPath = join(entryPath, "SKILL.md");
+
+        // Read SKILL.md frontmatter
+        let fmMeta: { name?: string; description?: string; author?: string; version?: string } = {};
         try {
-          const content = await fs.readFile(skillMdPath, "utf-8");
-          const meta = parseSkillFrontmatter(content);
-          skills.push({ slug: entry, ...meta });
-        } catch {
-          // SKILL.md missing or unreadable — include with slug only
-          skills.push({ slug: entry });
-        }
+          const content = await fs.readFile(join(entryPath, "SKILL.md"), "utf-8");
+          fmMeta = parseSkillFrontmatter(content);
+        } catch { /* SKILL.md missing or unreadable */ }
+
+        // Read _meta.json (saved at install time) — preferred over SKILL.md for display
+        let installMeta: { name?: string; description?: string; author?: string; version?: string } = {};
+        try {
+          installMeta = JSON.parse(await fs.readFile(join(entryPath, "_meta.json"), "utf-8"));
+        } catch { /* _meta.json missing — skip */ }
+
+        skills.push({
+          slug: entry,
+          name: installMeta.name || fmMeta.name,
+          description: installMeta.description || fmMeta.description,
+          author: installMeta.author || fmMeta.author,
+          version: installMeta.version || fmMeta.version,
+        });
       }
       sendJson(res, 200, { skills });
     } catch (err: unknown) {
@@ -3065,7 +3097,7 @@ async function handleApiRoute(
     return;
   }
   if (pathname === "/api/skills/install" && req.method === "POST") {
-    const body = (await parseBody(req)) as { slug?: string; lang?: string };
+    const body = (await parseBody(req)) as { slug?: string; lang?: string; meta?: { name?: string; description?: string; author?: string; version?: string } };
     if (!body.slug) {
       sendJson(res, 400, { error: "Missing required field: slug" });
       return;
@@ -3099,7 +3131,7 @@ async function handleApiRoute(
       await fs.mkdir(tmpDir, { recursive: true });
       await fs.writeFile(zipPath, zipBuffer);
 
-      const skillsDir = join(homedir(), ".easyclaw", "openclaw", "skills");
+      const skillsDir = USER_SKILLS_DIR;
       const skillDir = join(skillsDir, body.slug);
       await fs.mkdir(skillDir, { recursive: true });
 
@@ -3114,6 +3146,11 @@ async function handleApiRoute(
           else resolve();
         });
       });
+
+      // Save install metadata (author, version, etc.) for display in installed list
+      if (body.meta) {
+        await fs.writeFile(join(skillDir, "_meta.json"), JSON.stringify(body.meta), "utf-8");
+      }
 
       // Cleanup temp files
       await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
@@ -3135,7 +3172,7 @@ async function handleApiRoute(
       sendJson(res, 400, { error: "Invalid slug" });
       return;
     }
-    const skillsDir = join(homedir(), ".easyclaw", "openclaw", "skills");
+    const skillsDir = USER_SKILLS_DIR;
     try {
       await fs.rm(join(skillsDir, body.slug), { recursive: true, force: true });
       sendJson(res, 200, { ok: true });
@@ -3143,6 +3180,21 @@ async function handleApiRoute(
       const msg = err instanceof Error ? err.message : String(err);
       sendJson(res, 500, { error: msg });
     }
+    return;
+  }
+  if (pathname === "/api/skills/open-folder" && req.method === "POST") {
+    const skillsDir = USER_SKILLS_DIR;
+    await fs.mkdir(skillsDir, { recursive: true });
+    const cmd = process.platform === "darwin" ? "open"
+      : process.platform === "win32" ? "explorer"
+      : "xdg-open";
+    execFile(cmd, [skillsDir], (err) => {
+      if (err) {
+        sendJson(res, 500, { error: err.message });
+      } else {
+        sendJson(res, 200, { ok: true });
+      }
+    });
     return;
   }
 

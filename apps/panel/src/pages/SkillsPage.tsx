@@ -1,10 +1,12 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   fetchMarketSkills,
   fetchInstalledSkills,
+  fetchBundledSlugs,
   installSkill,
   deleteSkill,
+  openSkillsFolder,
   trackEvent,
 } from "../api.js";
 import type { MarketSkill, InstalledSkill, MarketResponse } from "../api.js";
@@ -23,6 +25,10 @@ const LABEL_I18N_MAP: Record<string, string> = {
 export function SkillsPage() {
   const { t, i18n } = useTranslation();
   const isCN = i18n.language === "zh";
+
+  // Capture initial locale for API endpoint & chinaAvailable filter.
+  // Switching display language should NOT re-fetch — both zh/en data is in the response.
+  const initialIsCN = useRef(i18n.language === "zh").current;
 
   // Tab state
   const [activeTab, setActiveTab] = useState<"market" | "installed">("market");
@@ -43,6 +49,9 @@ export function SkillsPage() {
   const [installedLoading, setInstalledLoading] = useState(false);
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+
+  // Bundled (system default) skills
+  const [bundledSlugs, setBundledSlugs] = useState<Set<string>>(new Set());
 
   // Derived set for quick lookup
   const installedSlugs = useMemo(
@@ -69,8 +78,8 @@ export function SkillsPage() {
       category: selectedCategory || undefined,
       page,
       pageSize: PAGE_SIZE,
-      chinaAvailable: isCN ? true : undefined,
-      lang: i18n.language,
+      chinaAvailable: initialIsCN ? true : undefined,
+      lang: initialIsCN ? "zh" : "en",
     })
       .then((data: MarketResponse) => {
         if (cancelled) return;
@@ -87,7 +96,7 @@ export function SkillsPage() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQuery, selectedCategory, page, isCN, i18n.language]);
+  }, [debouncedQuery, selectedCategory, page]);
 
   // Fetch installed skills when switching to installed tab
   const loadInstalled = useCallback(async () => {
@@ -111,19 +120,27 @@ export function SkillsPage() {
   // Also load installed on mount so installedSlugs is populated for market tab
   useEffect(() => {
     loadInstalled();
+    fetchBundledSlugs().then(setBundledSlugs).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle install
-  async function handleInstall(slug: string) {
-    setInstallingSlug(slug);
+  async function handleInstall(skill: MarketSkill) {
+    setInstallingSlug(skill.slug);
     setError(null);
     try {
-      const result = await installSkill(slug, i18n.language);
+      const displayName = isCN ? skill.name_zh || skill.name_en : skill.name_en;
+      const displayDesc = isCN ? skill.desc_zh || skill.desc_en : skill.desc_en;
+      const result = await installSkill(skill.slug, i18n.language, {
+        name: displayName,
+        description: displayDesc,
+        author: skill.author,
+        version: skill.version,
+      });
       if (!result.ok) {
         setError({ key: "skills.installError", detail: result.error });
         return;
       }
-      trackEvent("skills.install", { slug });
+      trackEvent("skills.install", { slug: skill.slug });
       await loadInstalled();
     } catch (err) {
       setError({ key: "skills.installError", detail: String(err) });
@@ -273,7 +290,11 @@ export function SkillsPage() {
                     <span>{t("skills.downloads", { count: skill.downloads })}</span>
                   </div>
                   <div className="skill-card-actions">
-                    {installedSlugs.has(skill.slug) ? (
+                    {bundledSlugs.has(skill.slug) ? (
+                      <button className="btn btn-secondary btn-sm" disabled>
+                        {t("skills.builtIn")}
+                      </button>
+                    ) : installedSlugs.has(skill.slug) ? (
                       <button className="btn btn-secondary btn-sm" disabled>
                         {t("skills.installed")}
                       </button>
@@ -281,7 +302,7 @@ export function SkillsPage() {
                       <button
                         className="btn btn-primary btn-sm"
                         disabled={installingSlug === skill.slug}
-                        onClick={() => handleInstall(skill.slug)}
+                        onClick={() => handleInstall(skill)}
                       >
                         {installingSlug === skill.slug
                           ? t("skills.installing")
@@ -329,6 +350,15 @@ export function SkillsPage() {
       {/* Installed tab */}
       {activeTab === "installed" && (
         <>
+          <div className="skills-installed-header">
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={() => openSkillsFolder()}
+            >
+              {t("skills.openFolder")}
+            </button>
+          </div>
+
           {installedLoading && (
             <p className="text-muted">{t("common.loading")}</p>
           )}
