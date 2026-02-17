@@ -118,7 +118,7 @@ export function SkillsPage() {
     setInstallingSlug(slug);
     setError(null);
     try {
-      const result = await installSkill(slug);
+      const result = await installSkill(slug, i18n.language);
       if (!result.ok) {
         setError({ key: "skills.installError", detail: result.error });
         return;

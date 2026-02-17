@@ -16,13 +16,14 @@ const SUBSCRIPTION_SET = new Set(SUBSCRIPTION_PROVIDER_IDS);
 const ZH_PRIORITY_PROVIDERS: LLMProvider[] = [
   "zhipu-coding",
   "moonshot-coding",
+  "minimax-coding",
   "gemini",
   "zhipu",
   "kimi",
   "volcengine",
   "deepseek",
   "qwen",
-  "minimax",
+  "minimax-cn",
   "xiaomi",
 ];
 

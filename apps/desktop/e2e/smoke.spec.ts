@@ -541,7 +541,7 @@ test.describe("EasyClaw Smoke Tests", () => {
     expect(installedRes.body).toHaveProperty("skills");
     expect(Array.isArray(installedRes.body.skills)).toBe(true);
 
-    // --- Verify install API returns clear error when clawhub CLI missing ---
+    // --- Verify install API returns error for nonexistent skill ---
     const installRes = await window.evaluate(async () => {
       const res = await fetch("http://127.0.0.1:3210/api/skills/install", {
         method: "POST",
@@ -552,7 +552,7 @@ test.describe("EasyClaw Smoke Tests", () => {
     });
     expect(installRes.status).toBe(200);
     expect(installRes.body.ok).toBe(false);
-    expect(installRes.body.error).toContain("clawhub");
+    expect(installRes.body.error).toBeTruthy();
 
     // --- Verify delete API validation ---
     // Missing slug → 400

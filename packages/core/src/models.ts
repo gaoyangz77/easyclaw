@@ -16,6 +16,8 @@ export type LLMProvider =
   | "xai"
   | "openrouter"
   | "minimax"
+  | "minimax-cn"
+  | "minimax-coding"
   | "venice"
   | "xiaomi"
   | "volcengine"
@@ -24,7 +26,7 @@ export type LLMProvider =
   | "claude";
 
 /** Root provider IDs (excludes subscription plan IDs). */
-export type RootProvider = Exclude<LLMProvider, "zhipu-coding" | "moonshot-coding" | "gemini" | "claude">;
+export type RootProvider = Exclude<LLMProvider, "zhipu-coding" | "moonshot-coding" | "minimax-coding" | "gemini" | "claude">;
 
 /** Per-million-token cost in USD for OpenClaw usage tracking. */
 export interface ModelCost {
@@ -439,6 +441,55 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
     apiKeyUrl: "https://platform.minimaxi.com/user-center/basic-information/interface-key",
     envVar: "MINIMAX_API_KEY",
   },
+  "minimax-cn": {
+    label: "MiniMax",
+    baseUrl: "https://api.minimaxi.com/v1",
+    url: "https://platform.minimaxi.com/docs/guides/pricing-paygo",
+    apiKeyUrl: "https://platform.minimaxi.com/user-center/basic-information/interface-key",
+    envVar: "MINIMAX_CN_API_KEY",
+    extraModels: [
+      {
+        provider: "minimax-cn",
+        modelId: "MiniMax-M2.5",
+        displayName: "MiniMax M2.5",
+        cost: { input: 0.30, output: 1.20, cacheRead: 0, cacheWrite: 0 },
+      },
+      {
+        provider: "minimax-cn",
+        modelId: "MiniMax-M2.5-highspeed",
+        displayName: "MiniMax M2.5 Highspeed",
+        cost: { input: 0.60, output: 2.40, cacheRead: 0, cacheWrite: 0 },
+      },
+      {
+        provider: "minimax-cn",
+        modelId: "MiniMax-M2.1",
+        displayName: "MiniMax M2.1",
+        cost: { input: 0.30, output: 1.20, cacheRead: 0, cacheWrite: 0 },
+      },
+      {
+        provider: "minimax-cn",
+        modelId: "MiniMax-M2.1-highspeed",
+        displayName: "MiniMax M2.1 Highspeed",
+        cost: { input: 0.60, output: 2.40, cacheRead: 0, cacheWrite: 0 },
+      },
+      {
+        provider: "minimax-cn",
+        modelId: "MiniMax-M2",
+        displayName: "MiniMax M2",
+        cost: { input: 0.30, output: 1.20, cacheRead: 0, cacheWrite: 0 },
+      },
+    ],
+    subscriptionPlans: [
+      {
+        id: "minimax-coding",
+        label: "MiniMax Coding Plan",
+        baseUrl: "https://api.minimaxi.com/v1",
+        subscriptionUrl: "https://platform.minimaxi.com/docs/pricing/coding-plan",
+        apiKeyUrl: "https://platform.minimaxi.com/user-center/basic-information/interface-key",
+        envVar: "MINIMAX_CODING_API_KEY",
+      },
+    ],
+  },
   venice: {
     label: "Venice AI",
     baseUrl: "https://api.venice.ai/api/v1",
@@ -743,7 +794,8 @@ export function getProvidersForRegion(region: string): LLMProvider[] {
       "moonshot-coding",
       "qwen",
       "volcengine",
-      "minimax",
+      "minimax-cn",
+      "minimax-coding",
       "xiaomi",
       "openai",
       "anthropic",

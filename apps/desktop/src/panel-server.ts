@@ -8,7 +8,7 @@ import type { Storage } from "@easyclaw/storage";
 import type { SecretStore } from "@easyclaw/secrets";
 import type { ArtifactStatus, ArtifactType, LLMProvider } from "@easyclaw/core";
 import { getProviderMeta, getDefaultModelForProvider, providerSecretKey, parseProxyUrl, reconstructProxyUrl } from "@easyclaw/core";
-import { readFullModelCatalog, resolveOpenClawConfigPath, readExistingConfig, resolveOpenClawStateDir, GatewayRpcClient, writeChannelAccount, removeChannelAccount, syncPermissions, ensureCliAvailable } from "@easyclaw/gateway";
+import { readFullModelCatalog, resolveOpenClawConfigPath, readExistingConfig, resolveOpenClawStateDir, GatewayRpcClient, writeChannelAccount, removeChannelAccount, syncPermissions } from "@easyclaw/gateway";
 import { loadCostUsageSummary, discoverAllSessions, loadSessionCostSummary } from "../../../vendor/openclaw/src/infra/session-cost-usage.js";
 import type { CostUsageSummary, SessionCostSummary } from "../../../vendor/openclaw/src/infra/session-cost-usage.js";
 import type { ChannelsStatusSnapshot } from "@easyclaw/core";
@@ -1199,6 +1199,23 @@ async function validateProviderApiKey(
         method: "POST",
         headers,
         body: JSON.stringify(body),
+        signal: controller.signal,
+        ...(dispatcher && { dispatcher }),
+      });
+    } else if (provider === "minimax" || provider === "minimax-cn" || provider === "minimax-coding") {
+      // MiniMax doesn't support GET /models — validate via a minimal chat completion
+      log.info(`Validating ${provider} API key via ${baseUrl}/chat/completions ...`);
+      res = await fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: "MiniMax-M2",
+          messages: [{ role: "user", content: "hi" }],
+          max_tokens: 1,
+        }),
         signal: controller.signal,
         ...(dispatcher && { dispatcher }),
       });
@@ -3048,39 +3065,39 @@ async function handleApiRoute(
     return;
   }
   if (pathname === "/api/skills/install" && req.method === "POST") {
-    const body = (await parseBody(req)) as { slug?: string };
+    const body = (await parseBody(req)) as { slug?: string; lang?: string };
     if (!body.slug) {
       sendJson(res, 400, { error: "Missing required field: slug" });
       return;
     }
-    const workdir = join(homedir(), ".easyclaw", "openclaw");
+    if (body.slug.includes("..") || body.slug.includes("/") || body.slug.includes("\\")) {
+      sendJson(res, 400, { error: "Invalid slug" });
+      return;
+    }
+
+    const lang = body.lang ?? "en";
+    const apiBase = lang === "zh"
+      ? "https://api-cn.easy-claw.com"
+      : "https://api.easy-claw.com";
+    const downloadUrl = `${apiBase}/api/skills/${encodeURIComponent(body.slug)}/download`;
+
     try {
-      const clawhubBin = await ensureCliAvailable("clawhub", "clawhub");
-      // Check login status — unauthenticated users hit rate limits
-      const loggedIn = await new Promise<boolean>((resolve) => {
-        execFile(clawhubBin, ["whoami"], { timeout: 10_000 }, (err) => resolve(!err));
+      const response = await proxiedFetch(downloadUrl, {
+        signal: AbortSignal.timeout(30_000),
       });
-      if (!loggedIn) {
-        // Trigger browser-based login flow
-        await new Promise<void>((resolve, reject) => {
-          execFile(clawhubBin, ["login"], { timeout: 120_000 }, (err, _stdout, stderr) => {
-            if (err) {
-              reject(new Error("ClawHub login failed. Please run 'clawhub login' in your terminal. " + (stderr || err.message)));
-              return;
-            }
-            resolve();
-          });
-        });
+      if (!response.ok) {
+        const errText = await response.text();
+        sendJson(res, 200, { ok: false, error: `Server returned ${response.status}: ${errText}` });
+        return;
       }
-      await new Promise<void>((resolve, reject) => {
-        execFile(clawhubBin, ["install", body.slug!, "--workdir", workdir], { timeout: 60_000 }, (err, _stdout, stderr) => {
-          if (err) {
-            reject(new Error(stderr || err.message));
-            return;
-          }
-          resolve();
-        });
-      });
+      const content = await response.text();
+
+      // Write to skills directory
+      const skillsDir = join(homedir(), ".easyclaw", "openclaw", "skills");
+      const skillDir = join(skillsDir, body.slug);
+      await fs.mkdir(skillDir, { recursive: true });
+      await fs.writeFile(join(skillDir, "SKILL.md"), content, "utf-8");
+
       sendJson(res, 200, { ok: true });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

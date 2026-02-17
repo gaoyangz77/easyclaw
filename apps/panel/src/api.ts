@@ -804,10 +804,10 @@ export async function fetchInstalledSkills(): Promise<InstalledSkill[]> {
   }, 5000);
 }
 
-export async function installSkill(slug: string): Promise<{ ok: boolean; error?: string }> {
+export async function installSkill(slug: string, lang?: string): Promise<{ ok: boolean; error?: string }> {
   const result = await fetchJson<{ ok: boolean; error?: string }>("/skills/install", {
     method: "POST",
-    body: JSON.stringify({ slug }),
+    body: JSON.stringify({ slug, lang }),
   });
   invalidateCache("installed-skills");
   return result;
