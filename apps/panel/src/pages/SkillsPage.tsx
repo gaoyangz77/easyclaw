@@ -352,7 +352,9 @@ export function SkillsPage() {
                         {t("skills.version", { version: skill.version })}
                       </div>
                       {skill.description && (
-                        <div className="skill-card-desc">{skill.description}</div>
+                        <div className="skill-card-desc">
+                          {skill.description}
+                        </div>
                       )}
                     </div>
                     <button

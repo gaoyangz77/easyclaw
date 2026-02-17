@@ -10,8 +10,9 @@ import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, realpathSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { createServer } from "node:http";
 import { execFile, execFileSync } from "node:child_process";
-import { delimiter, dirname, join } from "node:path";
+import { dirname, join } from "node:path";
 import { homedir } from "node:os";
+import { enrichedPath, findInPath } from "./cli-utils.js";
 
 const CLIENT_ID_KEYS = ["OPENCLAW_GEMINI_OAUTH_CLIENT_ID", "GEMINI_CLI_OAUTH_CLIENT_ID"];
 const CLIENT_SECRET_KEYS = [
@@ -145,53 +146,6 @@ export function extractGeminiCliCredentials(): { clientId: string; clientSecret:
     }
   } catch {
     // Gemini CLI not installed or extraction failed
-  }
-  return null;
-}
-
-/**
- * Build an enriched PATH that includes common Node.js/npm install locations.
- * Packaged Electron apps on macOS inherit a minimal PATH (e.g. /usr/bin:/bin)
- * that doesn't include Homebrew, nvm, volta, fnm, etc.
- */
-function enrichedPath(): string {
-  const base = process.env.PATH ?? "";
-  const home = homedir();
-  const extra: string[] = [
-    "/usr/local/bin",               // Homebrew (Intel Mac) / system installs
-    "/opt/homebrew/bin",            // Homebrew (Apple Silicon)
-    join(home, ".nvm", "current", "bin"),  // nvm (symlink alias)
-    join(home, ".volta", "bin"),    // Volta
-    join(home, ".fnm", "aliases", "default", "bin"), // fnm
-    join(home, ".local", "bin"),    // pipx / user-local installs
-  ];
-
-  // nvm: also check versioned directories (pick the first one found)
-  const nvmVersions = join(home, ".nvm", "versions", "node");
-  try {
-    const versions = readdirSync(nvmVersions).filter((v) => v.startsWith("v")).sort().reverse();
-    if (versions.length > 0) {
-      extra.push(join(nvmVersions, versions[0], "bin"));
-    }
-  } catch {
-    // nvm not installed
-  }
-
-  const existing = new Set(base.split(delimiter));
-  const additions = extra.filter((d) => !existing.has(d) && existsSync(d));
-  if (additions.length === 0) return base;
-  return base + delimiter + additions.join(delimiter);
-}
-
-function findInPath(name: string): string | null {
-  const exts = process.platform === "win32" ? [".cmd", ".bat", ".exe", ""] : [""];
-  for (const dir of enrichedPath().split(delimiter)) {
-    for (const ext of exts) {
-      const p = join(dir, name + ext);
-      if (existsSync(p)) {
-        return p;
-      }
-    }
   }
   return null;
 }

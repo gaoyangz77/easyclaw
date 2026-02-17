@@ -81,3 +81,4 @@ export {
 export { resolveVolcengineSttCliPath } from "./volcengine-stt-cli-path.js";
 export { runGeminiOAuthFlow, acquireGeminiOAuthToken, saveGeminiOAuthCredentials, validateGeminiAccessToken } from "./oauth-flow.js";
 export type { OAuthFlowCallbacks, OAuthFlowResult, AcquiredOAuthCredentials } from "./oauth-flow.js";
+export { enrichedPath, findInPath, ensureCliAvailable } from "./cli-utils.js";
