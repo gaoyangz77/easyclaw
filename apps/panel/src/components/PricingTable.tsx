@@ -1,7 +1,19 @@
 import { useTranslation } from "react-i18next";
 import { getProviderMeta } from "@easyclaw/core";
 import type { LLMProvider } from "@easyclaw/core";
-import type { ProviderPricing, Plan } from "../api.js";
+import type { ProviderPricing, ProviderSubscription, Plan } from "../api.js";
+
+/** Find a subscription by ID across all provider documents. */
+function findSubscription(
+  pricingList: ProviderPricing[] | null,
+  subId: string,
+): { sub: ProviderSubscription; currency: string; pricingUrl: string } | null {
+  for (const pp of pricingList ?? []) {
+    const sub = pp.subscriptions?.find((s) => s.id === subId);
+    if (sub) return { sub, currency: pp.currency, pricingUrl: sub.pricingUrl };
+  }
+  return null;
+}
 
 function isFree(price: string): boolean {
   return price === "0" || price === "0.00" || price === "—";
@@ -141,8 +153,8 @@ export function SubscriptionPricingTable({
 }) {
   const { t } = useTranslation();
 
-  const data = pricingList?.find((p) => p.provider === provider) ?? null;
-  const plans: Plan[] = data?.plans ?? [];
+  const result = findSubscription(pricingList, provider);
+  const plans: Plan[] = result?.sub.plans ?? [];
   const providerLabel = getProviderMeta(provider as LLMProvider)?.label ?? provider;
 
   return (
@@ -205,10 +217,10 @@ export function SubscriptionPricingTable({
           <div className="pricing-disclaimer">
             {t("providers.pricingDisclaimer")}
           </div>
-          {(getProviderMeta(provider as LLMProvider)?.subscriptionUrl || data?.pricingUrl) && (
+          {(getProviderMeta(provider as LLMProvider)?.subscriptionUrl || result?.pricingUrl) && (
             <div className="pricing-footer-link">
               <a
-                href={getProviderMeta(provider as LLMProvider)?.subscriptionUrl || data?.pricingUrl}
+                href={getProviderMeta(provider as LLMProvider)?.subscriptionUrl || result?.pricingUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="pricing-link"

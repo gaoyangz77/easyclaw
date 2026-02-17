@@ -649,12 +649,19 @@ export interface Plan {
   planDetail: PlanDetail[];
 }
 
+export interface ProviderSubscription {
+  id: string;
+  label: string;
+  pricingUrl: string;
+  plans: Plan[];
+}
+
 export interface ProviderPricing {
   provider: string;
   currency: string;
   pricingUrl: string;
   models: ModelPricing[];
-  plans?: Plan[];
+  subscriptions?: ProviderSubscription[];
 }
 
 function getPricingApiUrl(language: string): string {
@@ -683,7 +690,7 @@ export async function fetchPricing(
             pricing(deviceId: $deviceId, platform: $platform, appVersion: $appVersion, language: $language) {
               provider currency pricingUrl
               models { modelId displayName inputPricePerMillion outputPricePerMillion note }
-              plans { planName price currency planDetail { modelName volume } }
+              subscriptions { id label pricingUrl plans { planName price currency planDetail { modelName volume } } }
             }
           }`,
           variables: { deviceId, platform, appVersion, language },
