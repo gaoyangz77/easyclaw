@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import type { IncomingMessage, ServerResponse, Server } from "node:http";
-import { readFileSync, existsSync, statSync, watch } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, statSync, watch } from "node:fs";
 import { join, extname, resolve, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createLogger } from "@easyclaw/logger";
@@ -1781,6 +1781,49 @@ async function handleApiRoute(
     }
     if (sttChanged) {
       onSttChange?.();
+    }
+    return;
+  }
+
+  // --- Agent Settings (OpenClaw config: session-level settings) ---
+  if (pathname === "/api/agent-settings" && req.method === "GET") {
+    try {
+      const configPath = resolveOpenClawConfigPath();
+      const fullConfig = readExistingConfig(configPath);
+      const sessionCfg = typeof fullConfig.session === "object" && fullConfig.session !== null
+        ? (fullConfig.session as Record<string, unknown>)
+        : {};
+      sendJson(res, 200, {
+        dmScope: (sessionCfg.dmScope as string) ?? "main",
+      });
+    } catch (err) {
+      sendJson(res, 500, { error: String(err) });
+    }
+    return;
+  }
+
+  if (pathname === "/api/agent-settings" && req.method === "PUT") {
+    try {
+      const body = (await parseBody(req)) as Record<string, unknown>;
+      const configPath = resolveOpenClawConfigPath();
+      const fullConfig = readExistingConfig(configPath);
+      const existingSession = typeof fullConfig.session === "object" && fullConfig.session !== null
+        ? (fullConfig.session as Record<string, unknown>)
+        : {};
+
+      if (body.dmScope !== undefined) {
+        existingSession.dmScope = body.dmScope;
+      }
+
+      fullConfig.session = existingSession;
+      writeFileSync(configPath, JSON.stringify(fullConfig, null, 2) + "\n", "utf-8");
+
+      // Notify gateway to reload config
+      onProviderChange?.({ configOnly: true });
+
+      sendJson(res, 200, { ok: true });
+    } catch (err) {
+      sendJson(res, 500, { error: String(err) });
     }
     return;
   }

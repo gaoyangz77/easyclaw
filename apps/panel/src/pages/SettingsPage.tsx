@@ -1,10 +1,19 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { fetchTelemetrySetting, updateTelemetrySetting, trackEvent } from "../api.js";
+import { fetchTelemetrySetting, updateTelemetrySetting, trackEvent, fetchAgentSettings, updateAgentSettings } from "../api.js";
+import { Select } from "../components/Select.js";
+
+const DM_SCOPE_OPTIONS = [
+  { value: "main", labelKey: "settings.agent.dmScopeMain" },
+  { value: "per-peer", labelKey: "settings.agent.dmScopePerPeer" },
+  { value: "per-channel-peer", labelKey: "settings.agent.dmScopePerChannelPeer" },
+  { value: "per-account-channel-peer", labelKey: "settings.agent.dmScopePerAccountChannelPeer" },
+];
 
 export function SettingsPage() {
   const { t } = useTranslation();
   const [telemetryEnabled, setTelemetryEnabled] = useState(false);
+  const [dmScope, setDmScope] = useState("main");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -16,13 +25,32 @@ export function SettingsPage() {
   async function loadSettings() {
     try {
       setLoading(true);
-      const enabled = await fetchTelemetrySetting();
+      const [enabled, agentSettings] = await Promise.all([
+        fetchTelemetrySetting(),
+        fetchAgentSettings(),
+      ]);
       setTelemetryEnabled(enabled);
+      setDmScope(agentSettings.dmScope);
       setError(null);
     } catch (err) {
-      setError(t("settings.telemetry.failedToLoad") + String(err));
+      setError(t("settings.agent.failedToLoad") + String(err));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleDmScopeChange(value: string) {
+    const previous = dmScope;
+    setDmScope(value);
+    try {
+      setSaving(true);
+      setError(null);
+      await updateAgentSettings({ dmScope: value });
+    } catch (err) {
+      setError(t("settings.agent.failedToSave") + String(err));
+      setDmScope(previous);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -35,7 +63,6 @@ export function SettingsPage() {
       trackEvent("telemetry.toggled", { enabled });
     } catch (err) {
       setError(t("settings.telemetry.failedToSave") + String(err));
-      // Revert on error
       setTelemetryEnabled(!enabled);
     } finally {
       setSaving(false);
@@ -61,6 +88,29 @@ export function SettingsPage() {
           {error}
         </div>
       )}
+
+      {/* Agent Settings Section */}
+      <div className="section-card">
+        <h3>{t("settings.agent.title")}</h3>
+
+        <div>
+          <label className="form-label-block">
+            {t("settings.agent.dmScope")}
+          </label>
+          <Select
+            value={dmScope}
+            onChange={handleDmScopeChange}
+            options={DM_SCOPE_OPTIONS.map(opt => ({
+              value: opt.value,
+              label: t(opt.labelKey),
+            }))}
+            disabled={saving}
+          />
+          <div className="form-hint">
+            {t("settings.agent.dmScopeHint")}
+          </div>
+        </div>
+      </div>
 
       {/* Telemetry & Privacy Section */}
       <div className="section-card">

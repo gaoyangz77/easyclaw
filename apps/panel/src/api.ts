@@ -514,6 +514,23 @@ export async function updateTelemetrySetting(enabled: boolean): Promise<void> {
   });
 }
 
+// --- Agent Settings (OpenClaw session-level config) ---
+
+export interface AgentSettings {
+  dmScope: string;
+}
+
+export async function fetchAgentSettings(): Promise<AgentSettings> {
+  return fetchJson<AgentSettings>("/agent-settings");
+}
+
+export async function updateAgentSettings(data: Partial<AgentSettings>): Promise<void> {
+  await fetchJson("/agent-settings", {
+    method: "PUT",
+    body: JSON.stringify(data),
+  });
+}
+
 // --- Telemetry Event Tracking ---
 
 /** Fire-and-forget telemetry event relay to desktop main process. */
