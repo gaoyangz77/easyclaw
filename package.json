@@ -10,7 +10,7 @@
     "dev": "turbo run dev",
     "format": "oxfmt --check",
     "format:fix": "oxfmt --write",
-    "postinstall": "./scripts/rebuild-native.sh",
+    "postinstall": "bash scripts/rebuild-native.sh",
     "verify-proxy": "node scripts/verify-proxy-domains.mjs"
   },
   "devDependencies": {
