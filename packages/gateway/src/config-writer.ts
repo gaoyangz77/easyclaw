@@ -4,7 +4,7 @@ import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createLogger } from "@easyclaw/logger";
-import { ALL_PROVIDERS, getProviderMeta, type LLMProvider } from "@easyclaw/core";
+import { ALL_PROVIDERS, getProviderMeta, resolveGatewayProvider, type LLMProvider } from "@easyclaw/core";
 import { generateAudioConfig, mergeAudioConfig } from "./audio-config-writer.js";
 
 const log = createLogger("gateway:config");
@@ -384,7 +384,7 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
         ...existingDefaults,
         model: {
           ...existingModel,
-          primary: `${options.defaultModel.provider}/${options.defaultModel.modelId}`,
+          primary: `${resolveGatewayProvider(options.defaultModel.provider as LLMProvider)}/${options.defaultModel.modelId}`,
         },
       },
     };

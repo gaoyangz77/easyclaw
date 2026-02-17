@@ -1,6 +1,7 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { createLogger } from "@easyclaw/logger";
+import { resolveGatewayProvider, type LLMProvider } from "@easyclaw/core";
 
 const log = createLogger("gateway:auth-profile");
 
@@ -82,13 +83,16 @@ export function syncAuthProfile(
   const filePath = resolveAuthProfilePath(stateDir);
   const store = readStore(filePath);
 
-  const profileId = `${provider}:active`;
-  store.profiles[profileId] = { type: "api_key", provider, key: apiKey };
+  // Use the gateway provider name so OpenClaw can match it to the model config.
+  // e.g. "claude" → "anthropic", "gemini" → "google"
+  const gwProvider = resolveGatewayProvider(provider as LLMProvider);
+  const profileId = `${gwProvider}:active`;
+  store.profiles[profileId] = { type: "api_key", provider: gwProvider, key: apiKey };
   store.order = store.order ?? {};
-  store.order[provider] = [profileId];
+  store.order[gwProvider] = [profileId];
 
   writeStore(filePath, store);
-  log.info(`Synced auth profile for ${provider}`);
+  log.info(`Synced auth profile for ${provider} (gateway: ${gwProvider})`);
 }
 
 /**
@@ -98,14 +102,15 @@ export function removeAuthProfile(stateDir: string, provider: string): void {
   const filePath = resolveAuthProfilePath(stateDir);
   const store = readStore(filePath);
 
-  const profileId = `${provider}:active`;
+  const gwProvider = resolveGatewayProvider(provider as LLMProvider);
+  const profileId = `${gwProvider}:active`;
   delete store.profiles[profileId];
   if (store.order) {
-    delete store.order[provider];
+    delete store.order[gwProvider];
   }
 
   writeStore(filePath, store);
-  log.info(`Removed auth profile for ${provider}`);
+  log.info(`Removed auth profile for ${provider} (gateway: ${gwProvider})`);
 }
 
 /**
@@ -138,6 +143,9 @@ export async function syncAllAuthProfiles(
   const activeKeys = allKeys.filter((k) => k.isDefault);
 
   for (const key of activeKeys) {
+    // Use the gateway provider name so OpenClaw can match it to the model config.
+    const gwProvider = resolveGatewayProvider(key.provider as LLMProvider);
+
     if (key.authType === "oauth") {
       // OAuth entry: read credential JSON from Keychain
       const credJson = await secretStore.get(`oauth-cred-${key.id}`);
@@ -150,17 +158,17 @@ export async function syncAllAuthProfiles(
             email?: string;
             projectId: string;
           };
-          const profileId = `${key.provider}:${cred.email ?? "default"}`;
+          const profileId = `${gwProvider}:${cred.email ?? "default"}`;
           store.profiles[profileId] = {
             type: "oauth",
-            provider: key.provider,
+            provider: gwProvider,
             access: cred.access,
             refresh: cred.refresh,
             expires: cred.expires,
             email: cred.email,
             projectId: cred.projectId,
           };
-          store.order![key.provider] = [profileId];
+          store.order![gwProvider] = [profileId];
         } catch {
           log.warn(`Failed to parse OAuth credential for ${key.provider} (key ${key.id})`);
         }
@@ -169,13 +177,13 @@ export async function syncAllAuthProfiles(
       // API key entry: existing behavior
       const apiKey = await secretStore.get(`provider-key-${key.id}`);
       if (apiKey) {
-        const profileId = `${key.provider}:active`;
+        const profileId = `${gwProvider}:active`;
         store.profiles[profileId] = {
           type: "api_key",
-          provider: key.provider,
+          provider: gwProvider,
           key: apiKey,
         };
-        store.order![key.provider] = [profileId];
+        store.order![gwProvider] = [profileId];
       }
     }
   }
@@ -219,9 +227,10 @@ export async function syncBackOAuthCredentials(
 
   let synced = 0;
   for (const key of oauthKeys) {
-    // Find the matching profile in auth-profiles.json
+    // Find the matching profile in auth-profiles.json using the gateway provider name
+    const gwProvider = resolveGatewayProvider(key.provider as LLMProvider);
     const matchingProfile = Object.values(store.profiles).find(
-      (p) => p.type === "oauth" && p.provider === key.provider,
+      (p) => p.type === "oauth" && p.provider === gwProvider,
     ) as OAuthProfile | undefined;
 
     if (!matchingProfile) continue;

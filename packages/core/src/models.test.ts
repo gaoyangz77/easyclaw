@@ -10,6 +10,7 @@ import {
   ALL_PROVIDERS,
   initKnownModels,
   getProviderMeta,
+  resolveGatewayProvider,
 } from "./models.js";
 
 describe("PROVIDERS extraModels", () => {
@@ -299,5 +300,23 @@ describe("getProvidersForRegion", () => {
   it("should return default list for unknown region", () => {
     const providers = getProvidersForRegion("jp");
     expect(providers[0]).toBe("openai");
+  });
+});
+
+describe("resolveGatewayProvider", () => {
+  it("should return root providers as-is", () => {
+    expect(resolveGatewayProvider("anthropic")).toBe("anthropic");
+    expect(resolveGatewayProvider("google")).toBe("google");
+    expect(resolveGatewayProvider("openai")).toBe("openai");
+  });
+
+  it("should map subscription plans without extraModels to parent", () => {
+    expect(resolveGatewayProvider("claude")).toBe("anthropic");
+    expect(resolveGatewayProvider("gemini")).toBe("google");
+  });
+
+  it("should keep subscription plans with extraModels as-is", () => {
+    expect(resolveGatewayProvider("zhipu-coding")).toBe("zhipu-coding");
+    expect(resolveGatewayProvider("moonshot-coding")).toBe("moonshot-coding");
   });
 });

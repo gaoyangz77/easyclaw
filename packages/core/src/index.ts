@@ -40,6 +40,7 @@ export {
   CNY_USD,
   providerSecretKey,
   getProviderMeta,
+  resolveGatewayProvider,
   getDefaultModelForRegion,
   getDefaultModelForProvider,
   getModelsForProvider,

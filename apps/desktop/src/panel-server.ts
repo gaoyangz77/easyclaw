@@ -8,7 +8,7 @@ import type { Storage } from "@easyclaw/storage";
 import type { SecretStore } from "@easyclaw/secrets";
 import type { ArtifactStatus, ArtifactType, LLMProvider } from "@easyclaw/core";
 import { getProviderMeta, getDefaultModelForProvider, providerSecretKey, parseProxyUrl, reconstructProxyUrl } from "@easyclaw/core";
-import { readFullModelCatalog, resolveOpenClawConfigPath, readExistingConfig, resolveOpenClawStateDir, GatewayRpcClient, writeChannelAccount, removeChannelAccount, syncPermissions } from "@easyclaw/gateway";
+import { readFullModelCatalog, resolveOpenClawConfigPath, readExistingConfig, resolveOpenClawStateDir, GatewayRpcClient, writeChannelAccount, removeChannelAccount, syncPermissions, ensureCliAvailable } from "@easyclaw/gateway";
 import { loadCostUsageSummary, discoverAllSessions, loadSessionCostSummary } from "../../../vendor/openclaw/src/infra/session-cost-usage.js";
 import type { CostUsageSummary, SessionCostSummary } from "../../../vendor/openclaw/src/infra/session-cost-usage.js";
 import type { ChannelsStatusSnapshot } from "@easyclaw/core";
@@ -2008,10 +2008,10 @@ async function handleApiRoute(
     storage.providerKeys.setDefault(id);
     await syncActiveKey(entry.provider, storage, secretStore);
 
-    // If model changed on the active provider → config update + SIGUSR1
+    // If model changed on the active provider → full restart to rewrite config
     // If same model (e.g. key rotation) → just sync auth profile, zero disruption
     if (modelChanged && entry.provider === activeProvider) {
-      onProviderChange?.({ configOnly: true });
+      onProviderChange?.();
     } else {
       onProviderChange?.({ keyOnly: true });
     }
@@ -2078,13 +2078,14 @@ async function handleApiRoute(
           await snapshotEngine.recordActivation(existing.id, existing.provider, body.model);
         }
 
-        // If model or proxy changed on the active key of the active provider, trigger gateway update
+        // If model or proxy changed on the active key of the active provider, trigger gateway update.
+        // Model changes need a full restart (not configOnly) because the config file must be
+        // rewritten with the new model before the gateway can pick it up.
         const activeProvider = storage.settings.get("llm-provider");
         const modelChanged = modelChanging;
         const proxyChanged = proxyBaseUrl !== undefined && proxyBaseUrl !== existing.proxyBaseUrl;
         if (existing.isDefault && existing.provider === activeProvider && (modelChanged || proxyChanged)) {
-          // Model-only change can use SIGUSR1 reload (config file only, no env var change)
-          onProviderChange?.({ configOnly: modelChanged && !proxyChanged });
+          onProviderChange?.();
         }
 
         sendJson(res, 200, updated);
@@ -3052,15 +3053,29 @@ async function handleApiRoute(
       sendJson(res, 400, { error: "Missing required field: slug" });
       return;
     }
+    const workdir = join(homedir(), ".easyclaw", "openclaw");
     try {
-      await new Promise<void>((resolve, reject) => {
-        execFile("clawhub", ["install", body.slug!], { timeout: 60_000 }, (err, _stdout, stderr) => {
-          if (err) {
-            if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-              reject(new Error("clawhub CLI not found. Install it with: npm install -g clawhub"));
-            } else {
-              reject(new Error(stderr || err.message));
+      const clawhubBin = await ensureCliAvailable("clawhub", "clawhub");
+      // Check login status — unauthenticated users hit rate limits
+      const loggedIn = await new Promise<boolean>((resolve) => {
+        execFile(clawhubBin, ["whoami"], { timeout: 10_000 }, (err) => resolve(!err));
+      });
+      if (!loggedIn) {
+        // Trigger browser-based login flow
+        await new Promise<void>((resolve, reject) => {
+          execFile(clawhubBin, ["login"], { timeout: 120_000 }, (err, _stdout, stderr) => {
+            if (err) {
+              reject(new Error("ClawHub login failed. Please run 'clawhub login' in your terminal. " + (stderr || err.message)));
+              return;
             }
+            resolve();
+          });
+        });
+      }
+      await new Promise<void>((resolve, reject) => {
+        execFile(clawhubBin, ["install", body.slug!, "--workdir", workdir], { timeout: 60_000 }, (err, _stdout, stderr) => {
+          if (err) {
+            reject(new Error(stderr || err.message));
             return;
           }
           resolve();

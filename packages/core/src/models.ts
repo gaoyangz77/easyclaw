@@ -504,6 +504,7 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
 
 /** Pre-built O(1) lookup map for any provider ID (root or subscription plan). */
 const _metaMap = new Map<LLMProvider, ResolvedProviderMeta>();
+const _parentMap = new Map<LLMProvider, RootProvider>();
 const _allProviders: LLMProvider[] = [];
 
 for (const root of Object.keys(PROVIDERS) as RootProvider[]) {
@@ -521,6 +522,7 @@ for (const root of Object.keys(PROVIDERS) as RootProvider[]) {
   });
   for (const plan of meta.subscriptionPlans ?? []) {
     _allProviders.push(plan.id);
+    _parentMap.set(plan.id, root);
     _metaMap.set(plan.id, {
       label: plan.label,
       baseUrl: plan.baseUrl,
@@ -544,6 +546,22 @@ export const ALL_PROVIDERS: LLMProvider[] = _allProviders;
  */
 export function getProviderMeta(provider: LLMProvider): ResolvedProviderMeta | undefined {
   return _metaMap.get(provider);
+}
+
+/**
+ * Resolve the gateway provider name for a given provider ID.
+ *
+ * Subscription plans that have their own `extraModels` are registered as
+ * separate providers in the gateway and keep their own name. Plans without
+ * `extraModels` share the parent provider's gateway identity.
+ */
+export function resolveGatewayProvider(provider: LLMProvider): string {
+  const parent = _parentMap.get(provider);
+  if (!parent) return provider; // root provider
+  // Plan has its own extraModels → registered as separate gateway provider
+  if (getProviderMeta(provider)?.extraModels) return provider;
+  // Otherwise use parent's name
+  return parent;
 }
 
 /** Provider IDs that appear in the subscription tab (all nested plan IDs). */

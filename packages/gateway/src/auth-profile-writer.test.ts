@@ -80,6 +80,24 @@ describe("syncAuthProfile", () => {
     expect(profiles["openai:active"].key).toBe("sk-openai-key");
     expect(profiles["qwen:active"].key).toBe("sk-qwen-key");
   });
+
+  it("maps subscription plan names to gateway provider names", () => {
+    syncAuthProfile(stateDir, "claude", "sk-claude-token");
+
+    const filePath = resolveAuthProfilePath(stateDir);
+    const store = readJsonFile(filePath) as Record<string, unknown>;
+    const profiles = store.profiles as Record<string, Record<string, string>>;
+    const order = store.order as Record<string, string[]>;
+
+    // "claude" should be stored under "anthropic" (the gateway provider name)
+    expect(profiles["anthropic:active"]).toBeDefined();
+    expect(profiles["anthropic:active"].provider).toBe("anthropic");
+    expect(profiles["anthropic:active"].key).toBe("sk-claude-token");
+    expect(order["anthropic"]).toEqual(["anthropic:active"]);
+    // No "claude" key should exist
+    expect(profiles["claude:active"]).toBeUndefined();
+    expect(order["claude"]).toBeUndefined();
+  });
 });
 
 describe("removeAuthProfile", () => {
@@ -220,6 +238,34 @@ describe("syncAllAuthProfiles", () => {
     const filePath = resolveAuthProfilePath(stateDir);
     const store = readJsonFile(filePath) as Record<string, unknown>;
     expect(store).toEqual({ version: 1, profiles: {}, order: {} });
+  });
+
+  it("maps subscription plan names to gateway provider names", async () => {
+    const mockStorage = {
+      providerKeys: {
+        getAll: () => [
+          { id: "key-1", provider: "claude", isDefault: true },
+        ],
+      },
+    };
+    const mockSecretStore = {
+      get: async (key: string) => {
+        if (key === "provider-key-key-1") return "sk-claude-token";
+        return null;
+      },
+    };
+
+    await syncAllAuthProfiles(stateDir, mockStorage, mockSecretStore);
+
+    const filePath = resolveAuthProfilePath(stateDir);
+    const store = readJsonFile(filePath) as Record<string, unknown>;
+    const profiles = store.profiles as Record<string, Record<string, string>>;
+    const order = store.order as Record<string, string[]>;
+
+    // "claude" key should be stored under "anthropic" gateway name
+    expect(profiles["anthropic:active"]).toBeDefined();
+    expect(profiles["anthropic:active"].provider).toBe("anthropic");
+    expect(order["anthropic"]).toEqual(["anthropic:active"]);
   });
 
   it("replaces previous profiles entirely", async () => {
