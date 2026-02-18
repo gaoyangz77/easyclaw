@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.4.2",
+    "date": "2026-02-18",
+    "en": [
+      "Fixed gateway startup race condition on Windows that caused flaky E2E test failures",
+      "Fixed update checker crash (currentState temporal dead zone error)",
+      "Auto-provision Gemini project for Pro subscribers during OAuth"
+    ],
+    "zh": [
+      "修复 Windows 上 gateway 启动竞态条件，解决 E2E 测试偶发失败问题",
+      "修复更新检查器崩溃（currentState 暂时性死区错误）",
+      "Gemini Pro 订阅用户 OAuth 时自动配置项目"
+    ]
+  },
+  {
     "version": "1.4.1",
     "date": "2026-02-17",
     "en": [
