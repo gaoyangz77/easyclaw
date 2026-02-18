@@ -3,15 +3,23 @@
     "version": "1.4.1",
     "date": "2026-02-17",
     "en": [
+      "Chat now shows real-time agent status (processing, using tools, generating)",
+      "Scroll-to-bottom button when chat history is long",
+      "Inline tool call records in chat history",
+      "Chat settings: toggle agent events display and tool event preservation",
+      "Improved DM scope hint text for clarity",
       "Refactored plugin architecture: split openclaw-plugin into policy package + extension shell",
       "Added privacy notice to WeChat Customer Service binding modal",
-      "New Settings page with DM scope control and clearer navigation labels",
       "Fixed sharp native binaries missing in packaged app"
     ],
     "zh": [
+      "聊天现在实时显示代理状态（处理中、使用工具、生成回复）",
+      "聊天记录过长时显示回到底部按钮",
+      "聊天记录中内联显示工具调用记录",
+      "新增聊天设置：可开关代理状态显示和工具记录保留",
+      "优化私聊隔离设置的说明文案",
       "重构插件架构：将 openclaw-plugin 拆分为 policy 包和扩展外壳",
       "微信客服绑定弹窗新增隐私声明",
-      "新增设置页面，支持私聊范围控制，优化导航标签",
       "修复打包后 sharp 原生二进制文件缺失问题"
     ]
   },
