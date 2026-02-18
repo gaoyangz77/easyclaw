@@ -57,7 +57,7 @@ Add to `openclaw.json`:
 {
   "plugins": {
     "load": {
-      "paths": ["path/to/file-permissions-plugin/dist/index.mjs"]
+      "paths": ["path/to/file-permissions/dist/index.mjs"]
     },
     "entries": {
       "easyclaw-file-permissions": {

@@ -1,0 +1,28 @@
+{
+  "name": "@easyclaw/policy",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "types": "./dist/index.d.mts"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "lint": "oxlint",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@easyclaw/core": "workspace:*",
+    "@easyclaw/logger": "workspace:*"
+  },
+  "devDependencies": {
+    "tsdown": "^0.20.3",
+    "oxlint": "^1.43.0",
+    "vitest": "^4.0.18"
+  }
+}

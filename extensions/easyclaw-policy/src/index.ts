@@ -1,10 +1,10 @@
 import { createLogger } from "@easyclaw/logger";
-import { createPolicyInjector } from "./policy-injector.js";
+import { createPolicyInjector } from "@easyclaw/policy";
 import type {
   GuardProvider,
   OpenClawPluginAPI,
   PolicyProvider,
-} from "./types.js";
+} from "@easyclaw/policy";
 
 const log = createLogger("easyclaw:plugin");
 

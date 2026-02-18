@@ -33,12 +33,6 @@ extraResources:
       - "!extensions/**/node_modules/**"
       - "packages/**"
       - "!packages/**/node_modules/**"
-  # File permissions plugin — must be outside asar (loaded by OpenClaw at runtime)
-  - from: "../../packages/file-permissions-plugin/dist"
-    to: "file-permissions-plugin"
-    filter:
-      - "easyclaw-file-permissions.mjs"
-      - "openclaw.plugin.json"
   # EasyClaw extensions — auto-discovered by OpenClaw at runtime
   - from: "../../extensions"
     to: "extensions"

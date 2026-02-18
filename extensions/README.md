@@ -93,7 +93,5 @@ to load. The extension must be built (`pnpm build`) before it can be loaded.
 
 ## What NOT to Put Here
 
-- **`file-permissions-plugin`** — Lives in `packages/` with its own lifecycle
-  (compiled single-file `.mjs`, loaded by path, not by directory discovery)
 - **Vendor-bundled plugins** (e.g. `google-gemini-cli-auth`) — These ship inside
   `vendor/openclaw/extensions/` and are enabled via `plugins.entries` only

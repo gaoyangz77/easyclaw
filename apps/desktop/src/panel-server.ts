@@ -1753,6 +1753,7 @@ async function handleApiRoute(
     const body = (await parseBody(req)) as Record<string, string>;
     let providerChanged = false;
     let sttChanged = false;
+    let permissionsChanged = false;
     for (const [key, value] of Object.entries(body)) {
       if (typeof key === "string" && typeof value === "string") {
         if (key.endsWith("-api-key")) {
@@ -1772,6 +1773,9 @@ async function handleApiRoute(
           if (key === "stt.enabled" || key === "stt.provider") {
             sttChanged = true;
           }
+          if (key === "file-permissions-full-access") {
+            permissionsChanged = true;
+          }
         }
       }
     }
@@ -1781,6 +1785,9 @@ async function handleApiRoute(
     }
     if (sttChanged) {
       onSttChange?.();
+    }
+    if (permissionsChanged) {
+      onPermissionsChange?.();
     }
     return;
   }

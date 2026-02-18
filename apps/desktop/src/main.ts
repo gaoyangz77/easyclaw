@@ -667,7 +667,7 @@ app.whenReady().then(async () => {
   // In packaged app, plugins/extensions live in Resources/.
   // In dev, config-writer auto-resolves via monorepo root.
   const filePermissionsPluginPath = app.isPackaged
-    ? join(process.resourcesPath, "file-permissions-plugin", "easyclaw-file-permissions.mjs")
+    ? join(process.resourcesPath, "extensions", "file-permissions", "dist", "easyclaw-file-permissions.mjs")
     : undefined;
   const extensionsDir = app.isPackaged
     ? join(process.resourcesPath, "extensions")

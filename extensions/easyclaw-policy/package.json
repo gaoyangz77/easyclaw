@@ -1,5 +1,5 @@
 {
-  "name": "@easyclaw/openclaw-plugin",
+  "name": "@easyclaw/easyclaw-policy",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -17,7 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@easyclaw/core": "workspace:*",
+    "@easyclaw/policy": "workspace:*",
     "@easyclaw/logger": "workspace:*"
   },
   "devDependencies": {

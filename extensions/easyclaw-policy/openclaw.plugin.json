@@ -1,0 +1,10 @@
+{
+  "id": "easyclaw-policy",
+  "name": "EasyClaw Policy",
+  "description": "Injects compiled policies and guard directives into the agent system prompt",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}

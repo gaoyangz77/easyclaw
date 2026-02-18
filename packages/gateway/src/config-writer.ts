@@ -38,9 +38,9 @@ function resolveFilePermissionsPluginPath(): string {
   const monorepoRoot = findMonorepoRoot();
   if (!monorepoRoot) {
     // Fallback: assume we're in the monorepo root
-    return resolve(process.cwd(), "packages", "file-permissions-plugin", "dist", "easyclaw-file-permissions.mjs");
+    return resolve(process.cwd(), "extensions", "file-permissions", "dist", "easyclaw-file-permissions.mjs");
   }
-  return resolve(monorepoRoot, "packages", "file-permissions-plugin", "dist", "easyclaw-file-permissions.mjs");
+  return resolve(monorepoRoot, "extensions", "file-permissions", "dist", "easyclaw-file-permissions.mjs");
 }
 
 /**

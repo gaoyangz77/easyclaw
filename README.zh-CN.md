@@ -84,10 +84,11 @@ easyclaw/
 │   ├── stt/              # 语音转文字抽象层（Groq / 火山引擎）
 │   ├── proxy-router/     # HTTP CONNECT 代理复用器（用于受限地区）
 │   ├── telemetry/        # 隐私优先的匿名分析客户端
-│   ├── file-permissions-plugin/  # OpenClaw 文件访问控制插件
-│   └── openclaw-plugin/  # OpenClaw 插件 SDK
+│   └── policy/           # 策略注入器 & 守卫评估器逻辑
 ├── extensions/
 │   ├── dingtalk/         # 钉钉通道集成
+│   ├── easyclaw-policy/  # OpenClaw 策略注入插件壳
+│   ├── file-permissions/ # OpenClaw 文件访问控制插件
 │   └── wecom/            # 企业微信通道插件（运行在网关内）
 ├── scripts/
 │   ├── release-local.sh  # 本地发布流程（构建、测试、上传）
@@ -113,8 +114,10 @@ Monorepo 使用 pnpm workspaces（`apps/*`、`packages/*`、`extensions/*`），
 
 | 包                   | 说明                                                                                         |
 | -------------------- | -------------------------------------------------------------------------------------------- |
-| `@easyclaw/wecom`    | 企业微信通道插件。通过 WebSocket 连接中继服务器，收发消息，注册为 OpenClaw 通道。              |
-| `@easyclaw/dingtalk` | 钉钉通道集成（占位）。                                                                       |
+| `@easyclaw/wecom`            | 企业微信通道插件。通过 WebSocket 连接中继服务器，收发消息，注册为 OpenClaw 通道。              |
+| `@easyclaw/dingtalk`         | 钉钉通道集成（占位）。                                                                       |
+| `@easyclaw/easyclaw-policy`  | 薄 OpenClaw 插件壳，将策略注入接入网关的 `before_agent_start` 钩子。                          |
+| `@easyclaw/file-permissions` | OpenClaw 插件，通过在工具调用执行前拦截和验证来强制执行文件访问权限。                          |
 
 ### 包
 
@@ -131,8 +134,7 @@ Monorepo 使用 pnpm workspaces（`apps/*`、`packages/*`、`extensions/*`），
 | `@easyclaw/stt`                    | 语音转文字服务商抽象层（国际用 Groq，国内用火山引擎）。                                                                         |
 | `@easyclaw/proxy-router`           | HTTP CONNECT 代理，根据服务商域名配置将请求路由到不同的上游代理。                                                                |
 | `@easyclaw/telemetry`              | 隐私优先的遥测客户端，支持批量上传和重试机制；不收集个人身份信息。                                                                |
-| `@easyclaw/file-permissions-plugin` | OpenClaw 插件，通过在工具调用执行前拦截和验证来强制执行文件访问权限。                                                            |
-| `@easyclaw/openclaw-plugin`        | OpenClaw 插件 SDK 集成。                                                                                                       |
+| `@easyclaw/policy`                 | 策略注入器 & 守卫评估器 — 将策略编译为提示词片段，将守卫编译为执行检查。                                                          |
 
 ## 脚本
 

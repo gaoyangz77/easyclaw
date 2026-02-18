@@ -84,10 +84,11 @@ easyclaw/
 │   ├── stt/              # Speech-to-text abstraction (Groq, Volcengine)
 │   ├── proxy-router/     # HTTP CONNECT proxy multiplexer for restricted regions
 │   ├── telemetry/        # Privacy-first anonymous analytics client
-│   ├── file-permissions-plugin/  # OpenClaw plugin for file access control
-│   └── openclaw-plugin/  # OpenClaw plugin SDK
+│   └── policy/           # Policy injector & guard evaluator logic
 ├── extensions/
 │   ├── dingtalk/         # DingTalk channel integration
+│   ├── easyclaw-policy/  # OpenClaw plugin shell for policy injection
+│   ├── file-permissions/ # OpenClaw plugin for file access control
 │   └── wecom/            # WeCom channel plugin (runs inside gateway)
 ├── scripts/
 │   ├── release-local.sh  # Local release pipeline (build, test, upload)
@@ -113,8 +114,10 @@ The monorepo uses pnpm workspaces (`apps/*`, `packages/*`, `extensions/*`) with 
 
 | Package              | Description                                                                                                                    |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `@easyclaw/wecom`    | WeCom channel plugin. Connects to the relay server via WebSocket, receives/sends messages, and registers as an OpenClaw channel. |
-| `@easyclaw/dingtalk` | DingTalk channel integration (placeholder).                                                                                    |
+| `@easyclaw/wecom`            | WeCom channel plugin. Connects to the relay server via WebSocket, receives/sends messages, and registers as an OpenClaw channel. |
+| `@easyclaw/dingtalk`         | DingTalk channel integration (placeholder).                                                                                    |
+| `@easyclaw/easyclaw-policy`  | Thin OpenClaw plugin shell that wires policy injection into the gateway's `before_agent_start` hook.                           |
+| `@easyclaw/file-permissions` | OpenClaw plugin that enforces file access permissions by intercepting and validating tool calls before execution.               |
 
 ### Packages
 
@@ -131,8 +134,7 @@ The monorepo uses pnpm workspaces (`apps/*`, `packages/*`, `extensions/*`) with 
 | `@easyclaw/stt`                    | Speech-to-text provider abstraction (Groq for international, Volcengine for China).                                                                                                                 |
 | `@easyclaw/proxy-router`           | HTTP CONNECT proxy that routes requests to different upstream proxies based on per-provider domain configuration.                                                                                    |
 | `@easyclaw/telemetry`              | Privacy-first telemetry client with batch uploads and retry logic; no PII collected.                                                                                                                |
-| `@easyclaw/file-permissions-plugin` | OpenClaw plugin that enforces file access permissions by intercepting and validating tool calls before execution.                                                                                   |
-| `@easyclaw/openclaw-plugin`        | OpenClaw plugin SDK integration.                                                                                                                                                                    |
+| `@easyclaw/policy`                 | Policy injector & guard evaluator — compiles policies into prompt fragments and guards into enforcement checks.                                                                                     |
 
 ## Scripts
 

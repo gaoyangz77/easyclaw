@@ -1,5 +1,5 @@
 {
-  "name": "@easyclaw/file-permissions-plugin",
+  "name": "@easyclaw/file-permissions",
   "version": "1.0.0",
   "description": "File permissions enforcement plugin for EasyClaw",
   "type": "module",
