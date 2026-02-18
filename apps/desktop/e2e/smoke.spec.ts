@@ -43,8 +43,8 @@ test.describe("EasyClaw Smoke Tests", () => {
       await backdrop.waitFor({ state: "hidden", timeout: 3_000 }).catch(() => {});
     }
 
-    // Navigate to LLM Providers page
-    const providersBtn = window.locator(".nav-btn", { hasText: "LLM Providers" });
+    // Navigate to Models page
+    const providersBtn = window.locator(".nav-btn", { hasText: "Models" });
     await providersBtn.click();
     await expect(providersBtn).toHaveClass(/nav-active/);
 
@@ -103,8 +103,8 @@ test.describe("EasyClaw Smoke Tests", () => {
       await backdrop.waitFor({ state: "hidden", timeout: 3_000 }).catch(() => {});
     }
 
-    // Navigate to LLM Providers page
-    const providersBtn = window.locator(".nav-btn", { hasText: "LLM Providers" });
+    // Navigate to Models page
+    const providersBtn = window.locator(".nav-btn", { hasText: "Models" });
     await providersBtn.click();
     await expect(providersBtn).toHaveClass(/nav-active/);
 
