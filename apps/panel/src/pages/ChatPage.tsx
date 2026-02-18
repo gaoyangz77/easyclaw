@@ -243,7 +243,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   // Stable refs so event handler closures always see the latest state
   const runIdRef = useRef(runId);
   runIdRef.current = runId;
-  const receivedDeltaRef = useRef(false);
+  const lastActivityRef = useRef<number>(0);
   const messagesLengthRef = useRef(messages.length);
   messagesLengthRef.current = messages.length;
   const visibleCountRef = useRef(visibleCount);
@@ -380,6 +380,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
       // Always track last agent stream for timeout refinement
       lastAgentStreamRef.current = agentPayload.stream ?? null;
+      lastActivityRef.current = Date.now();
 
       if (!runIdRef.current) return;
 
@@ -468,7 +469,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     // Our own run — process normally
     switch (payload.state) {
       case "delta": {
-        receivedDeltaRef.current = true;
+        lastActivityRef.current = Date.now();
         const text = extractText(payload.message?.content);
         if (text) setStreaming(text);
         break;
@@ -515,15 +516,19 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     }
   }, [loadHistory, t]);
 
-  // Timeout: if runId is set but no first delta arrives within 60s, show error.
-  // Once the first delta is received, the timeout is cancelled and won't fire again.
-  // The error message is refined based on what agent events were received.
+  // Stall detection: periodically check if events have stopped arriving.
+  // Unlike a one-shot timeout, this catches stalls that happen mid-run
+  // (e.g. after a memory compaction delta, the LLM request fails silently).
   useEffect(() => {
     if (!runId) return;
-    receivedDeltaRef.current = false;
+    lastActivityRef.current = Date.now();
     lastAgentStreamRef.current = null;
-    const timer = setTimeout(() => {
-      if (receivedDeltaRef.current) return; // already streaming — no timeout
+    const STALL_THRESHOLD_MS = 30_000;
+    const CHECK_INTERVAL_MS = 5_000;
+    const interval = setInterval(() => {
+      if (!runIdRef.current) return;
+      const elapsed = Date.now() - lastActivityRef.current;
+      if (elapsed < STALL_THRESHOLD_MS) return;
       const lastStream = lastAgentStreamRef.current;
       let errorKey: string;
       if (!lastStream) {
@@ -535,7 +540,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       } else {
         errorKey = "chat.timeoutError";
       }
-      console.error("[chat] response timeout — no delta within 60s for runId:", runId, "lastStream:", lastStream);
+      console.error("[chat] stall detected — no activity for", elapsed, "ms, runId:", runIdRef.current, "lastStream:", lastStream);
       setMessages((prev) => [...prev, {
         role: "assistant",
         text: `⚠ ${t(errorKey)}`,
@@ -545,8 +550,8 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       setRunId(null);
       setAgentPhase(null);
       lastAgentStreamRef.current = null;
-    }, 60_000);
-    return () => clearTimeout(timer);
+    }, CHECK_INTERVAL_MS);
+    return () => clearInterval(interval);
   }, [runId]);
 
   function refreshAgentName(client: GatewayChatClient, cancelled?: boolean) {
