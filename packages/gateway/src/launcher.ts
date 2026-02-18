@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { createLogger } from "@easyclaw/logger";
@@ -153,11 +153,7 @@ export class GatewayLauncher extends EventEmitter<GatewayEvents> {
     return new Promise<void>((resolve) => {
       const killTimeout = setTimeout(() => {
         log.warn("Gateway did not exit gracefully, sending SIGKILL to process group");
-        if (pid) {
-          try { process.kill(-pid, "SIGKILL"); } catch {}
-        } else {
-          proc.kill("SIGKILL");
-        }
+        this.killProcessTree(proc, pid, "SIGKILL");
       }, 5000);
 
       proc.once("exit", () => {
@@ -169,11 +165,7 @@ export class GatewayLauncher extends EventEmitter<GatewayEvents> {
 
       // Kill the entire process group (openclaw + openclaw-gateway)
       // so child processes don't become orphans
-      if (pid) {
-        try { process.kill(-pid, "SIGTERM"); } catch { proc.kill("SIGTERM"); }
-      } else {
-        proc.kill("SIGTERM");
-      }
+      this.killProcessTree(proc, pid, "SIGTERM");
     });
   }
 
@@ -297,6 +289,33 @@ export class GatewayLauncher extends EventEmitter<GatewayEvents> {
         this.spawnProcess();
       }
     }, delay);
+  }
+
+  /**
+   * Kill a process and its entire tree.
+   * On Unix, sends the signal to the process group via negative PID.
+   * On Windows, uses `taskkill /T /F /PID` since negative PIDs don't work.
+   */
+  private killProcessTree(proc: ChildProcess, pid: number | undefined, signal: NodeJS.Signals): void {
+    if (!pid) {
+      proc.kill(signal);
+      return;
+    }
+
+    if (process.platform === "win32") {
+      try {
+        // /T = kill child processes, /F = force
+        execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore" });
+      } catch {
+        // Process may have already exited
+      }
+    } else {
+      try {
+        process.kill(-pid, signal);
+      } catch {
+        proc.kill(signal);
+      }
+    }
   }
 
   private setState(newState: GatewayState): void {
