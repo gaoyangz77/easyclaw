@@ -126,9 +126,6 @@ bash "$REPO_ROOT/scripts/rebuild-native.sh"
 if [ "$SKIP_TESTS" = false ]; then
   step "Run E2E tests (prod mode)"
 
-  # Give the system a breather after pack + rebuild-native (Windows flaky fix)
-  sleep 10
-
   EXEC_PATH=""
   if [ "$PLATFORM" = "mac" ]; then
     APP_DIR=$(find "$RELEASE_DIR" -maxdepth 2 -name "EasyClaw.app" -print -quit 2>/dev/null || true)
