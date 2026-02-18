@@ -434,6 +434,10 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
     const isOurRun = runIdRef.current && payload.runId === runIdRef.current;
 
+    if (!isOurRun && runIdRef.current) {
+      console.warn("[chat] runId mismatch — ours:", runIdRef.current, "received:", payload.runId, "state:", payload.state);
+    }
+
     // Events from a different run on the same session (e.g. channel messages)
     if (!isOurRun) {
       if (payload.state === "delta") {

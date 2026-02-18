@@ -1067,6 +1067,17 @@ app.whenReady().then(async () => {
     mainWindow.webContents.openDevTools();
   }
 
+  // Allow opening DevTools in prod via Ctrl+Shift+I / Cmd+Option+I
+  mainWindow.webContents.on("before-input-event", (_event, input) => {
+    const isMac = process.platform === "darwin";
+    const devToolsShortcut = isMac
+      ? input.meta && input.alt && input.key === "i"
+      : input.control && input.shift && input.key === "I";
+    if (devToolsShortcut) {
+      mainWindow!.webContents.toggleDevTools();
+    }
+  });
+
   // Hide to tray instead of quitting when window is closed
   mainWindow.on("close", (e) => {
     if (!isQuitting) {
