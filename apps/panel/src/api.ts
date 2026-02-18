@@ -514,6 +514,28 @@ export async function updateTelemetrySetting(enabled: boolean): Promise<void> {
   });
 }
 
+// --- Chat Settings ---
+
+export async function fetchChatShowAgentEvents(): Promise<boolean> {
+  const settings = await fetchSettings();
+  return settings["chat_show_agent_events"] !== "false";
+}
+
+export async function updateChatShowAgentEvents(enabled: boolean): Promise<void> {
+  await updateSettings({ chat_show_agent_events: enabled ? "true" : "false" });
+  invalidateCache("settings");
+}
+
+export async function fetchChatPreserveToolEvents(): Promise<boolean> {
+  const settings = await fetchSettings();
+  return settings["chat_preserve_tool_events"] === "true";
+}
+
+export async function updateChatPreserveToolEvents(enabled: boolean): Promise<void> {
+  await updateSettings({ chat_preserve_tool_events: enabled ? "true" : "false" });
+  invalidateCache("settings");
+}
+
 // --- Agent Settings (OpenClaw session-level config) ---
 
 export interface AgentSettings {

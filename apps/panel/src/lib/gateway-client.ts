@@ -125,6 +125,7 @@ export class GatewayChatClient {
       },
       role: "operator",
       scopes: ["operator.admin"],
+      caps: ["tool-events"],
       auth: this.opts.token ? { token: this.opts.token } : undefined,
       userAgent: navigator.userAgent,
       locale: navigator.language,

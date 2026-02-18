@@ -1,4 +1,5 @@
 .chat-container {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -14,6 +15,31 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.chat-scroll-bottom {
+  position: absolute;
+  right: 32px;
+  bottom: 140px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+  transition: opacity var(--transition-fast), background var(--transition-fast);
+  opacity: 0.8;
+  z-index: 10;
+}
+
+.chat-scroll-bottom:hover {
+  opacity: 1;
+  background: var(--color-bg-alt);
 }
 
 .chat-bubble {
@@ -74,6 +100,30 @@
 
 .chat-thinking {
   padding: 12px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chat-agent-phase {
+  font-size: 0.8rem;
+  color: var(--color-text-secondary);
+}
+
+.chat-tool-event {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 14px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+
+.chat-tool-event-icon {
+  font-size: 11px;
+  flex-shrink: 0;
 }
 
 .chat-thinking-dots {

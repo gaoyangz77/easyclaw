@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react
 import { useTranslation } from "react-i18next";
 import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 import { stripReasoningTagsFromText } from "@openclaw/reasoning-tags";
-import { fetchGatewayInfo, fetchProviderKeys, trackEvent } from "../api.js";
+import { fetchGatewayInfo, fetchProviderKeys, trackEvent, fetchChatShowAgentEvents, fetchChatPreserveToolEvents } from "../api.js";
 import { GatewayChatClient } from "../lib/gateway-client.js";
 import type { GatewayEvent, GatewayHelloOk } from "../lib/gateway-client.js";
 import "./ChatPage.css";
@@ -10,10 +10,11 @@ import "./ChatPage.css";
 type ChatImage = { data: string; mimeType: string };
 
 type ChatMessage = {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool-event";
   text: string;
   timestamp: number;
   images?: ChatImage[];
+  toolName?: string;
 };
 
 type PendingImage = { dataUrl: string; base64: string; mimeType: string };
@@ -161,7 +162,27 @@ function extractImages(content: unknown): ChatImage[] {
 }
 
 /**
- * Parse raw gateway messages into ChatMessage[], filtering out tool-only entries.
+ * Content block types that represent tool calls across different API formats:
+ * - tool_use / tooluse: Anthropic format
+ * - tool_call / toolcall: generic format
+ * - function_call / functioncall: OpenAI Responses format
+ * - toolCall / toolUse / functionCall: camelCase variants used by Pi agent
+ * Normalized to lowercase for matching.
+ */
+const TOOL_CALL_BLOCK_TYPES = new Set([
+  "tool_use", "tooluse", "tool_call", "toolcall", "function_call", "functioncall",
+]);
+
+function isToolCallBlock(block: Record<string, unknown>): boolean {
+  const raw = block.type;
+  if (typeof raw !== "string") return false;
+  return TOOL_CALL_BLOCK_TYPES.has(raw.trim().toLowerCase());
+}
+
+/**
+ * Parse raw gateway messages into ChatMessage[].
+ * Always extracts tool call blocks as inline "tool-event" entries;
+ * visibility is controlled at render time via the preserveToolEvents setting.
  */
 function parseRawMessages(
   raw?: Array<{ role?: string; content?: unknown; timestamp?: number }>,
@@ -170,6 +191,15 @@ function parseRawMessages(
   const parsed: ChatMessage[] = [];
   for (const msg of raw) {
     if (msg.role === "user" || msg.role === "assistant") {
+      // Always extract tool call names from assistant content blocks
+      if (msg.role === "assistant" && Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          const b = block as Record<string, unknown>;
+          if (isToolCallBlock(b) && typeof b.name === "string") {
+            parsed.push({ role: "tool-event", text: b.name, toolName: b.name, timestamp: msg.timestamp ?? 0 });
+          }
+        }
+      }
       const text = extractText(msg.content);
       const images = extractImages(msg.content);
       if (!text.trim() && images.length === 0) continue;
@@ -189,7 +219,11 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   const [agentName, setAgentName] = useState<string | null>(null);
   const [allFetched, setAllFetched] = useState(false);
   const [externalRunActive, setExternalRunActive] = useState(false);
+  const [agentPhase, setAgentPhase] = useState<string | null>(null);
+  const [showAgentEvents, setShowAgentEvents] = useState(true);
+  const [preserveToolEvents, setPreserveToolEvents] = useState(false);
   const [chatExamplesExpanded, setChatExamplesExpanded] = useState(() => localStorage.getItem("chat-examples-collapsed") !== "1");
+  const [showScrollBtn, setShowScrollBtn] = useState(false);
   const clientRef = useRef<GatewayChatClient | null>(null);
   const sessionKeyRef = useRef(DEFAULT_SESSION_KEY);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -218,6 +252,8 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   allFetchedRef.current = allFetched;
   const sendTimeRef = useRef<number>(0);
   const needsDisconnectErrorRef = useRef(false);
+  const lastAgentStreamRef = useRef<string | null>(null);
+  const showAgentEventsRef = useRef(true);
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -272,6 +308,8 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   const handleScroll = useCallback(() => {
     const el = messagesContainerRef.current;
     if (!el || isLoadingMoreRef.current || isFetchingRef.current) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowScrollBtn(distanceFromBottom > 150);
     if (el.scrollTop < 50) {
       // All cached messages visible — try fetching more from gateway
       if (visibleCountRef.current >= messagesLengthRef.current) {
@@ -329,6 +367,54 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
   // Handle chat events from gateway
   const handleEvent = useCallback((evt: GatewayEvent) => {
+    // Process agent events for processing-phase tracking
+    if (evt.event === "agent") {
+      const agentPayload = evt.payload as {
+        runId?: string;
+        stream?: string;
+        sessionKey?: string;
+        data?: Record<string, unknown>;
+      } | undefined;
+      if (!agentPayload) return;
+      if (agentPayload.sessionKey && agentPayload.sessionKey !== sessionKeyRef.current) return;
+
+      // Always track last agent stream for timeout refinement
+      lastAgentStreamRef.current = agentPayload.stream ?? null;
+
+      if (!runIdRef.current) return;
+
+      const stream = agentPayload.stream;
+
+      // Always record tool call events inline; visibility controlled at render time
+      if (stream === "tool") {
+        const phase = agentPayload.data?.phase;
+        const name = agentPayload.data?.name as string | undefined;
+        if (phase === "start" && name) {
+          setMessages((prev) => [...prev, { role: "tool-event", text: name, toolName: name, timestamp: Date.now() }]);
+        }
+      }
+
+      // Phase UI requires showAgentEvents
+      if (!showAgentEventsRef.current) return;
+
+      if (stream === "lifecycle") {
+        const phase = agentPayload.data?.phase;
+        if (phase === "start") setAgentPhase("processing");
+        else if (phase === "end" || phase === "error") setAgentPhase(null);
+      } else if (stream === "tool") {
+        const phase = agentPayload.data?.phase;
+        const name = agentPayload.data?.name as string | undefined;
+        if (phase === "start" && name) {
+          setAgentPhase(`tool:${name}`);
+        } else if (phase === "result") {
+          setAgentPhase("processing");
+        }
+      } else if (stream === "assistant") {
+        setAgentPhase("generating");
+      }
+      return;
+    }
+
     if (evt.event !== "chat") return;
 
     const payload = evt.payload as {
@@ -393,6 +479,8 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         }
         setStreaming(null);
         setRunId(null);
+        setAgentPhase(null);
+        lastAgentStreamRef.current = null;
         break;
       }
       case "error": {
@@ -402,6 +490,8 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${errText}`, timestamp: Date.now() }]);
         setStreaming(null);
         setRunId(null);
+        setAgentPhase(null);
+        lastAgentStreamRef.current = null;
         break;
       }
       case "aborted": {
@@ -413,6 +503,8 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
           return null;
         });
         setRunId(null);
+        setAgentPhase(null);
+        lastAgentStreamRef.current = null;
         break;
       }
     }
@@ -420,19 +512,34 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
   // Timeout: if runId is set but no first delta arrives within 60s, show error.
   // Once the first delta is received, the timeout is cancelled and won't fire again.
+  // The error message is refined based on what agent events were received.
   useEffect(() => {
     if (!runId) return;
     receivedDeltaRef.current = false;
+    lastAgentStreamRef.current = null;
     const timer = setTimeout(() => {
       if (receivedDeltaRef.current) return; // already streaming — no timeout
-      console.error("[chat] response timeout — no event received within 60s for runId:", runId);
+      const lastStream = lastAgentStreamRef.current;
+      let errorKey: string;
+      if (!lastStream) {
+        errorKey = "chat.timeoutNoEvents";
+      } else if (lastStream === "tool") {
+        errorKey = "chat.timeoutToolRunning";
+      } else if (lastStream === "lifecycle" || lastStream === "assistant") {
+        errorKey = "chat.timeoutWaitingForLLM";
+      } else {
+        errorKey = "chat.timeoutError";
+      }
+      console.error("[chat] response timeout — no delta within 60s for runId:", runId, "lastStream:", lastStream);
       setMessages((prev) => [...prev, {
         role: "assistant",
-        text: `⚠ ${t("chat.timeoutError")}`,
+        text: `⚠ ${t(errorKey)}`,
         timestamp: Date.now(),
       }]);
       setStreaming(null);
       setRunId(null);
+      setAgentPhase(null);
+      lastAgentStreamRef.current = null;
     }, 60_000);
     return () => clearTimeout(timer);
   }, [runId]);
@@ -454,6 +561,15 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
     async function init() {
       try {
+        const [showEvents, preserveEvents] = await Promise.all([
+          fetchChatShowAgentEvents().catch(() => false),
+          fetchChatPreserveToolEvents().catch(() => false),
+        ]);
+        if (cancelled) return;
+        showAgentEventsRef.current = showEvents;
+        setShowAgentEvents(showEvents);
+        setPreserveToolEvents(preserveEvents);
+
         const info = await fetchGatewayInfo();
         if (cancelled) return;
 
@@ -493,6 +609,8 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
               return null;
             });
             setRunId(null);
+            setAgentPhase(null);
+            lastAgentStreamRef.current = null;
             // Defer error display: auto-reconnect calls loadHistory which
             // overwrites messages. The ref is checked after loadHistory completes.
             if (wasWaiting) {
@@ -789,7 +907,14 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
           {showHistoryEnd && (
             <div className="chat-history-end">{t("chat.historyEnd")}</div>
           )}
-          {visibleMessages.map((msg, i) => (
+          {visibleMessages.map((msg, i) => msg.role === "tool-event" ? (
+            preserveToolEvents ? (
+              <div key={i} className="chat-tool-event">
+                <span className="chat-tool-event-icon">&#9881;</span>
+                {t("chat.toolEventLabel", { tool: msg.toolName })}
+              </div>
+            ) : null
+          ) : (
             <div
               key={i}
               className={`chat-bubble ${msg.role === "user" ? "chat-bubble-user" : "chat-bubble-assistant"}`}
@@ -811,6 +936,13 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
           ))}
           {((runId !== null && streaming === null) || (externalRunActive && runId === null)) && (
             <div className="chat-bubble chat-bubble-assistant chat-thinking">
+              {agentPhase && showAgentEvents ? (
+                <span className="chat-agent-phase">
+                  {agentPhase.startsWith("tool:")
+                    ? t("chat.phaseUsingTool", { tool: agentPhase.slice(5) })
+                    : t(`chat.phase_${agentPhase}`)}
+                </span>
+              ) : null}
               <span className="chat-thinking-dots"><span /><span /><span /></span>
             </div>
           )}
@@ -821,6 +953,13 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
           )}
           <div ref={messagesEndRef} />
         </div>
+      )}
+      {showScrollBtn && (
+        <button className="chat-scroll-bottom" onClick={scrollToBottom}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </button>
       )}
 
       <div className="chat-examples">
