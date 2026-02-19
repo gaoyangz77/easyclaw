@@ -860,8 +860,7 @@ app.whenReady().then(async () => {
 
     // Rebuild environment with updated STT credentials (GROQ_API_KEY, etc.)
     const secretEnv = await buildGatewayEnv(secretStore, { ELECTRON_RUN_AS_NODE: "1" }, storage, workspacePath);
-    const proxyEnv = buildProxyEnv();
-    launcher.setEnv({ ...secretEnv, ...proxyEnv });
+    launcher.setEnv({ ...secretEnv, ...buildFullProxyEnv() });
 
     // Reinitialize STT manager
     await sttManager.initialize().catch((err) => {
@@ -882,8 +881,7 @@ app.whenReady().then(async () => {
 
     // Rebuild environment with updated file permissions
     const secretEnv = await buildGatewayEnv(secretStore, { ELECTRON_RUN_AS_NODE: "1" }, storage, workspacePath);
-    const proxyEnv = buildProxyEnv();
-    launcher.setEnv({ ...secretEnv, ...proxyEnv });
+    launcher.setEnv({ ...secretEnv, ...buildFullProxyEnv() });
 
     // Full restart to apply new environment variables
     await launcher.stop();
@@ -1364,6 +1362,25 @@ app.whenReady().then(async () => {
   // Sync auth profiles + build env, then start gateway.
   // System proxy and proxy router config were already written before proxyRouter.start().
   const workspacePath = stateDir;
+
+  // Write the proxy setup CJS module once and build the NODE_OPTIONS string.
+  // This is reused by all restart paths (handleSttChange, handlePermissionsChange)
+  // so the --require is never accidentally dropped.
+  const resolvedVendorDir = vendorDir ?? join(import.meta.dirname, "..", "..", "..", "vendor", "openclaw");
+  const proxySetupPath = writeProxySetupModule(stateDir, resolvedVendorDir);
+  // Quote the path — Windows usernames with spaces break unquoted --require
+  const gatewayNodeOptions = `--require "${proxySetupPath}"`;
+
+  /**
+   * Build the complete proxy env including NODE_OPTIONS.
+   * Centralised so every restart path gets --require proxy-setup.cjs.
+   */
+  function buildFullProxyEnv(): Record<string, string> {
+    const env = buildProxyEnv();
+    env.NODE_OPTIONS = gatewayNodeOptions;
+    return env;
+  }
+
   Promise.all([
     syncAllAuthProfiles(stateDir, storage, secretStore),
     buildGatewayEnv(secretStore, { ELECTRON_RUN_AS_NODE: "1" }, storage, workspacePath),
@@ -1380,12 +1397,8 @@ app.whenReady().then(async () => {
         log.info(`File permissions: workspace=${perms.workspacePath}, read=${perms.readPaths.length}, write=${perms.writePaths.length}`);
       }
 
-      // Write proxy setup module and set env vars: API keys + proxy + file permissions
-      const proxyEnv = buildProxyEnv();
-      const resolvedVendorDir = vendorDir ?? join(import.meta.dirname, "..", "..", "..", "vendor", "openclaw");
-      const proxySetupPath = writeProxySetupModule(stateDir, resolvedVendorDir);
-      proxyEnv.NODE_OPTIONS = `--require ${proxySetupPath}`;
-      launcher.setEnv({ ...secretEnv, ...proxyEnv });
+      // Set env vars: API keys + proxy (incl. NODE_OPTIONS) + file permissions
+      launcher.setEnv({ ...secretEnv, ...buildFullProxyEnv() });
       return launcher.start();
     })
     .catch((err) => {

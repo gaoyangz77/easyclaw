@@ -184,6 +184,19 @@ export class GatewayLauncher extends EventEmitter<GatewayEvents> {
       env["OPENCLAW_STATE_DIR"] = this.options.stateDir;
     }
 
+    // Sanitize env vars that can cause the ELECTRON_RUN_AS_NODE child process
+    // to hang or misbehave. These are inherited from the parent (Electron main
+    // process) or CI environment but are dangerous in the gateway context:
+    //
+    // NODE_COMPILE_CACHE — V8 compile cache created by a different Node.js
+    //   version is incompatible with Electron's embedded V8. On Windows,
+    //   mandatory file locking can deadlock during cache deserialization,
+    //   producing zero stdout/stderr (the exact symptom in the 15s timeout).
+    //
+    // NODE_V8_COVERAGE — Coverage instrumentation can hang if the output
+    //   directory doesn't exist or isn't writable by the child process.
+    delete env.NODE_COMPILE_CACHE;
+
     const child = spawn(this.options.nodeBin, [this.options.entryPath, "gateway"], {
       env,
       cwd: this.options.stateDir || undefined,
