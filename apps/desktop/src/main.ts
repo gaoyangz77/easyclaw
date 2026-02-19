@@ -758,6 +758,7 @@ app.whenReady().then(async () => {
     rpcClient = new GatewayRpcClient({
       url: `ws://127.0.0.1:${port}`,
       token,
+      deviceIdentityPath: join(stateDir, "identity", "device.json"),
       onConnect: () => {
         log.info("Gateway RPC client connected");
       },

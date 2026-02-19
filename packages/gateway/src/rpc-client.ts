@@ -1,5 +1,12 @@
 import { WebSocket } from "ws";
 import { createLogger } from "@easyclaw/logger";
+import {
+  loadOrCreateDeviceIdentity,
+  publicKeyToBase64Url,
+  signPayload,
+  buildDeviceAuthPayload,
+  type DeviceIdentity,
+} from "./device-identity.js";
 
 const log = createLogger("gateway-rpc");
 
@@ -41,6 +48,8 @@ export interface GatewayRpcClientOptions {
   url: string;
   /** Optional authentication token */
   token?: string;
+  /** Path to persist device identity (Ed25519 keypair) for gateway auth */
+  deviceIdentityPath?: string;
   /** Callback fired on successful connection */
   onConnect?: () => void;
   /** Callback fired when connection closes */
@@ -66,8 +75,13 @@ export class GatewayRpcClient {
   private connected = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempt = 0;
+  private deviceIdentity: DeviceIdentity | null = null;
 
-  constructor(private opts: GatewayRpcClientOptions) {}
+  constructor(private opts: GatewayRpcClientOptions) {
+    if (opts.deviceIdentityPath) {
+      this.deviceIdentity = loadOrCreateDeviceIdentity(opts.deviceIdentityPath);
+    }
+  }
 
   /**
    * Start the client and connect to the gateway.
@@ -225,22 +239,49 @@ export class GatewayRpcClient {
   }
 
   private async sendConnect(): Promise<void> {
-    const params = {
+    const scopes = ["operator.admin"];
+    const clientId = "node-host";
+    const clientMode = "ui";
+    const role = "operator";
+
+    const params: Record<string, unknown> = {
       minProtocol: 3,
       maxProtocol: 3,
       client: {
-        id: "node-host",
+        id: clientId,
         version: "1.0.0",
         platform: process.platform,
-        mode: "ui",
+        mode: clientMode,
       },
-      role: "operator",
-      scopes: ["operator.admin"],
+      role,
+      scopes,
       auth: this.opts.token ? { token: this.opts.token } : undefined,
     };
 
+    if (this.deviceIdentity) {
+      const signedAtMs = Date.now();
+      const payload = buildDeviceAuthPayload({
+        deviceId: this.deviceIdentity.deviceId,
+        clientId,
+        clientMode,
+        role,
+        scopes,
+        signedAtMs,
+        token: this.opts.token ?? null,
+      });
+      params.device = {
+        id: this.deviceIdentity.deviceId,
+        publicKey: publicKeyToBase64Url(this.deviceIdentity.publicKeyPem),
+        signature: signPayload(this.deviceIdentity.privateKeyPem, payload),
+        signedAt: signedAtMs,
+      };
+    }
+
     const hello = await this.request<GatewayHelloOk>("connect", params, 10000);
-    log.info("Gateway connection established", { protocol: hello.protocol });
+    log.info("Gateway connection established", {
+      protocol: hello.protocol,
+      scopes: hello.auth?.scopes,
+    });
   }
 
   private handleMessage(raw: string): void {

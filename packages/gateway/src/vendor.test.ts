@@ -48,8 +48,8 @@ describe("resolveVendorVersion", () => {
     // The version should be a non-empty string
     expect(version).toBeTruthy();
     expect(typeof version).toBe("string");
-    // The pinned version is "2026.2.10"
-    expect(version).toBe("2026.2.10");
+    // The pinned version is "2026.2.17"
+    expect(version).toBe("2026.2.17");
   });
 
   it("throws when vendor dir does not exist", () => {
