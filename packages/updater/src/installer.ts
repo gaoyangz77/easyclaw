@@ -30,11 +30,17 @@ export async function installWindows(exePath: string, quitApp: () => void): Prom
 <HTA:APPLICATION INNERBORDER="no" BORDER="thin" SCROLL="no"\r
   SINGLEINSTANCE="yes" MAXIMIZEBUTTON="no" MINIMIZEBUTTON="no"\r
   SYSMENU="no" CONTEXTMENU="no" SHOWINTASKBAR="yes" />\r
-<script>window.resizeTo(420,140);window.moveTo((screen.width-420)/2,(screen.height-140)/2);</script>\r
+<script>\r
+window.resizeTo(420,140);\r
+window.moveTo((screen.width-420)/2,(screen.height-140)/2);\r
+var pos=-30;setInterval(function(){pos+=1;if(pos>100)pos=-30;document.getElementById('b').style.left=pos+'%';},30);\r
+</script>\r
 </head>\r
 <body style="font-family:'Segoe UI',sans-serif;text-align:center;padding:24px 20px 16px;background:#f3f3f3;overflow:hidden">\r
 <p style="margin:0 0 14px;font-size:14px;color:#333">Updating EasyClaw, please wait...</p>\r
-<progress style="width:90%;height:18px"></progress>\r
+<div style="width:90%;height:16px;background:#e0e0e0;border-radius:8px;overflow:hidden;margin:0 auto;position:relative">\r
+<div id="b" style="width:30%;height:100%;background:#0078d4;position:absolute;left:-30%;border-radius:8px"></div>\r
+</div>\r
 </body></html>`;
 
   const script = `@echo off\r
