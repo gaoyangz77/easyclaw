@@ -36,6 +36,7 @@ import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync } from "node:fs";
 import { execSync } from "node:child_process";
+import { createConnection } from "node:net";
 import { createTrayIcon } from "./tray-icon.js";
 import { buildTrayMenu } from "./tray-menu.js";
 import { startPanelServer } from "./panel-server.js";
@@ -700,32 +701,43 @@ app.whenReady().then(async () => {
   });
 
   // Clean up any existing openclaw processes before starting.
-  // Kill by PORT (28789) rather than process name because during dev the
-  // gateway runs as a child of electron.exe, not openclaw-gateway.exe.
-  try {
-    if (process.platform === "win32") {
-      // Find PIDs listening on the gateway port and kill their process trees
-      const netstatOut = execSync("netstat -ano", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "cmd.exe" });
-      const pids = new Set<string>();
-      for (const line of netstatOut.split("\n")) {
-        if (line.includes(`:${DEFAULT_GATEWAY_PORT}`) && line.includes("LISTENING")) {
-          const parts = line.trim().split(/\s+/);
-          const pid = parts[parts.length - 1];
-          if (pid && /^\d+$/.test(pid)) pids.add(pid);
+  // First do a fast TCP probe (~1ms) to check if the port is in use.
+  // Only run the expensive lsof/netstat cleanup when something is actually listening.
+  const portInUse = await new Promise<boolean>((resolve) => {
+    const sock = createConnection({ port: DEFAULT_GATEWAY_PORT, host: "127.0.0.1" });
+    sock.once("connect", () => { sock.destroy(); resolve(true); });
+    sock.once("error", () => { resolve(false); });
+  });
+
+  if (portInUse) {
+    log.info(`Port ${DEFAULT_GATEWAY_PORT} is in use, killing existing openclaw processes`);
+    try {
+      if (process.platform === "win32") {
+        // Find PIDs listening on the gateway port and kill their process trees
+        const netstatOut = execSync("netstat -ano", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "cmd.exe" });
+        const pids = new Set<string>();
+        for (const line of netstatOut.split("\n")) {
+          if (line.includes(`:${DEFAULT_GATEWAY_PORT}`) && line.includes("LISTENING")) {
+            const parts = line.trim().split(/\s+/);
+            const pid = parts[parts.length - 1];
+            if (pid && /^\d+$/.test(pid)) pids.add(pid);
+          }
         }
+        for (const pid of pids) {
+          try { execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore", shell: "cmd.exe" }); } catch {}
+        }
+        // Also try by name as fallback for packaged openclaw binaries
+        try { execSync("taskkill /f /im openclaw-gateway.exe 2>nul & taskkill /f /im openclaw.exe 2>nul & exit /b 0", { stdio: "ignore", shell: "cmd.exe" }); } catch {}
+      } else {
+        execSync(`lsof -ti :${DEFAULT_GATEWAY_PORT} | xargs kill -9 2>/dev/null || true`, { stdio: "ignore" });
+        execSync("pkill -x 'openclaw-gateway' || true; pkill -x 'openclaw' || true", { stdio: "ignore" });
       }
-      for (const pid of pids) {
-        try { execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore", shell: "cmd.exe" }); } catch {}
-      }
-      // Also try by name as fallback for packaged openclaw binaries
-      try { execSync("taskkill /f /im openclaw-gateway.exe 2>nul & taskkill /f /im openclaw.exe 2>nul & exit /b 0", { stdio: "ignore", shell: "cmd.exe" }); } catch {}
-    } else {
-      execSync(`lsof -ti :${DEFAULT_GATEWAY_PORT} | xargs kill -9 2>/dev/null || true`, { stdio: "ignore" });
-      execSync("pkill -x 'openclaw-gateway' || true; pkill -x 'openclaw' || true", { stdio: "ignore" });
+      log.info("Cleaned up existing openclaw processes");
+    } catch (err) {
+      log.warn("Failed to cleanup openclaw processes:", err);
     }
-    log.info("Cleaned up existing openclaw processes");
-  } catch (err) {
-    log.warn("Failed to cleanup openclaw processes:", err);
+  } else {
+    log.info("No existing openclaw process on port, skipping cleanup");
   }
 
   // In packaged app, vendor lives in Resources/vendor/openclaw (extraResources).
