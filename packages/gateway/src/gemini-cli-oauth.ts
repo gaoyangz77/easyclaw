@@ -567,13 +567,10 @@ export async function exchangeCodeForTokens(
   }
 
   const email = await getUserEmail(data.access_token, proxyUrl);
-  let projectId: string | undefined;
-  try {
-    projectId = await discoverProject(data.access_token, proxyUrl);
-  } catch {
-    // Project discovery is best-effort — don't block the OAuth flow.
-    // The vendor layer handles missing projectId gracefully.
-  }
+  // discoverProject provisions a Google Cloud project for the Code Assist API.
+  // The vendor layer requires a valid projectId to make Gemini API calls, so
+  // this must succeed — do NOT silence errors here.
+  const projectId = await discoverProject(data.access_token, proxyUrl);
   const expiresAt = Date.now() + data.expires_in * 1000 - 5 * 60 * 1000;
 
   return {

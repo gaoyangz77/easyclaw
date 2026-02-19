@@ -98,13 +98,22 @@ export async function acquireGeminiOAuthToken(
 
 /**
  * Step 2: Validate a Gemini OAuth access token by calling Google's userinfo endpoint.
+ * Also checks that a Google Cloud projectId was successfully provisioned — without it
+ * the vendor Gemini provider will reject every request.
  * Routes through the local proxy router which handles system proxy + per-key proxy.
  */
 export async function validateGeminiAccessToken(
   accessToken: string,
   proxyUrl?: string,
-  _projectId?: string,
+  projectId?: string,
 ): Promise<{ valid: boolean; error?: string }> {
+  if (!projectId) {
+    return {
+      valid: false,
+      error: "Google Cloud project was not provisioned. Please sign in again — if the problem persists, visit https://aistudio.google.com/ first to accept the Gemini terms of service, then retry.",
+    };
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
 
