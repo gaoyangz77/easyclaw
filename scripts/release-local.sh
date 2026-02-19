@@ -13,14 +13,15 @@
 #
 # Pipeline:
 #   1. pnpm install              — ensure dependencies match lockfile
-#   2. rebuild-native.sh         — prebuild better-sqlite3 for Node.js + Electron
-#   3. pnpm run build            — build all workspace packages
-#   4. pnpm run test             — unit tests (vitest via turbo)
-#   5. test:e2e:dev              — Playwright e2e against dev build
-#   6. pnpm run pack             — electron-builder --dir (unpacked app)
-#   7. test:e2e:prod             — Playwright e2e against packed app
-#   8. dist:mac / dist:win       — create distributable installers
-#   9. gh release upload         — upload artifacts to GitHub Release
+#   2. vendor check              — ensure vendor/openclaw matches .openclaw-version
+#   3. rebuild-native.sh         — prebuild better-sqlite3 for Node.js + Electron
+#   4. pnpm run build            — build all workspace packages
+#   5. pnpm run test             — unit tests (vitest via turbo)
+#   6. test:e2e:dev              — Playwright e2e against dev build
+#   7. pnpm run pack             — electron-builder --dir (unpacked app)
+#   8. test:e2e:prod             — Playwright e2e against packed app
+#   9. dist:mac / dist:win       — create distributable installers
+#  10. gh release upload         — upload artifacts to GitHub Release
 #
 # Native module strategy:
 #   rebuild-native.sh builds better-sqlite3 twice (for Node.js and Electron)
@@ -77,7 +78,7 @@ esac
 
 if [ "$UPLOAD_ONLY" = true ]; then
   # Jump straight to upload
-  info "Skipping steps 1-8 (--upload-only)."
+  info "Skipping steps 1-9 (--upload-only)."
 else
 
 # ---- Step 1: Install dependencies ----
@@ -85,33 +86,54 @@ step "Install dependencies"
 (cd "$REPO_ROOT" && pnpm install --frozen-lockfile)
 info "Dependencies up to date."
 
-# ---- Step 2: Prebuild native modules ----
+# ---- Step 2: Verify vendor/openclaw matches .openclaw-version ----
+step "Verify vendor/openclaw version"
+EXPECTED_HASH="$(tr -d '[:space:]' < "$REPO_ROOT/.openclaw-version")"
+VENDOR_DIR="$REPO_ROOT/vendor/openclaw"
+
+if [ -d "$VENDOR_DIR/.git" ]; then
+  ACTUAL_HASH="$(cd "$VENDOR_DIR" && git rev-parse HEAD)"
+  # Compare short-hash prefix so .openclaw-version can use abbreviated hashes
+  if [[ "$ACTUAL_HASH" == "$EXPECTED_HASH"* ]]; then
+    info "Vendor already at $EXPECTED_HASH — skipping setup."
+  else
+    warn "Vendor mismatch: expected $EXPECTED_HASH, got ${ACTUAL_HASH:0:9}"
+    info "Re-provisioning vendor/openclaw..."
+    rm -rf "$VENDOR_DIR"
+    bash "$REPO_ROOT/scripts/setup-vendor.sh"
+  fi
+else
+  info "vendor/openclaw not found — running setup-vendor.sh..."
+  bash "$REPO_ROOT/scripts/setup-vendor.sh"
+fi
+
+# ---- Step 3: Prebuild native modules ----
 # postinstall hook normally handles this, but run explicitly in case
 # pnpm install was a no-op (deps already satisfied).
 step "Prebuild native modules (Node.js + Electron)"
 bash "$REPO_ROOT/scripts/rebuild-native.sh"
 info "Native prebuilds ready."
 
-# ---- Step 3: Build all packages ----
+# ---- Step 4: Build all packages ----
 step "Build all workspace packages"
 (cd "$REPO_ROOT" && pnpm run build)
 info "Build complete."
 
-# ---- Step 4: Unit tests ----
+# ---- Step 5: Unit tests ----
 if [ "$SKIP_TESTS" = false ]; then
   step "Run unit tests"
   (cd "$REPO_ROOT" && pnpm run test)
   info "Unit tests passed."
 fi
 
-# ---- Step 5: E2E tests (dev mode) ----
+# ---- Step 6: E2E tests (dev mode) ----
 if [ "$SKIP_TESTS" = false ]; then
   step "Run E2E tests (dev mode)"
   (cd "$DESKTOP_DIR" && pnpm run test:e2e:dev)
   info "E2E dev tests passed."
 fi
 
-# ---- Step 6: Pack (unpacked app for prod e2e) ----
+# ---- Step 7: Pack (unpacked app for prod e2e) ----
 step "Pack application (electron-builder --dir)"
 # Clean stale release dirs to avoid picking up wrong binary in prod E2E
 rm -rf "$RELEASE_DIR"
@@ -122,7 +144,7 @@ info "Pack complete."
 # Restore dual prebuilds so the Node.js-based E2E seed helper can load better-sqlite3.
 bash "$REPO_ROOT/scripts/rebuild-native.sh"
 
-# ---- Step 7: E2E tests (prod mode) ----
+# ---- Step 8: E2E tests (prod mode) ----
 if [ "$SKIP_TESTS" = false ]; then
   step "Run E2E tests (prod mode)"
 
@@ -163,7 +185,7 @@ if [ "$SKIP_TESTS" = false ]; then
   fi
 fi
 
-# ---- Step 8: Build distributable installers ----
+# ---- Step 9: Build distributable installers ----
 step "Build distributable installers"
 if [ "$PLATFORM" = "mac" ]; then
   (cd "$DESKTOP_DIR" && pnpm run dist:mac)
@@ -177,7 +199,7 @@ fi
 
 fi  # end of UPLOAD_ONLY skip
 
-# ---- Step 9: Upload to GitHub Release ----
+# ---- Step 10: Upload to GitHub Release ----
 if [ "$SKIP_UPLOAD" = true ]; then
   info "Skipping upload (--skip-upload flag)."
 else

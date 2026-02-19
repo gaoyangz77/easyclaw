@@ -436,17 +436,9 @@ app.whenReady().then(async () => {
     updateTray(currentState);
   }
 
-  // Check on startup (fire-and-forget, non-blocking)
-  performUpdateCheck().catch((err) => {
-    log.warn("Startup update check failed:", err);
-  });
-
-  // Re-check every 4 hours
-  setInterval(() => {
-    performUpdateCheck().catch((err) => {
-      log.warn("Periodic update check failed:", err);
-    });
-  }, 4 * 60 * 60 * 1000);
+  // NOTE: performUpdateCheck() calls updateTray() which requires `tray` to be
+  // initialized. The fire-and-forget call is deferred to after tray creation
+  // (search for "Deferred: startup update check" below).
 
   // --- In-app update download/install ---
   let updateDownloadState: UpdateDownloadState = { status: "idle" };
@@ -707,11 +699,28 @@ app.whenReady().then(async () => {
     extraSkillDirs: [join(stateDir, "skills")],
   });
 
-  // Clean up any existing openclaw processes before starting (both openclaw and openclaw-gateway)
+  // Clean up any existing openclaw processes before starting.
+  // Kill by PORT (28789) rather than process name because during dev the
+  // gateway runs as a child of electron.exe, not openclaw-gateway.exe.
   try {
     if (process.platform === "win32") {
-      execSync("taskkill /f /im openclaw-gateway.exe 2>nul & taskkill /f /im openclaw.exe 2>nul & exit /b 0", { stdio: "ignore", shell: "cmd.exe" });
+      // Find PIDs listening on the gateway port and kill their process trees
+      const netstatOut = execSync("netstat -ano", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "cmd.exe" });
+      const pids = new Set<string>();
+      for (const line of netstatOut.split("\n")) {
+        if (line.includes(`:${DEFAULT_GATEWAY_PORT}`) && line.includes("LISTENING")) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid && /^\d+$/.test(pid)) pids.add(pid);
+        }
+      }
+      for (const pid of pids) {
+        try { execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore", shell: "cmd.exe" }); } catch {}
+      }
+      // Also try by name as fallback for packaged openclaw binaries
+      try { execSync("taskkill /f /im openclaw-gateway.exe 2>nul & taskkill /f /im openclaw.exe 2>nul & exit /b 0", { stdio: "ignore", shell: "cmd.exe" }); } catch {}
     } else {
+      execSync(`lsof -ti :${DEFAULT_GATEWAY_PORT} | xargs kill -9 2>/dev/null || true`, { stdio: "ignore" });
       execSync("pkill -x 'openclaw-gateway' || true; pkill -x 'openclaw' || true", { stdio: "ignore" });
     }
     log.info("Cleaned up existing openclaw processes");
@@ -1042,6 +1051,18 @@ app.whenReady().then(async () => {
   }
 
   updateTray("stopped");
+
+  // Deferred: startup update check (must run after tray creation)
+  performUpdateCheck().catch((err) => {
+    log.warn("Startup update check failed:", err);
+  });
+
+  // Re-check every 4 hours
+  setInterval(() => {
+    performUpdateCheck().catch((err) => {
+      log.warn("Periodic update check failed:", err);
+    });
+  }, 4 * 60 * 60 * 1000);
 
   // Create main panel window (hidden initially, loaded when gateway starts)
   const isDev = !!process.env.PANEL_DEV_URL;
