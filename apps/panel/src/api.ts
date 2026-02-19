@@ -177,12 +177,22 @@ export async function deleteProviderKey(id: string): Promise<void> {
 
 export async function startOAuthFlow(
   provider: string,
-): Promise<{ email?: string; tokenPreview?: string; providerKeyId?: string; provider?: string }> {
-  const result = await fetchJson<{ ok: boolean; email?: string; tokenPreview?: string; providerKeyId?: string; provider?: string }>(
+): Promise<{ email?: string; tokenPreview?: string; providerKeyId?: string; provider?: string; manualMode?: boolean; authUrl?: string }> {
+  const result = await fetchJson<{ ok: boolean; email?: string; tokenPreview?: string; providerKeyId?: string; provider?: string; manualMode?: boolean; authUrl?: string }>(
     "/oauth/start",
     { method: "POST", body: JSON.stringify({ provider }) },
   );
   return result;
+}
+
+export async function completeManualOAuth(
+  provider: string,
+  callbackUrl: string,
+): Promise<{ email?: string; tokenPreview?: string }> {
+  return fetchJson("/oauth/manual-complete", {
+    method: "POST",
+    body: JSON.stringify({ provider, callbackUrl }),
+  });
 }
 
 export async function saveOAuthFlow(

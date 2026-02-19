@@ -14,6 +14,7 @@ export class ProxyRouter {
   private config: ProxyRouterConfig | null = null;
   private configWatcher: FSWatcher | null = null;
   private options: Required<ProxyRouterOptions>;
+  private activeSockets = new Set<Socket>();
 
   constructor(options: ProxyRouterOptions) {
     this.options = {
@@ -49,12 +50,19 @@ export class ProxyRouter {
 
   /**
    * Stop the proxy router server.
+   * Destroys all active connections so server.close() resolves immediately.
    */
   async stop(): Promise<void> {
     if (this.configWatcher) {
       this.configWatcher.close();
       this.configWatcher = null;
     }
+
+    // Destroy all active piped connections so server.close() doesn't hang
+    for (const socket of this.activeSockets) {
+      socket.destroy();
+    }
+    this.activeSockets.clear();
 
     if (this.server) {
       await new Promise<void>((resolve) => {
@@ -157,6 +165,10 @@ export class ProxyRouter {
     targetHost: string,
     targetPort: number,
   ): Promise<void> {
+    this.activeSockets.add(clientSocket);
+    const cleanup = () => { this.activeSockets.delete(clientSocket); };
+    clientSocket.on("close", cleanup);
+
     try {
       const upstreamProxyUrl = this.resolveProxy(targetHost);
 

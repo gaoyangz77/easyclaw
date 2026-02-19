@@ -10,6 +10,7 @@ import {
   fetchPricing,
   startOAuthFlow,
   saveOAuthFlow,
+  completeManualOAuth,
 } from "../api.js";
 import type { ProviderPricing } from "../api.js";
 import { ModelSelect } from "./ModelSelect.js";
@@ -58,6 +59,10 @@ export function ProviderSetupForm({
   const [error, setError] = useState<{ key: string; detail?: string } | null>(null);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [oauthTokenPreview, setOauthTokenPreview] = useState("");
+  const [oauthManualMode, setOauthManualMode] = useState(false);
+  const [oauthAuthUrl, setOauthAuthUrl] = useState("");
+  const [oauthCallbackUrl, setOauthCallbackUrl] = useState("");
+  const [oauthManualLoading, setOauthManualLoading] = useState(false);
   const [pricingList, setPricingList] = useState<ProviderPricing[] | null>(null);
   const [pricingLoading, setPricingLoading] = useState(true);
   const [existingKeyCount, setExistingKeyCount] = useState<number | null>(null);
@@ -102,6 +107,9 @@ export function ProviderSetupForm({
     setProxyUrl("");
     setShowAdvanced(false);
     setOauthTokenPreview("");
+    setOauthManualMode(false);
+    setOauthAuthUrl("");
+    setOauthCallbackUrl("");
   }
 
   function handleTabChange(newTab: "subscription" | "api") {
@@ -159,13 +167,37 @@ export function ProviderSetupForm({
     setError(null);
     try {
       const result = await startOAuthFlow(provider);
-      setOauthTokenPreview(result.tokenPreview || "oauth-token-••••••••");
-      setLabel(result.email || getProviderMeta(provider as LLMProvider)?.label || "OAuth");
-      setModel(getDefaultModelForProvider(provider as LLMProvider)?.modelId ?? "");
+      if (result.manualMode) {
+        setOauthManualMode(true);
+        setOauthAuthUrl(result.authUrl || "");
+      } else {
+        setOauthTokenPreview(result.tokenPreview || "oauth-token-••••••••");
+        setLabel(result.email || getProviderMeta(provider as LLMProvider)?.label || "OAuth");
+        setModel(getDefaultModelForProvider(provider as LLMProvider)?.modelId ?? "");
+      }
     } catch (err) {
       setError({ key: "providers.failedToSave", detail: String(err) });
     } finally {
       setOauthLoading(false);
+    }
+  }
+
+  async function handleManualOAuthComplete() {
+    if (!oauthCallbackUrl.trim()) return;
+    setOauthManualLoading(true);
+    setError(null);
+    try {
+      const result = await completeManualOAuth(provider, oauthCallbackUrl.trim());
+      setOauthTokenPreview(result.tokenPreview || "oauth-token-••••••••");
+      setLabel(result.email || getProviderMeta(provider as LLMProvider)?.label || "OAuth");
+      setModel(getDefaultModelForProvider(provider as LLMProvider)?.modelId ?? "");
+      setOauthManualMode(false);
+      setOauthAuthUrl("");
+      setOauthCallbackUrl("");
+    } catch (err) {
+      setError({ key: "providers.failedToSave", detail: String(err) });
+    } finally {
+      setOauthManualLoading(false);
     }
   }
 
@@ -294,7 +326,47 @@ export function ProviderSetupForm({
               </div>
             </div>
 
-            {oauthTokenPreview ? (
+            {oauthManualMode ? (
+              <div className="mb-sm">
+                <div className="info-box info-box-yellow">
+                  {t("providers.oauthManualInfo")}
+                </div>
+                <div className="mb-sm">
+                  <div className="form-label text-secondary">
+                    {t("providers.oauthManualUrlLabel")}
+                  </div>
+                  <div className="oauth-manual-url-row">
+                    <input
+                      type="text"
+                      readOnly
+                      value={oauthAuthUrl}
+                      className="input-full input-mono input-readonly"
+                    />
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => navigator.clipboard.writeText(oauthAuthUrl)}
+                    >
+                      {t("common.copy")}
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <div className="form-label text-secondary">
+                    {t("providers.oauthManualCallbackLabel")} <span className="required">*</span>
+                  </div>
+                  <input
+                    type="text"
+                    value={oauthCallbackUrl}
+                    onChange={(e) => setOauthCallbackUrl(e.target.value)}
+                    placeholder={t("providers.oauthManualCallbackPlaceholder")}
+                    className="input-full input-mono"
+                  />
+                  <small className="form-help-sm">
+                    {t("providers.oauthManualCallbackHelp")}
+                  </small>
+                </div>
+              </div>
+            ) : oauthTokenPreview ? (
               <div className="mb-sm">
                 <div className="form-label text-secondary">
                   {t("providers.oauthTokenLabel")}
@@ -315,6 +387,7 @@ export function ProviderSetupForm({
               </div>
             )}
 
+            {!oauthManualMode && (
             <div className="mb-sm">
               <button
                 onClick={() => setShowAdvanced(!showAdvanced)}
@@ -339,9 +412,18 @@ export function ProviderSetupForm({
                 </div>
               )}
             </div>
+            )}
 
             <div className="form-actions">
-              {oauthTokenPreview ? (
+              {oauthManualMode ? (
+                <button
+                  className="btn btn-primary"
+                  onClick={handleManualOAuthComplete}
+                  disabled={oauthManualLoading || !oauthCallbackUrl.trim()}
+                >
+                  {oauthManualLoading ? t("providers.oauthLoading") : t("providers.oauthManualSubmit")}
+                </button>
+              ) : oauthTokenPreview ? (
                 <button
                   className="btn btn-primary"
                   onClick={handleOAuthSave}

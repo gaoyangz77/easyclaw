@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { createLogger } from "@easyclaw/logger";
 import type { ProviderKeyEntry } from "@easyclaw/core";
-import { loginGeminiCliOAuth, isGeminiCliAvailable, installGeminiCliLocal } from "./gemini-cli-oauth.js";
+import {
+  loginGeminiCliOAuth,
+  isGeminiCliAvailable,
+  installGeminiCliLocal,
+  generatePkce,
+  buildAuthUrl,
+  parseCallbackInput,
+  exchangeCodeForTokens,
+} from "./gemini-cli-oauth.js";
 import type { GeminiCliOAuthCredentials } from "./gemini-cli-oauth.js";
 
 const log = createLogger("gateway:oauth-flow");
@@ -194,6 +202,64 @@ export async function saveGeminiOAuthCredentials(
     providerKeyId: id,
     email: credentials.email,
     provider,
+  };
+}
+
+/**
+ * Start a manual OAuth flow: generate PKCE pair and auth URL.
+ * Used when the local callback server fails (e.g. EADDRINUSE).
+ * The caller should open the auth URL in a browser and later call
+ * completeManualOAuthFlow() with the redirect URL the user pastes.
+ */
+export async function startManualOAuthFlow(
+  callbacks: Pick<OAuthFlowCallbacks, "onStatusUpdate" | "proxyUrl">,
+): Promise<{ authUrl: string; verifier: string }> {
+  // Auto-install Gemini CLI if not available (same check as acquireGeminiOAuthToken)
+  if (!isGeminiCliAvailable()) {
+    log.info("Gemini CLI not found, attempting auto-install to ~/.easyclaw/gemini-cli/");
+    callbacks.onStatusUpdate?.("Installing Gemini CLI...");
+    const installed = await installGeminiCliLocal((msg) => {
+      log.info(msg);
+      callbacks.onStatusUpdate?.(msg);
+    }, callbacks.proxyUrl);
+    if (!installed || !isGeminiCliAvailable()) {
+      throw new Error(
+        "Failed to install Gemini CLI. Please install manually: npm install -g @google/gemini-cli",
+      );
+    }
+  }
+
+  const { verifier, challenge } = generatePkce();
+  const authUrl = buildAuthUrl(challenge, verifier);
+  log.info("Manual OAuth flow started, authUrl generated");
+  return { authUrl, verifier };
+}
+
+/**
+ * Complete a manual OAuth flow: parse the redirect URL the user pasted,
+ * exchange the authorization code for tokens.
+ */
+export async function completeManualOAuthFlow(
+  callbackUrl: string,
+  verifier: string,
+  proxyUrl?: string,
+): Promise<AcquiredOAuthCredentials> {
+  const parsed = parseCallbackInput(callbackUrl, verifier);
+  if ("error" in parsed) {
+    throw new Error(parsed.error);
+  }
+  if (parsed.state !== verifier) {
+    throw new Error("OAuth state mismatch — please try again");
+  }
+
+  log.info("Manual OAuth: exchanging authorization code for tokens...");
+  const creds = await exchangeCodeForTokens(parsed.code, verifier, proxyUrl);
+  log.info(`Manual OAuth complete, email=${creds.email ?? "(none)"}`);
+
+  return {
+    credentials: creds,
+    email: creds.email,
+    tokenPreview: maskToken(creds.access ?? ""),
   };
 }
 

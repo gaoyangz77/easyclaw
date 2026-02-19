@@ -2630,6 +2630,12 @@ tbody td {
   margin-top: 4px;
 }
 
+.oauth-manual-url-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .form-checkbox-row {
   display: flex;
   align-items: center;

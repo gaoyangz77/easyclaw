@@ -1081,9 +1081,11 @@ export interface PanelServerOptions {
   /** Callback to initiate an OAuth flow for a provider (e.g. gemini). */
   onOAuthFlow?: (provider: string) => Promise<{ providerKeyId: string; email?: string; provider: string }>;
   /** Callback to acquire OAuth tokens (step 1: opens browser, returns token preview). */
-  onOAuthAcquire?: (provider: string) => Promise<{ email?: string; tokenPreview: string }>;
+  onOAuthAcquire?: (provider: string) => Promise<{ email?: string; tokenPreview: string; manualMode?: boolean; authUrl?: string }>;
   /** Callback to validate + save acquired OAuth tokens (step 2: validates through proxy, creates provider key). */
   onOAuthSave?: (provider: string, options: { proxyUrl?: string; label?: string; model?: string }) => Promise<{ providerKeyId: string; email?: string; provider: string }>;
+  /** Callback to complete a manual OAuth flow (user pastes redirect URL). */
+  onOAuthManualComplete?: (provider: string, callbackUrl: string) => Promise<{ email?: string; tokenPreview: string }>;
   /** Callback to track a telemetry event (relays to RemoteTelemetryClient in main process). */
   onTelemetryTrack?: (eventType: string, metadata?: Record<string, unknown>) => void;
   /** Override path to the vendored OpenClaw directory (for packaged app). */
@@ -1308,7 +1310,7 @@ async function syncActiveKey(
 export function startPanelServer(options: PanelServerOptions): Server {
   const port = options.port ?? 3210;
   const distDir = resolve(options.panelDistDir);
-  const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, changelogPath, onUpdateDownload, onUpdateCancel, onUpdateInstall, getUpdateDownloadState } = options;
+  const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, changelogPath, onUpdateDownload, onUpdateCancel, onUpdateInstall, getUpdateDownloadState } = options;
 
   // Store references so module-level WeCom handlers can access them
   wecomStorageRef = storage;
@@ -1478,7 +1480,7 @@ export function startPanelServer(options: PanelServerOptions): Server {
       }
 
       try {
-        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, snapshotEngine, queryService);
+        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, snapshotEngine, queryService);
       } catch (err) {
         log.error("API error:", err);
         sendJson(res, 500, { error: "Internal server error" });
@@ -1557,8 +1559,9 @@ async function handleApiRoute(
   onPermissionsChange?: () => void,
   onChannelConfigured?: (channelId: string) => void,
   onOAuthFlow?: (provider: string) => Promise<{ providerKeyId: string; email?: string; provider: string }>,
-  onOAuthAcquire?: (provider: string) => Promise<{ email?: string; tokenPreview: string }>,
+  onOAuthAcquire?: (provider: string) => Promise<{ email?: string; tokenPreview: string; manualMode?: boolean; authUrl?: string }>,
   onOAuthSave?: (provider: string, options: { proxyUrl?: string; label?: string; model?: string }) => Promise<{ providerKeyId: string; email?: string; provider: string }>,
+  onOAuthManualComplete?: (provider: string, callbackUrl: string) => Promise<{ email?: string; tokenPreview: string }>,
   onTelemetryTrack?: (eventType: string, metadata?: Record<string, unknown>) => void,
   vendorDir?: string,
   deviceId?: string,
@@ -2908,6 +2911,27 @@ async function handleApiRoute(
       // Return 422 for validation errors (token invalid/expired)
       const status = message.includes("Invalid") || message.includes("expired") || message.includes("validation") ? 422 : 500;
       sendJson(res, status, { error: message });
+    }
+    return;
+  }
+
+  // OAuth manual complete: user pastes the redirect URL from browser
+  if (pathname === "/api/oauth/manual-complete" && req.method === "POST") {
+    const body = (await parseBody(req)) as { provider?: string; callbackUrl?: string };
+    if (!body.provider || !body.callbackUrl) {
+      sendJson(res, 400, { error: "Missing required fields: provider, callbackUrl" });
+      return;
+    }
+    if (!onOAuthManualComplete) {
+      sendJson(res, 501, { error: "Manual OAuth complete not available" });
+      return;
+    }
+    try {
+      const result = await onOAuthManualComplete(body.provider, body.callbackUrl);
+      sendJson(res, 200, { ok: true, ...result });
+    } catch (err) {
+      log.error("OAuth manual complete failed:", err);
+      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
     }
     return;
   }

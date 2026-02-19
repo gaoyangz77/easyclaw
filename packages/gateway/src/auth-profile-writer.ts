@@ -16,7 +16,7 @@ type OAuthProfile = {
   refresh: string;
   expires: number;
   email?: string;
-  projectId: string;
+  projectId?: string;
 };
 type AuthProfileCredential = ApiKeyProfile | OAuthProfile;
 
@@ -156,7 +156,7 @@ export async function syncAllAuthProfiles(
             refresh: string;
             expires: number;
             email?: string;
-            projectId: string;
+            projectId?: string;
           };
           const profileId = `${gwProvider}:${cred.email ?? "default"}`;
           store.profiles[profileId] = {

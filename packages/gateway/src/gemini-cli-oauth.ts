@@ -19,7 +19,11 @@ const CLIENT_SECRET_KEYS = [
   "OPENCLAW_GEMINI_OAUTH_CLIENT_SECRET",
   "GEMINI_CLI_OAUTH_CLIENT_SECRET",
 ];
-const REDIRECT_URI = "http://localhost:8085/oauth2callback";
+// Use 127.0.0.1 (not "localhost") to avoid IPv6 resolution issues.
+// On some systems "localhost" resolves to ::1 first, causing EADDRINUSE
+// when another process occupies the IPv6 loopback.  Google OAuth desktop
+// clients accept any loopback IP on any port.
+const REDIRECT_URI = "http://127.0.0.1:8085/oauth2callback";
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const USERINFO_URL = "https://www.googleapis.com/oauth2/v1/userinfo?alt=json";
@@ -39,7 +43,7 @@ export type GeminiCliOAuthCredentials = {
   refresh: string;
   expires: number;
   email?: string;
-  projectId: string;
+  projectId?: string;
 };
 
 export type GeminiCliOAuthContext = {
@@ -375,13 +379,13 @@ function shouldUseManualOAuthFlow(isRemote: boolean): boolean {
   return isRemote;
 }
 
-function generatePkce(): { verifier: string; challenge: string } {
+export function generatePkce(): { verifier: string; challenge: string } {
   const verifier = randomBytes(32).toString("hex");
   const challenge = createHash("sha256").update(verifier).digest("base64url");
   return { verifier, challenge };
 }
 
-function buildAuthUrl(challenge: string, verifier: string): string {
+export function buildAuthUrl(challenge: string, verifier: string): string {
   const { clientId } = resolveOAuthClientConfig();
   const params = new URLSearchParams({
     client_id: clientId,
@@ -397,7 +401,7 @@ function buildAuthUrl(challenge: string, verifier: string): string {
   return `${AUTH_URL}?${params.toString()}`;
 }
 
-function parseCallbackInput(
+export function parseCallbackInput(
   input: string,
   expectedState: string,
 ): { code: string; state: string } | { error: string } {
@@ -431,7 +435,7 @@ async function waitForLocalCallback(params: {
   onProgress?: (message: string) => void;
 }): Promise<{ code: string; state: string }> {
   const port = 8085;
-  const hostname = "localhost";
+  const hostname = "127.0.0.1";
   const expectedPath = "/oauth2callback";
 
   return new Promise<{ code: string; state: string }>((resolve, reject) => {
@@ -467,10 +471,16 @@ async function waitForLocalCallback(params: {
         }
 
         if (state !== params.expectedState) {
-          res.statusCode = 400;
-          res.setHeader("Content-Type", "text/plain");
-          res.end("Invalid state");
-          finish(new Error("OAuth state mismatch"));
+          // Stale callback from a previous OAuth attempt — don't close the server;
+          // keep waiting for the callback that matches the current flow.
+          res.statusCode = 200;
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.end(
+            "<!doctype html><html><head><meta charset='utf-8'/></head>" +
+              "<body><h2>Session expired</h2>" +
+              "<p>This authorization link is from a previous attempt. " +
+              "Please go back to EasyClaw and click the login button again.</p></body></html>",
+          );
           return;
         }
 
@@ -518,7 +528,7 @@ async function waitForLocalCallback(params: {
   });
 }
 
-async function exchangeCodeForTokens(
+export async function exchangeCodeForTokens(
   code: string,
   verifier: string,
   proxyUrl?: string,
@@ -557,7 +567,13 @@ async function exchangeCodeForTokens(
   }
 
   const email = await getUserEmail(data.access_token, proxyUrl);
-  const projectId = await discoverProject(data.access_token, proxyUrl);
+  let projectId: string | undefined;
+  try {
+    projectId = await discoverProject(data.access_token, proxyUrl);
+  } catch {
+    // Project discovery is best-effort — don't block the OAuth flow.
+    // The vendor layer handles missing projectId gracefully.
+  }
   const expiresAt = Date.now() + data.expires_in * 1000 - 5 * 60 * 1000;
 
   return {
@@ -820,6 +836,15 @@ export async function loginGeminiCliOAuth(
         err.message.includes("port") ||
         err.message.includes("listen"))
     ) {
+      // In a desktop (non-remote) app, manual prompt mode doesn't work
+      // (prompt callback returns ""), so throw a clear port-conflict error.
+      if (!needsManual) {
+        throw new Error(
+          `Port 8085 is in use by another process. Close the other application ` +
+            `using port 8085 and try again.`,
+          { cause: err },
+        );
+      }
       ctx.progress.update("Local callback server failed. Switching to manual mode...");
       ctx.log(`\nOpen this URL in your LOCAL browser:\n\n${authUrl}\n`);
       const callbackInput = await ctx.prompt("Paste the redirect URL here: ");

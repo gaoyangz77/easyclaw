@@ -15,6 +15,7 @@ const log = createLogger("updater:installer");
 export async function installWindows(exePath: string, quitApp: () => void): Promise<void> {
   const tempDir = dirname(exePath);
   const scriptPath = join(tempDir, "easyclaw-update.cmd");
+  const launcherPath = join(tempDir, "easyclaw-update-launcher.vbs");
   const appExePath = process.execPath;
   const installerName = basename(exePath);
 
@@ -55,18 +56,30 @@ start "" "${appExePath}"\r
 \r
 :: Cleanup\r
 del "${exePath}" 2>nul\r
+del "${launcherPath}" 2>nul\r
 del "%~f0"\r
 goto :eof\r
 \r
 :timeout\r
 echo Timeout waiting for process to exit\r
+del "${launcherPath}" 2>nul\r
 del "%~f0"\r
 `;
 
   await writeFile(scriptPath, script);
 
-  log.info(`Spawning update helper script: ${scriptPath}`);
-  const child = spawn("cmd.exe", ["/c", scriptPath], {
+  // Use a VBS launcher to run the batch script in a fully hidden window.
+  // windowsHide on spawn() only hides the parent cmd.exe process; child
+  // processes like find.exe (used in the tasklist polling loop) still create
+  // visible console windows. The VBS WshShell.Run with window style 0 (vbHide)
+  // ensures the entire process tree stays hidden.
+  const launcherScript =
+    `Set WshShell = CreateObject("WScript.Shell")\r\n` +
+    `WshShell.Run "cmd /c ""${scriptPath}""", 0, False\r\n`;
+  await writeFile(launcherPath, launcherScript);
+
+  log.info(`Spawning update helper via VBS launcher: ${launcherPath}`);
+  const child = spawn("wscript.exe", [launcherPath], {
     detached: true,
     stdio: "ignore",
     windowsHide: true,
