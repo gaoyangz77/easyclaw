@@ -31,6 +31,7 @@ export interface GatewayStatus {
 
 export interface GatewayEvents {
   started: [pid: number];
+  ready: [];
   stopped: [code: number | null, signal: string | null];
   restarting: [attempt: number, delayMs: number];
   error: [error: Error];

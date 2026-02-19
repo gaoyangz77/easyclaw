@@ -200,10 +200,15 @@ export class GatewayLauncher extends EventEmitter<GatewayEvents> {
       this.emit("started", child.pid);
     }
 
+    let readyEmitted = false;
     child.stdout?.on("data", (data: Buffer) => {
       const lines = data.toString().trim().split("\n");
       for (const line of lines) {
         log.info(`[gateway stdout] ${line}`);
+        if (!readyEmitted && line.includes("listening on")) {
+          readyEmitted = true;
+          this.emit("ready");
+        }
       }
     });
 

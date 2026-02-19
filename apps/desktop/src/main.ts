@@ -953,11 +953,7 @@ app.whenReady().then(async () => {
     log.info("Config updated, performing full gateway restart for model change");
     await launcher.stop();
     await launcher.start();
-
-    // Reconnect RPC client after restart to establish fresh WebSocket connection.
-    connectRpcClient().catch((err) => {
-      log.error("Failed to initiate RPC client reconnect after gateway restart:", err);
-    });
+    // RPC client reconnects automatically via the "ready" event handler.
   }
 
   // Determine system locale for tray menu i18n
@@ -1121,16 +1117,18 @@ app.whenReady().then(async () => {
     log.info("Gateway started");
     updateTray("running");
 
-    // Connect RPC client — auto-reconnect with backoff handles gateway not being ready yet
-    connectRpcClient().catch((err) => {
-      log.error("Failed to initiate RPC client after gateway start:", err);
-    });
-
     if (firstStart) {
       firstStart = false;
       mainWindow?.loadURL(PANEL_URL);
       showMainWindow();
     }
+  });
+
+  launcher.on("ready", () => {
+    log.info("Gateway ready (listening)");
+    connectRpcClient().catch((err) => {
+      log.error("Failed to initiate RPC client after gateway ready:", err);
+    });
   });
 
   launcher.on("stopped", () => {
@@ -1306,9 +1304,7 @@ app.whenReady().then(async () => {
       // Restart gateway to pick up new plugin + auth profile
       await launcher.stop();
       await launcher.start();
-      connectRpcClient().catch((err) => {
-        log.error("Failed to reconnect RPC after OAuth save:", err);
-      });
+      // RPC client reconnects automatically via the "ready" event handler.
       return result;
     },
     onChannelConfigured: (channelId) => {
