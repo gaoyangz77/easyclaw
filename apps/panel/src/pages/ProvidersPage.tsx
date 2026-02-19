@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { getDefaultModelForProvider } from "@easyclaw/core";
+import { getDefaultModelForProvider, SUBSCRIPTION_PROVIDER_IDS } from "@easyclaw/core";
 import type { LLMProvider } from "@easyclaw/core";
 import {
   fetchSettings,
@@ -209,7 +209,7 @@ export function ProvidersPage() {
                       <div className="key-meta">
                         <strong style={{ fontSize: 13 }}>{t(`providers.label_${k.provider}`)}</strong>
                         <span className="badge badge-muted">
-                          {k.authType === "oauth"
+                          {k.authType === "oauth" || SUBSCRIPTION_PROVIDER_IDS.includes(k.provider as LLMProvider)
                             ? t("providers.authTypeSubscription")
                             : t("providers.authTypeApiKey")}
                         </span>

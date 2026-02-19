@@ -1207,6 +1207,24 @@ async function validateProviderApiKey(
         signal: controller.signal,
         ...(dispatcher && { dispatcher }),
       });
+    } else if (provider === "moonshot-coding") {
+      // Kimi Coding uses Anthropic Messages API — validate via POST /v1/messages
+      log.info(`Validating ${provider} API key via ${baseUrl}/v1/messages ...`);
+      res = await fetch(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: "kimi-for-coding",
+          max_tokens: 1,
+          messages: [{ role: "user", content: "hi" }],
+        }),
+        signal: controller.signal,
+        ...(dispatcher && { dispatcher }),
+      });
     } else if (provider === "minimax" || provider === "minimax-cn" || provider === "minimax-coding") {
       // MiniMax doesn't support GET /models — validate via a minimal chat completion
       log.info(`Validating ${provider} API key via ${baseUrl}/chat/completions ...`);
@@ -2079,11 +2097,16 @@ async function handleApiRoute(
     }
 
     storage.providerKeys.setDefault(id);
+    // Always update llm-provider to match the activated key's provider.
+    // Previously the panel made a separate updateSettings call, but if it
+    // failed the setting could diverge from the actual default key.
+    storage.settings.set("llm-provider", entry.provider);
     await syncActiveKey(entry.provider, storage, secretStore);
 
-    // If model changed on the active provider → full restart to rewrite config
-    // If same model (e.g. key rotation) → just sync auth profile, zero disruption
-    if (modelChanged && entry.provider === activeProvider) {
+    // Provider or model changed → full restart to rewrite config
+    // Same provider + same model (e.g. key rotation) → just sync auth profile
+    const providerChanged = entry.provider !== activeProvider;
+    if (providerChanged || modelChanged) {
       onProviderChange?.();
     } else {
       onProviderChange?.({ keyOnly: true });

@@ -391,7 +391,7 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
       {
         id: "moonshot-coding",
         label: "Kimi Code",
-        baseUrl: "https://api.kimi.com/coding/v1",
+        baseUrl: "https://api.kimi.com/coding",
         subscriptionUrl: "https://www.kimi.com/code",
         apiKeyUrl: "https://www.kimi.com/code/docs/",
         envVar: "KIMI_CODE_API_KEY",
