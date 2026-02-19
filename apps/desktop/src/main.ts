@@ -622,13 +622,13 @@ app.whenReady().then(async () => {
   telemetryClient?.track("app.started");
 
   // Track heartbeat every 5 minutes
-  if (telemetryClient) {
-    setInterval(() => {
-      telemetryClient?.track("app.heartbeat", {
-        uptimeMs: telemetryClient.getUptime(),
-      });
-    }, 5 * 60 * 1000); // 5 minutes
-  }
+  const heartbeatTimer = telemetryClient
+    ? setInterval(() => {
+        telemetryClient?.track("app.heartbeat", {
+          uptimeMs: telemetryClient.getUptime(),
+        });
+      }, 5 * 60 * 1000)
+    : null;
 
   // Migrate old-style provider secrets to provider_keys table
   migrateOldProviderKeys(storage, secretStore).catch((err) => {
@@ -1067,7 +1067,7 @@ app.whenReady().then(async () => {
   });
 
   // Re-check every 4 hours
-  setInterval(() => {
+  const updateCheckTimer = setInterval(() => {
     performUpdateCheck().catch((err) => {
       log.warn("Periodic update check failed:", err);
     });
@@ -1362,7 +1362,7 @@ app.whenReady().then(async () => {
     });
 
   // Re-detect system proxy every 30 seconds and update config if changed
-  setInterval(async () => {
+  const proxyPollTimer = setInterval(async () => {
     try {
       const proxy = await detectSystemProxy();
       if (proxy !== lastSystemProxy) {
@@ -1386,16 +1386,28 @@ app.whenReady().then(async () => {
     if (cleanupDone) return; // Already cleaned up, let the quit proceed
     event.preventDefault();  // Pause quit until async cleanup finishes
 
-    (async () => {
+    // Stop all periodic timers so they don't keep the event loop alive
+    clearInterval(proxyPollTimer);
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
+    clearInterval(updateCheckTimer);
+
+    const cleanup = async () => {
+      // Kill gateway and proxy router FIRST — these are critical.
+      // If later steps (telemetry, oauth sync) hang, at least the gateway is dead.
+      await Promise.all([
+        launcher.stop(),
+        proxyRouter.stop(),
+      ]);
+
+      // Clear sensitive API keys from disk before quitting
+      clearAllAuthProfiles(stateDir);
+
       // Sync back any refreshed OAuth tokens to Keychain before clearing
       try {
         await syncBackOAuthCredentials(stateDir, storage, secretStore);
       } catch (err) {
         log.error("Failed to sync back OAuth credentials:", err);
       }
-
-      // Clear sensitive API keys from disk before quitting
-      clearAllAuthProfiles(stateDir);
 
       // Track app.stopped with runtime
       if (telemetryClient) {
@@ -1407,12 +1419,17 @@ app.whenReady().then(async () => {
         log.info("Telemetry client shut down gracefully");
       }
 
-      await Promise.all([
-        launcher.stop(),
-        proxyRouter.stop(),
-      ]);
       storage.close();
-    })()
+    };
+
+    // Global shutdown timeout — force exit if cleanup takes too long
+    const SHUTDOWN_TIMEOUT_MS = 10_000;
+    Promise.race([
+      cleanup(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Shutdown timed out")), SHUTDOWN_TIMEOUT_MS),
+      ),
+    ])
       .catch((err) => {
         log.error("Cleanup error during quit:", err);
       })
