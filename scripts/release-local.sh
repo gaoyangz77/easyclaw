@@ -166,6 +166,16 @@ if [ "$SKIP_TESTS" = false ]; then
     sleep 1
   fi
 
+  # Clean up the shared V8 compile cache left by dev e2e gateway processes.
+  # OpenClaw calls module.enableCompileCache() which defaults to $TMPDIR/node-compile-cache/.
+  # When a dev e2e gateway is force-killed (taskkill), the cache can be left in a
+  # corrupt state that causes the prod e2e gateway to hang during import().
+  COMPILE_CACHE="${TMPDIR:-${TEMP:-/tmp}}/node-compile-cache"
+  if [ -d "$COMPILE_CACHE" ]; then
+    info "Cleaning V8 compile cache at $COMPILE_CACHE..."
+    rm -rf "$COMPILE_CACHE"
+  fi
+
   EXEC_PATH=""
   if [ "$PLATFORM" = "mac" ]; then
     APP_DIR=$(find "$RELEASE_DIR" -maxdepth 2 -name "EasyClaw.app" -print -quit 2>/dev/null || true)

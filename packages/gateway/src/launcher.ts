@@ -201,7 +201,23 @@ export class GatewayLauncher extends EventEmitter<GatewayEvents> {
     }
 
     let readyEmitted = false;
+
+    // Track whether the gateway has produced any output. If it hasn't after
+    // 15 seconds, something is seriously wrong (e.g. ELECTRON_RUN_AS_NODE
+    // not working, corrupt compile cache causing import() to hang).
+    let hasOutput = false;
+    const noOutputTimer = setTimeout(() => {
+      if (!hasOutput && this.process === child && !this.stopRequested) {
+        log.error(
+          `Gateway PID ${child.pid} produced no stdout/stderr after 15s. ` +
+          `This usually means ELECTRON_RUN_AS_NODE is not working or the ` +
+          `V8 compile cache is corrupt. Check NODE_COMPILE_CACHE and NODE_OPTIONS env vars.`,
+        );
+      }
+    }, 15_000);
+
     child.stdout?.on("data", (data: Buffer) => {
+      hasOutput = true;
       const lines = data.toString().trim().split("\n");
       for (const line of lines) {
         log.info(`[gateway stdout] ${line}`);
@@ -213,6 +229,7 @@ export class GatewayLauncher extends EventEmitter<GatewayEvents> {
     });
 
     child.stderr?.on("data", (data: Buffer) => {
+      hasOutput = true;
       const lines = data.toString().trim().split("\n");
       for (const line of lines) {
         log.warn(`[gateway stderr] ${line}`);
@@ -226,6 +243,7 @@ export class GatewayLauncher extends EventEmitter<GatewayEvents> {
     });
 
     child.on("exit", (code, signal) => {
+      clearTimeout(noOutputTimer);
       const prevState = this.state;
       this.process = null;
 

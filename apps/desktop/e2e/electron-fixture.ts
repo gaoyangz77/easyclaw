@@ -3,11 +3,47 @@ import { _electron } from "playwright";
 import path from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { execSync } from "node:child_process";
+import { createConnection } from "node:net";
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const electronPath = require("electron") as unknown as string;
 
 const API_BASE = "http://127.0.0.1:3210";
+const GATEWAY_PORT = 28789;
+
+/** Kill any process listening on the gateway port and wait until it's free. */
+async function ensurePortFree(port: number): Promise<void> {
+  if (process.platform === "win32") {
+    try {
+      const out = execSync("netstat -ano", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "cmd.exe" });
+      const pids = new Set<string>();
+      for (const line of out.split("\n")) {
+        if (line.includes(`:${port}`) && line.includes("LISTENING")) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid && /^\d+$/.test(pid)) pids.add(pid);
+        }
+      }
+      for (const pid of pids) {
+        try { execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore", shell: "cmd.exe" }); } catch {}
+      }
+    } catch {}
+  } else {
+    try { execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null || true`, { stdio: "ignore" }); } catch {}
+  }
+
+  // Wait until the port is actually free (up to 5s)
+  for (let i = 0; i < 50; i++) {
+    const inUse = await new Promise<boolean>((resolve) => {
+      const sock = createConnection({ port, host: "127.0.0.1" });
+      sock.once("connect", () => { sock.destroy(); resolve(true); });
+      sock.once("error", () => resolve(false));
+    });
+    if (!inUse) return;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
 
 /** Create a unique temp directory for data isolation. */
 function createTempDir(): string {
@@ -65,6 +101,9 @@ async function launchElectronApp(
     throw err;
   } finally {
     await app.close();
+    // The gateway runs detached and may outlive the Electron process.
+    // Kill it and wait for port 28789 to be free before the next test.
+    await ensurePortFree(GATEWAY_PORT);
     if (testFailed) {
       // Keep temp dir for debugging — print its path
       console.log(`[e2e] Test FAILED — temp dir preserved: ${tempDir}`);
