@@ -61,8 +61,10 @@ exports.default = async function copyVendorDeps(context) {
   // sharp is needed by the gateway for image sanitization (resize/metadata).
   // This includes both the .node addon (@img/sharp-darwin-*) and the libvips
   // shared library (@img/sharp-libvips-darwin-*) it links against.
+  // koffi is a C FFI module used by pi-tui (transitive dep of the gateway CLI).
   const ALLOWED_NATIVE_PATTERNS = [
     /[\\/]@img[\\/]sharp-/,
+    /[\\/]koffi[\\/]/,
   ];
   let skippedCount = 0;
 
