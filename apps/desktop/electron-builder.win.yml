@@ -20,6 +20,9 @@ win:
       arch:
         - x64
 
+portable:
+  artifactName: "${productName}-${version}-portable.${ext}"
+
 nsis:
   artifactName: "${productName}.Setup.${version}.${ext}"
   oneClick: false
