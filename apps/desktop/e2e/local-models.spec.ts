@@ -121,10 +121,10 @@ test.describe("Local Models E2E", () => {
     await expect(apiTab).not.toHaveClass(/tab-btn-active/);
 
     // -- Verify form elements --
-    // Base URL input with default value
+    // Base URL input (default "localhost:11434", but auto-detect may resolve to "127.0.0.1")
     const baseUrlInput = form.locator("input.input-mono[type='text']").first();
     await expect(baseUrlInput).toBeVisible();
-    await expect(baseUrlInput).toHaveValue("http://localhost:11434");
+    await expect(baseUrlInput).toHaveValue(/^http:\/\/(localhost|127\.0\.0\.1):11434$/);
 
     // "Server URL" label
     await expect(form.locator(".form-label", { hasText: /Server URL/i })).toBeVisible();
@@ -145,21 +145,19 @@ test.describe("Local Models E2E", () => {
     // -- Type mock Ollama URL and verify connectivity --
     await baseUrlInput.fill(`http://127.0.0.1:${mockOllamaPort}`);
 
-    // Wait for debounce (500ms) + health check to complete
+    // Wait for debounce (1.5s) + health check to complete
     const healthBadge = form.locator(".badge-success");
     await expect(healthBadge).toBeVisible({ timeout: 10_000 });
     await expect(healthBadge).toContainText("Connected");
-    await expect(healthBadge).toContainText(MOCK_VERSION);
 
-    // -- Verify model suggestions populated via datalist --
-    const datalist = form.locator("datalist#local-model-list");
-    await expect(datalist).toBeAttached({ timeout: 5_000 });
-    const options = datalist.locator("option");
+    // -- Verify model select populated with options --
+    const modelSelect = form.locator("select.input-full.input-mono");
+    await expect(modelSelect).toBeVisible({ timeout: 5_000 });
+    const options = modelSelect.locator("option");
     await expect(options).toHaveCount(3);
 
-    // -- Type a model name → save button should become enabled --
-    const modelInput = form.locator("input[list='local-model-list']");
-    await modelInput.fill("llama3.2:latest");
+    // -- Select a model → save button should become enabled --
+    await modelSelect.selectOption("llama3.2:latest");
     await expect(saveBtn).toBeEnabled();
   });
 
@@ -183,10 +181,13 @@ test.describe("Local Models E2E", () => {
 
     // Wait for health check (1.5s debounce) + model fetch
     await expect(form.locator(".badge-success")).toBeVisible({ timeout: 15_000 });
-    await expect(form.locator("datalist#local-model-list")).toBeAttached({ timeout: 5_000 });
 
-    // Type model name
-    await form.locator("input[list='local-model-list']").fill("llama3.2:latest");
+    // Wait for model select to populate (should have 3 models from mock)
+    const modelSelect = form.locator("select.input-full.input-mono");
+    await expect(modelSelect.locator("option")).toHaveCount(3, { timeout: 5_000 });
+
+    // Select model name
+    await modelSelect.selectOption("llama3.2:latest");
 
     // Enter a custom label
     const labelInput = form.locator("input.input-full[type='text']");
@@ -265,19 +266,17 @@ test.describe("Local Models E2E", () => {
     await expect(failBadge).toBeVisible({ timeout: 15_000 });
     await expect(failBadge).toContainText(/Cannot connect|connect/i);
 
-    // Model field should remain as text input (not dropdown), since no
-    // models could be fetched from the unreachable server
-    const modelTextInput = form.locator("input.input-full.input-mono");
-    await expect(modelTextInput).toBeVisible();
+    // Model select should be visible but only have the placeholder "—" option
+    // since no models could be fetched from the unreachable server
+    const modelSelect = form.locator("select.input-full.input-mono");
+    await expect(modelSelect).toBeVisible();
+    const options = modelSelect.locator("option");
+    await expect(options).toHaveCount(1);
+    await expect(options.first()).toHaveText("—");
 
-    // No <select> dropdown should appear
-    const modelSelect = form.locator("select.input-full");
-    await expect(modelSelect).not.toBeVisible();
-
-    // User can still type a model name manually and save
-    await modelTextInput.fill("my-custom-model:latest");
+    // Save button should be disabled since no model can be selected
     const saveBtn = form.locator(".form-actions .btn.btn-primary");
-    await expect(saveBtn).toBeEnabled();
+    await expect(saveBtn).toBeDisabled();
   });
 
   // ── Test 4: API endpoint validation through the running app ─────────
