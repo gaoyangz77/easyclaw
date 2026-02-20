@@ -85,6 +85,44 @@ describe("normalizeCatalog", () => {
     expect(result.openai!.length).toBe(4);
   });
 
+  it("should normalize model IDs using provided aliases", () => {
+    const aliases = { "gemini-3-pro": "gemini-3-pro-preview", "gemini-3-flash": "gemini-3-flash-preview" };
+    const catalog = {
+      "google-gemini-cli": [
+        entry("gemini-3-pro", "Gemini 3 Pro"),
+        entry("gemini-3-flash", "Gemini 3 Flash"),
+      ],
+    };
+    const result = normalizeCatalog(catalog, aliases);
+    expect(result["google-gemini-cli"]!.map((m) => m.id)).toEqual([
+      "gemini-3-pro-preview",
+      "gemini-3-flash-preview",
+    ]);
+  });
+
+  it("should deduplicate after normalization", () => {
+    const aliases = { "gemini-3-pro": "gemini-3-pro-preview" };
+    const catalog = {
+      "google-gemini-cli": [
+        entry("gemini-3-pro", "Gemini 3 Pro"),
+        entry("gemini-3-pro-preview", "Gemini 3 Pro Preview"),
+      ],
+    };
+    const result = normalizeCatalog(catalog, aliases);
+    expect(result["google-gemini-cli"]!.length).toBe(1);
+    expect(result["google-gemini-cli"]![0].id).toBe("gemini-3-pro-preview");
+  });
+
+  it("should not touch model IDs when no aliases are provided", () => {
+    const catalog = {
+      openai: [entry("gpt-4o", "GPT-4o")],
+      anthropic: [entry("claude-opus-4-6", "Claude Opus 4.6")],
+    };
+    const result = normalizeCatalog(catalog);
+    expect(result.openai![0].id).toBe("gpt-4o");
+    expect(result.anthropic![0].id).toBe("claude-opus-4-6");
+  });
+
   it("should handle empty catalog", () => {
     const result = normalizeCatalog({});
     expect(Object.keys(result).length).toBe(0);

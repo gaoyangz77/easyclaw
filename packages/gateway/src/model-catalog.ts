@@ -73,11 +73,60 @@ export function readGatewayModelCatalog(
 const VENDOR_PROVIDER_ALIASES: Record<string, string> = {};
 
 /**
- * Apply provider name aliases and sort models in reverse alphabetical
- * order so that newer models (higher version numbers) appear first.
+ * Derive model ID aliases from the vendor's pi-ai static registry.
+ * Scans all vendor providers for IDs ending in `-preview` whose base form
+ * is absent — e.g. if the vendor has `gemini-3-pro-preview` but not
+ * `gemini-3-pro`, we create an alias `gemini-3-pro` → `gemini-3-pro-preview`.
+ *
+ * This stays in sync automatically when the vendor is updated — no hardcoded
+ * mapping to maintain. Works for any provider (Google, Anthropic, etc.).
+ */
+function deriveModelIdAliases(
+  vendorCatalog: Record<string, CatalogModelEntry[]>,
+): Record<string, string> {
+  const aliases: Record<string, string> = {};
+
+  for (const entries of Object.values(vendorCatalog)) {
+    const ids = new Set(entries.map((e) => e.id));
+    for (const id of ids) {
+      if (id.endsWith("-preview")) {
+        const base = id.slice(0, -"-preview".length);
+        if (!ids.has(base)) {
+          aliases[base] = id;
+        }
+      }
+    }
+  }
+
+  return aliases;
+}
+
+/** Normalize model IDs and deduplicate within a single provider's entries. */
+function normalizeEntries(
+  entries: CatalogModelEntry[],
+  modelIdAliases: Record<string, string>,
+): CatalogModelEntry[] {
+  const seen = new Set<string>();
+  const result: CatalogModelEntry[] = [];
+  for (const e of entries) {
+    const id = modelIdAliases[e.id] ?? e.id;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    result.push(id !== e.id ? { ...e, id } : e);
+  }
+  return result;
+}
+
+/**
+ * Apply provider name aliases, normalize model IDs, and sort models in
+ * reverse alphabetical order so that newer models appear first.
+ *
+ * @param modelIdAliases - Optional model ID alias map (e.g. derived from
+ *   vendor catalog). When omitted, no model ID normalization is applied.
  */
 export function normalizeCatalog(
   catalog: Record<string, CatalogModelEntry[]>,
+  modelIdAliases: Record<string, string> = {},
 ): Record<string, CatalogModelEntry[]> {
   const result: Record<string, CatalogModelEntry[]> = {};
 
@@ -86,11 +135,13 @@ export function normalizeCatalog(
 
     if (entries.length === 0) continue;
 
+    const normalized = normalizeEntries(entries, modelIdAliases);
+
     // Merge into existing key (alias target may already exist)
     if (result[mapped]) {
-      result[mapped] = [...result[mapped], ...entries];
+      result[mapped] = [...result[mapped], ...normalized];
     } else {
-      result[mapped] = entries;
+      result[mapped] = normalized;
     }
   }
 
@@ -220,7 +271,12 @@ export async function readFullModelCatalog(
     }
   }
 
-  const result = normalizeCatalog(merged);
+  // Derive model ID aliases from the vendor catalog so that IDs from
+  // the dynamic models.json (e.g. "gemini-3-pro") are normalized to match
+  // the vendor's static registry (e.g. "gemini-3-pro-preview").
+  const modelAliases = deriveModelIdAliases(vendor);
+
+  const result = normalizeCatalog(merged, modelAliases);
 
   // Populate core's KNOWN_MODELS so getDefaultModelForProvider etc. work
   initKnownModels(result);

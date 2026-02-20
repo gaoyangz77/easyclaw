@@ -177,7 +177,7 @@ export async function saveGeminiOAuthCredentials(
   },
 ): Promise<OAuthFlowResult> {
   const provider = "gemini";
-  const model = options?.model || "google-gemini-cli/gemini-2.5-pro";
+  const model = options?.model || "google-gemini-cli/gemini-3-pro-preview";
   const id = randomUUID();
 
   // Store credential JSON in Keychain
