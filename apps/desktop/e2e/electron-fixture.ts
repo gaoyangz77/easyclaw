@@ -12,7 +12,15 @@ const electronPath = require("electron") as unknown as string;
 const API_BASE = "http://127.0.0.1:3210";
 const GATEWAY_PORT = 28789;
 
-/** Kill any process listening on the gateway port and wait until it's free. */
+/**
+ * Kill any process listening on the gateway port AND any orphaned
+ * openclaw-gateway processes, then wait until the port is free.
+ *
+ * The gateway is spawned detached (its own process group), so it can
+ * outlive the Electron process if Playwright force-kills it.  Killing
+ * by port alone races with gateway startup — the process may exist but
+ * not yet be listening.  We therefore also kill by process name.
+ */
 async function ensurePortFree(port: number): Promise<void> {
   if (process.platform === "win32") {
     try {
@@ -28,9 +36,15 @@ async function ensurePortFree(port: number): Promise<void> {
       for (const pid of pids) {
         try { execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore", shell: "cmd.exe" }); } catch {}
       }
+      // Also kill orphaned gateway processes by name
+      try { execSync("taskkill /F /IM openclaw-gateway.exe 2>nul || exit 0", { stdio: "ignore", shell: "cmd.exe" }); } catch {}
     } catch {}
   } else {
+    // Kill by port
     try { execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null || true`, { stdio: "ignore" }); } catch {}
+    // Kill orphaned gateway processes by name (covers processes that
+    // haven't bound the port yet or have already released it)
+    try { execSync("pkill -9 -f 'openclaw.*gateway' 2>/dev/null || true", { stdio: "ignore" }); } catch {}
   }
 
   // Wait until the port is actually free (up to 5s)
@@ -60,6 +74,16 @@ function buildEnv(tempDir: string): Record<string, string> {
   env.EASYCLAW_SECRETS_DIR = path.join(tempDir, "secrets");
   env.OPENCLAW_STATE_DIR = path.join(tempDir, "openclaw");
 
+  // Skip the file-based gateway lock (acquireGatewayLock).  The lock uses
+  // os.tmpdir()/openclaw-<uid>/gateway.<hash>.lock — a shared directory.
+  // On macOS the stale-lock check only calls isPidAlive (no argv verification),
+  // so PID reuse makes the lock appear active → 5 s timeout → GatewayLockError.
+  // Combined with the launcher's exponential backoff (1-2-4-8-16 s) a single
+  // false-positive lock collision cascades past the 30 s fixture timeout.
+  // In E2E each test already has its own state dir, so the file lock adds no
+  // safety — the port bind (EADDRINUSE) is sufficient.
+  env.OPENCLAW_ALLOW_MULTI_GATEWAY = "1";
+
   return env;
 }
 
@@ -72,23 +96,32 @@ type ElectronFixtures = {
 async function launchElectronApp(
   use: (app: ElectronApplication) => Promise<void>,
 ) {
+  // Kill any leftover gateway from a previous test or test-suite run
+  // BEFORE launching Electron, so the new gateway never hits EADDRINUSE.
+  await ensurePortFree(GATEWAY_PORT);
+
   const tempDir = createTempDir();
   const env = buildEnv(tempDir);
   const execPath = process.env.E2E_EXECUTABLE_PATH;
   let app: ElectronApplication;
 
+  // Use a per-test user-data-dir so each instance gets its own
+  // single-instance lock. Without this, force-killed prod instances
+  // leave a stale lock that blocks subsequent test launches.
+  const userDataDir = path.join(tempDir, "electron-data");
+
   if (execPath) {
     // Prod mode: launch the packaged app binary
     app = await _electron.launch({
       executablePath: execPath,
-      args: ["--lang=en"],
+      args: ["--lang=en", `--user-data-dir=${userDataDir}`],
       env,
     });
   } else {
     const mainPath = path.resolve("dist/main.cjs");
     app = await _electron.launch({
       executablePath: electronPath,
-      args: ["--lang=en", mainPath],
+      args: ["--lang=en", mainPath, `--user-data-dir=${userDataDir}`],
       env,
     });
   }

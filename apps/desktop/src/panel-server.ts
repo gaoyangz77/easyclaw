@@ -27,6 +27,37 @@ const log = createLogger("panel-server");
 /** Directory where user-installed skills are stored. */
 const USER_SKILLS_DIR = join(homedir(), ".easyclaw", "openclaw", "skills");
 
+/**
+ * Invalidate the cached skills snapshot in the gateway session store.
+ *
+ * The gateway's `agentCommand` only rebuilds the skills snapshot for new sessions
+ * (`isNewSession || !sessionEntry?.skillsSnapshot`).  After installing or deleting
+ * a skill we need the agent to pick up the change immediately, so we clear
+ * `skillsSnapshot` from every session entry.  The next message will trigger a
+ * fresh snapshot build that includes the updated skill set.
+ */
+function invalidateSkillsSnapshot(): void {
+  try {
+    const stateDir = resolveOpenClawStateDir();
+    const storePath = join(stateDir, "agents", "main", "sessions", "sessions.json");
+    if (!existsSync(storePath)) return;
+    const store = JSON.parse(readFileSync(storePath, "utf-8")) as Record<string, Record<string, unknown>>;
+    let changed = false;
+    for (const entry of Object.values(store)) {
+      if (entry.skillsSnapshot) {
+        delete entry.skillsSnapshot;
+        changed = true;
+      }
+    }
+    if (changed) {
+      writeFileSync(storePath, JSON.stringify(store, null, 2), "utf-8");
+      log.info("Cleared cached skillsSnapshot from session store");
+    }
+  } catch (err) {
+    log.warn("Failed to invalidate skills snapshot:", err);
+  }
+}
+
 /** Supported formats that Groq Whisper accepts directly (no conversion needed). */
 const STT_SUPPORTED_FORMATS = new Set(["flac", "mp3", "mp4", "mpeg", "mpga", "m4a", "ogg", "wav", "webm"]);
 
@@ -3294,6 +3325,9 @@ async function handleApiRoute(
         await fs.writeFile(join(skillDir, "_meta.json"), JSON.stringify(body.meta), "utf-8");
       }
 
+      // Clear cached skills snapshot so the agent picks up the new skill immediately
+      invalidateSkillsSnapshot();
+
       sendJson(res, 200, { ok: true });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -3314,6 +3348,8 @@ async function handleApiRoute(
     const skillsDir = USER_SKILLS_DIR;
     try {
       await fs.rm(join(skillsDir, body.slug), { recursive: true, force: true });
+      // Clear cached skills snapshot so the agent stops listing the deleted skill
+      invalidateSkillsSnapshot();
       sendJson(res, 200, { ok: true });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);

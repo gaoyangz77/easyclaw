@@ -133,13 +133,15 @@ describe("skill-reload", () => {
         events.push({ event, filename });
       });
 
-      // Small delay so the watcher is fully set up before we write
-      await sleep(50);
+      // macOS FSEvents needs more lead time than kqueue to register a
+      // watcher on a directory — 50 ms is too tight on loaded machines.
+      await sleep(200);
 
       writeFileSync(join(skillsDir, "deploy-SKILL.md"), "# Deploy Skill\n");
 
-      // Wait for the event to propagate
-      await waitFor(() => events.length > 0, 500);
+      // FSEvents batches new-file events with higher latency than
+      // modify/delete on already-tracked inodes; give it 2 s.
+      await waitFor(() => events.length > 0, 2000);
 
       expect(events.length).toBeGreaterThan(0);
       const skillEvents = events.filter((e) => e.filename === "deploy-SKILL.md");
