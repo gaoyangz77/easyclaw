@@ -204,37 +204,45 @@ export const test = base.extend<ElectronFixtures>({
     });
     await bringWindowToFront(electronApp);
 
-    // If onboarding is shown, either seed a real provider or skip
+    // If onboarding is shown, skip it first to reach the main page.
+    // Provider seeding (if needed) happens AFTER the gateway is fully
+    // connected — this avoids restarting a barely-started gateway during
+    // the startup grace period, which causes 50+ second hangs on Windows.
     if (await window.locator(".onboarding-page").isVisible()) {
-      const apiKey = process.env.E2E_VOLCENGINE_API_KEY;
-      if (apiKey) {
-        await seedProvider({
-          provider: "volcengine",
-          model: "doubao-seed-1-6-flash-250828",
-          apiKey,
-        });
-        // On Windows, provider seeding triggers multiple gateway restarts
-        // (config + model change), each requiring a full stop+start since
-        // SIGUSR1 is not supported. Wait for all restart cycles to settle
-        // before reloading — otherwise the reload triggers yet another restart.
-        await window.waitForTimeout(10000);
-        // Reload to trigger onboarding re-check so the app transitions to
-        // the main page now that a provider is configured.
-        await window.reload();
-      } else {
-        // No API key available — skip onboarding to reach the main page
-        await window.locator(".btn-ghost").click();
-      }
+      await window.locator(".btn-ghost").click();
       await window.waitForSelector(".sidebar-brand", { timeout: 45_000 });
     }
 
-    // Wait for the gateway to be fully connected before handing the window
-    // to tests. The gateway takes 6-7 s to bind on Windows (extensions load
-    // before the port opens) and can restart multiple times after a provider
-    // change. Waiting here removes the race from every individual test.
+    // Wait for the gateway to be fully connected before proceeding.
+    // The gateway takes 6-7 s to bind on Windows (extensions load before
+    // the port opens). Waiting here removes the race from every test.
     await window.waitForSelector(".chat-status-dot-connected", {
       timeout: 45_000,
     });
+
+    // Now that the gateway is fully started, seed the provider key if an
+    // API key is available. This triggers a gateway restart (stop+start on
+    // Windows) but the gateway is well past the startup grace period, so
+    // the restart is clean — no compile cache corruption, no cold-start hang.
+    const apiKey = process.env.E2E_VOLCENGINE_API_KEY;
+    if (apiKey) {
+      await seedProvider({
+        provider: "volcengine",
+        model: "doubao-seed-1-6-flash-250828",
+        apiKey,
+      });
+      // Wait for the gateway restart to complete and reconnect.
+      // The status dot goes hidden during restart, then reappears.
+      await window.waitForSelector(".chat-status-dot-connected", {
+        state: "hidden",
+        timeout: 10_000,
+      }).catch(() => {
+        // May already be reconnected if restart was fast
+      });
+      await window.waitForSelector(".chat-status-dot-connected", {
+        timeout: 45_000,
+      });
+    }
 
     await use(window);
   },
