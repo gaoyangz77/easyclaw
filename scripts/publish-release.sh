@@ -27,7 +27,7 @@ error() { echo "$(date +%H:%M:%S) [ERROR] $*" >&2; exit 1; }
 # ---- Parse arguments ----
 VERSION="${1:-}"
 if [ -z "$VERSION" ]; then
-  VERSION=$(node -e "console.log(require('$DESKTOP_DIR/package.json').version)")
+  VERSION=$(cd "$REPO_ROOT" && node -p "require('./apps/desktop/package.json').version")
 fi
 [ "$VERSION" = "0.0.0" ] && error "Version is 0.0.0. Pass a version: ./scripts/publish-release.sh 1.2.8"
 
@@ -39,28 +39,20 @@ command -v gh &>/dev/null || error "gh CLI not found. Install: https://cli.githu
 gh auth status || error "gh not authenticated. Run: gh auth login"
 
 # ---- Verify the draft release exists ----
-RELEASE_JSON=$(gh release view "$TAG" --json isDraft,assets 2>/dev/null) \
+gh release view "$TAG" --json isDraft &>/dev/null \
   || error "Release $TAG not found on GitHub. Has the CI build workflow completed?"
 
-IS_DRAFT=$(echo "$RELEASE_JSON" | node -e "
-  const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
-  console.log(data.isDraft);
-")
+IS_DRAFT=$(gh release view "$TAG" --json isDraft -q .isDraft)
 [ "$IS_DRAFT" = "true" ] || error "Release $TAG is not a draft. It may have already been published."
 
 # ---- Verify artifacts are complete ----
-ASSET_COUNT=$(echo "$RELEASE_JSON" | node -e "
-  const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
-  console.log(data.assets.length);
-")
-
-ASSET_NAMES=$(echo "$RELEASE_JSON" | node -e "
-  const data = JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));
-  data.assets.forEach(a => console.log('  - ' + a.name));
-")
+ASSET_COUNT=$(gh release view "$TAG" --json assets -q '.assets | length')
+ASSET_NAMES=$(gh release view "$TAG" --json assets -q '.assets[].name')
 
 info "Draft release $TAG found with $ASSET_COUNT artifact(s):"
-echo "$ASSET_NAMES"
+echo "$ASSET_NAMES" | while read -r name; do
+  [ -n "$name" ] && echo "  - $name"
+done
 
 # Expect 3 artifacts: DMG + ZIP (macOS) + EXE (Windows)
 EXPECTED_ARTIFACTS=3

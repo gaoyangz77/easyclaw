@@ -54,7 +54,7 @@ for arg in "$@"; do
 done
 
 if [ -z "$VERSION" ]; then
-  VERSION=$(node -e "console.log(require('$DESKTOP_DIR/package.json').version)")
+  VERSION=$(cd "$REPO_ROOT" && node -p "require('./apps/desktop/package.json').version")
 fi
 [ "$VERSION" = "0.0.0" ] && error "Version is 0.0.0. Pass a version: ./scripts/test-local.sh 1.2.8"
 
