@@ -11,6 +11,7 @@ import {
   generateGatewayToken,
   buildExtraProviderConfigs,
   DEFAULT_GATEWAY_PORT,
+  KNOWN_CONFIG_KEYS,
 } from "./config-writer.js";
 
 describe("config-writer", () => {
@@ -170,15 +171,15 @@ describe("config-writer", () => {
       expect(existsSync(configPath)).toBe(true);
     });
 
-    it("preserves existing user fields when merging", () => {
+    it("preserves existing recognised fields when merging", () => {
       const configPath = join(tmpDir, "openclaw.json");
-      // Pre-populate with user config
+      // Pre-populate with user config (using keys the schema recognises)
       writeFileSync(
         configPath,
         JSON.stringify({
-          userSetting: "keep-me",
+          logging: { level: "debug" },
           gateway: { port: 1234, customField: "also-keep" },
-          otherSection: { data: true },
+          ui: { seamColor: "#ff0000" },
         }),
       );
 
@@ -193,9 +194,9 @@ describe("config-writer", () => {
       expect(config.gateway.port).toBe(18789);
       // plugins gets extensions dir auto-added
       expect(config.plugins.load.paths.some((p: string) => p.endsWith("extensions"))).toBe(true);
-      // User fields are preserved
-      expect(config.userSetting).toBe("keep-me");
-      expect(config.otherSection).toEqual({ data: true });
+      // Known user fields are preserved
+      expect(config.logging).toEqual({ level: "debug" });
+      expect(config.ui).toEqual({ seamColor: "#ff0000" });
       expect(config.gateway.customField).toBe("also-keep");
     });
 
@@ -274,6 +275,66 @@ describe("config-writer", () => {
       const raw = readFileSync(configPath, "utf-8");
       expect(raw.endsWith("\n")).toBe(true);
       expect(() => JSON.parse(raw)).not.toThrow();
+    });
+  });
+
+  describe("writeGatewayConfig - unknown key sanitisation", () => {
+    it("strips unknown top-level keys from existing config", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          history: { entries: [1, 2, 3] },
+          gateway: { port: 1234 },
+          randomJunk: true,
+        }),
+      );
+
+      writeGatewayConfig({ configPath, gatewayPort: 18789 });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.gateway.port).toBe(18789);
+      expect(config.history).toBeUndefined();
+      expect(config.randomJunk).toBeUndefined();
+    });
+
+    it("preserves all known top-level keys", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeFileSync(
+        configPath,
+        JSON.stringify({
+          $schema: "https://example.com/schema.json",
+          meta: { lastTouchedVersion: "1.0" },
+          logging: { level: "debug" },
+          ui: { seamColor: "#aabbcc" },
+          memory: { backend: "builtin" },
+        }),
+      );
+
+      writeGatewayConfig({ configPath, gatewayPort: 18789 });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.$schema).toBe("https://example.com/schema.json");
+      expect(config.meta).toEqual({ lastTouchedVersion: "1.0" });
+      expect(config.logging).toEqual({ level: "debug" });
+      expect(config.ui).toEqual({ seamColor: "#aabbcc" });
+      expect(config.memory).toEqual({ backend: "builtin" });
+    });
+
+    it("sanitisation is idempotent", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeFileSync(
+        configPath,
+        JSON.stringify({ history: true, gateway: { port: 1234 } }),
+      );
+
+      writeGatewayConfig({ configPath, gatewayPort: 18789 });
+      const first = readFileSync(configPath, "utf-8");
+
+      writeGatewayConfig({ configPath, gatewayPort: 18789 });
+      const second = readFileSync(configPath, "utf-8");
+
+      expect(first).toBe(second);
     });
   });
 
@@ -786,6 +847,23 @@ describe("config-writer", () => {
       expect(glm47?.input).toEqual(["text"]);
       const glm45 = configs.zhipu.models.find((m) => m.id === "glm-4.5");
       expect(glm45?.input).toEqual(["text"]);
+    });
+  });
+
+  describe("KNOWN_CONFIG_KEYS sync with vendor schema", () => {
+    it("matches the top-level keys of OpenClawSchema", async () => {
+      // Import the Zod schema directly from vendor source so the test
+      // breaks if vendor/openclaw adds or removes top-level config keys.
+      const { OpenClawSchema } = await import(
+        "../../../vendor/openclaw/src/config/zod-schema.js"
+      );
+      const schemaKeys = new Set(Object.keys(OpenClawSchema.shape));
+
+      const missingFromKnown = [...schemaKeys].filter((k) => !KNOWN_CONFIG_KEYS.has(k));
+      const extraInKnown = [...KNOWN_CONFIG_KEYS].filter((k) => !schemaKeys.has(k));
+
+      expect(missingFromKnown, "Keys in vendor schema but missing from KNOWN_CONFIG_KEYS").toEqual([]);
+      expect(extraInKnown, "Keys in KNOWN_CONFIG_KEYS but not in vendor schema").toEqual([]);
     });
   });
 });

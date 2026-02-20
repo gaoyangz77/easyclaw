@@ -10,6 +10,68 @@ import { generateAudioConfig, mergeAudioConfig } from "./audio-config-writer.js"
 const log = createLogger("gateway:config");
 
 /**
+ * Top-level keys recognised by the OpenClaw config schema (zod-schema.ts).
+ * Any key NOT in this set will be stripped before we write the config file,
+ * preventing third-party plugins or stale migrations from injecting unknown
+ * fields that cause "Config invalid – Unrecognized key" on gateway startup.
+ *
+ * Keep in sync with vendor/openclaw/src/config/zod-schema.ts when updating
+ * the vendor (the update-vendor skill should flag schema changes).
+ */
+export const KNOWN_CONFIG_KEYS: ReadonlySet<string> = new Set([
+  "$schema",
+  "meta",
+  "env",
+  "wizard",
+  "diagnostics",
+  "logging",
+  "update",
+  "browser",
+  "ui",
+  "auth",
+  "models",
+  "nodeHost",
+  "agents",
+  "tools",
+  "bindings",
+  "broadcast",
+  "audio",
+  "media",
+  "messages",
+  "commands",
+  "approvals",
+  "session",
+  "cron",
+  "hooks",
+  "web",
+  "channels",
+  "discovery",
+  "canvasHost",
+  "talk",
+  "gateway",
+  "memory",
+  "skills",
+  "plugins",
+]);
+
+/**
+ * Remove top-level keys that the OpenClaw schema does not recognise.
+ * Returns the list of removed keys (for logging).
+ */
+function stripUnknownTopLevelKeys(
+  config: Record<string, unknown>,
+): string[] {
+  const removed: string[] = [];
+  for (const key of Object.keys(config)) {
+    if (!KNOWN_CONFIG_KEYS.has(key)) {
+      delete config[key];
+      removed.push(key);
+    }
+  }
+  return removed;
+}
+
+/**
  * Find the monorepo root by looking for pnpm-workspace.yaml
  */
 function findMonorepoRoot(startDir: string = process.cwd()): string | null {
@@ -664,6 +726,14 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
         chrome: { driver: "clawd", cdpPort: (options.gatewayPort ?? DEFAULT_GATEWAY_PORT) + 12, color: "#00AA00" },
       },
     };
+  }
+
+  // Strip unknown top-level keys before writing so that stale entries
+  // injected by third-party plugins or manual edits don't cause
+  // "Config invalid – Unrecognized key" on gateway startup.
+  const removedKeys = stripUnknownTopLevelKeys(config);
+  if (removedKeys.length > 0) {
+    log.warn(`Stripped unknown config keys: ${removedKeys.join(", ")}`);
   }
 
   writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf-8");
