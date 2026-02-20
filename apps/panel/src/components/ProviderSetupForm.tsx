@@ -268,7 +268,7 @@ export function ProviderSetupForm({
         setModel(getDefaultModelForProvider(provider as LLMProvider)?.modelId ?? "");
       }
     } catch (err) {
-      setError({ key: "providers.failedToSave", detail: String(err) });
+      setError({ key: "providers.oauthFailed", detail: err instanceof Error ? err.message : String(err) });
     } finally {
       setOauthLoading(false);
     }
@@ -287,7 +287,7 @@ export function ProviderSetupForm({
       setOauthAuthUrl("");
       setOauthCallbackUrl("");
     } catch (err) {
-      setError({ key: "providers.failedToSave", detail: String(err) });
+      setError({ key: "providers.oauthFailed", detail: err instanceof Error ? err.message : String(err) });
     } finally {
       setOauthManualLoading(false);
     }
@@ -316,7 +316,7 @@ export function ProviderSetupForm({
       setExistingKeyCount((c) => (c ?? 0) + 1);
       onSave(provider);
     } catch (err) {
-      setError({ key: "providers.invalidKey", detail: String(err) });
+      setError({ key: "providers.failedToSave", detail: err instanceof Error ? err.message : String(err) });
     } finally {
       setSaving(false);
       setValidating(false);
@@ -337,7 +337,9 @@ export function ProviderSetupForm({
         {description && <p>{description}</p>}
 
         {error && (
-          <div className="error-alert">{t(error.key)}{error.detail ? ` (${error.detail})` : ""}</div>
+          <div className="error-alert">
+            {t(error.key)}{error.detail && <><br /><code className="error-detail">{error.detail}</code></>}
+          </div>
         )}
 
         <div className="tab-bar">

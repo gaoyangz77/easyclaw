@@ -6,7 +6,15 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!res.ok) {
-    throw new Error("API error: " + res.status + " " + res.statusText);
+    // Try to extract the server's error message from the JSON body
+    let serverMessage: string | undefined;
+    try {
+      const body = await res.json() as { error?: string };
+      serverMessage = body.error;
+    } catch {
+      // Response wasn't JSON — fall back to status text
+    }
+    throw new Error(serverMessage || `API error: ${res.status} ${res.statusText}`);
   }
   return res.json() as Promise<T>;
 }
