@@ -340,8 +340,9 @@ export function ProviderSetupForm({
         {description && <p>{description}</p>}
 
         {error && (
-          <div className="error-alert" title={error.hover || undefined}>
+          <div className="error-alert">
             {t(error.key)}{error.detail}
+            {error.hover && <details className="error-details"><summary>{t("providers.errorDetails")}</summary><code>{error.hover}</code></details>}
           </div>
         )}
 

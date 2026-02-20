@@ -120,6 +120,7 @@ export default {
     anthropicTokenWarning: "通过 \"claude setup-token\" 生成的 OAuth Token 有效期为一年。只有第一个 Token 有效——在其过期前重新生成的 Token 将无法使用。",
     failedToLoad: "加载设置失败：",
     oauthFailed: "OAuth 登录失败：",
+    errorDetails: "详情",
     failedToSave: "保存失败：",
     colProvider: "提供商",
     colStatus: "状态",

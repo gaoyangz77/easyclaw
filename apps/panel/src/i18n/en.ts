@@ -120,6 +120,7 @@ export default {
     anthropicTokenWarning: "OAuth tokens from \"claude setup-token\" are long-lived (1 year). Only the first token is valid — regenerating a new one before it expires will produce an unusable token.",
     failedToLoad: "Failed to load settings: ",
     oauthFailed: "OAuth login failed: ",
+    errorDetails: "Details",
     failedToSave: "Failed to save: ",
     colProvider: "Provider",
     colStatus: "Status",
