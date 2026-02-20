@@ -1228,6 +1228,16 @@ tbody td {
   color: var(--color-info);
 }
 
+.local-info-box {
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.local-info-body {
+  white-space: pre-line;
+  margin: 8px 0 0;
+}
+
 .info-box-green {
   background-color: rgba(0, 184, 132, 0.07);
   border: 1px solid rgba(0, 184, 132, 0.12);

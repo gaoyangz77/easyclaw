@@ -376,9 +376,7 @@ export function ProviderSetupForm({
               />
               {healthStatus && (
                 <span className={`badge ${healthStatus.ok ? "badge-success" : "badge-danger"}`}>
-                  {healthStatus.ok
-                    ? `${t("providers.connectionSuccess")}${healthStatus.version ? ` (v${healthStatus.version})` : ""}`
-                    : t("providers.connectionFailed")}
+                  {healthStatus.ok ? t("providers.connectionSuccess") : t("providers.connectionFailed")}
                 </span>
               )}
               {detecting && <span className="badge badge-muted">...</span>}
@@ -721,9 +719,9 @@ export function ProviderSetupForm({
       {/* Right: Pricing table / Local info */}
       <div className="page-col-side" style={{ height: leftHeight }}>
         {tab === "local" ? (
-          <div className="info-box info-box-blue">
+          <div className="info-box info-box-blue local-info-box">
             <strong>{t("providers.localInfoTitle")}</strong>
-            <p className="form-help-sm" style={{ whiteSpace: "pre-line", margin: "8px 0 0" }}>
+            <p className="local-info-body">
               {t("providers.localInfoBody")}
             </p>
           </div>

@@ -34,11 +34,6 @@ export function PricingTable({
   const currencySymbol = data?.currency === "CNY" ? "¥" : "$";
   const providerLabel = getProviderMeta(provider as LLMProvider)?.label ?? provider;
 
-  // Find the first free model to highlight as recommended
-  const recommendedId = data?.models.find(
-    (m) => isFree(m.inputPricePerMillion) && isFree(m.outputPricePerMillion),
-  )?.modelId ?? null;
-
   return (
     <div className="section-card pricing-card">
       <h4 className="pricing-heading">
@@ -94,27 +89,21 @@ export function PricingTable({
               </thead>
               <tbody>
                 {data.models.map((m) => {
-                  const isRecommended = m.modelId === recommendedId;
                   const modelFree = isFree(m.inputPricePerMillion) && isFree(m.outputPricePerMillion);
                   return (
                     <tr key={m.modelId}>
                       <td>
                         <div className="pricing-model-name">
                           {m.displayName}
-                          {isRecommended && (
-                            <span className="pricing-badge">
-                              {t("providers.pricingRecommended")}
-                            </span>
-                          )}
                         </div>
                         {m.note && (
                           <div className="pricing-model-note">{m.note}</div>
                         )}
                       </td>
-                      <td className={`pricing-price${modelFree ? " pricing-price-free" : ""}`}>
+                      <td className="pricing-price">
                         {modelFree ? t("providers.pricingFree") : m.inputPricePerMillion === "—" ? "—" : `${currencySymbol}${m.inputPricePerMillion}`}
                       </td>
-                      <td className={`pricing-price${modelFree ? " pricing-price-free" : ""}`}>
+                      <td className="pricing-price">
                         {modelFree ? t("providers.pricingFree") : m.outputPricePerMillion === "—" ? "—" : `${currencySymbol}${m.outputPricePerMillion}`}
                       </td>
                     </tr>
