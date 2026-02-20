@@ -16,6 +16,7 @@ import { removeSkillFile } from "@easyclaw/rules";
 import { promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import { execFile } from "node:child_process";
+import AdmZip from "adm-zip";
 import WebSocket from "ws";
 import { UsageSnapshotEngine } from "./usage-snapshot-engine.js";
 import type { ModelUsageTotals } from "./usage-snapshot-engine.js";
@@ -173,6 +174,7 @@ function startWeComRelay(params: {
   wecomGatewayRpc = new GatewayRpcClient({
     url: params.gatewayWsUrl,
     token: params.gatewayToken,
+    deviceIdentityPath: join(resolveOpenClawStateDir(), "identity", "device.json"),
     onEvent: (evt) => {
       if (evt.event === "chat") {
         handleWeComChatEvent(evt.payload).catch((err) => log.error("WeCom: chat event handler error:", err));
@@ -2943,7 +2945,8 @@ async function handleApiRoute(
         sendJson(res, 200, { ok: true, ...result });
       } catch (err) {
         log.error("OAuth acquire failed:", err);
-        sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+        const detail = err instanceof Error ? (err as Error & { detail?: string }).detail : undefined;
+        sendJson(res, 500, { error: err instanceof Error ? err.message : String(err), detail });
       }
       return;
     }
@@ -2957,7 +2960,8 @@ async function handleApiRoute(
       sendJson(res, 200, { ok: true, ...result });
     } catch (err) {
       log.error("OAuth flow failed:", err);
-      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      const detail = err instanceof Error ? (err as Error & { detail?: string }).detail : undefined;
+      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err), detail });
     }
     return;
   }
@@ -2983,9 +2987,10 @@ async function handleApiRoute(
     } catch (err) {
       log.error("OAuth save failed:", err);
       const message = err instanceof Error ? err.message : String(err);
+      const detail = err instanceof Error ? (err as Error & { detail?: string }).detail : undefined;
       // Return 422 for validation errors (token invalid/expired)
       const status = message.includes("Invalid") || message.includes("expired") || message.includes("validation") ? 422 : 500;
-      sendJson(res, status, { error: message });
+      sendJson(res, status, { error: message, detail });
     }
     return;
   }
@@ -3006,7 +3011,8 @@ async function handleApiRoute(
       sendJson(res, 200, { ok: true, ...result });
     } catch (err) {
       log.error("OAuth manual complete failed:", err);
-      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      const detail = err instanceof Error ? (err as Error & { detail?: string }).detail : undefined;
+      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err), detail });
     }
     return;
   }
@@ -3274,35 +3280,19 @@ async function handleApiRoute(
 
       // Download zip bundle and extract to skills directory
       const zipBuffer = Buffer.from(await response.arrayBuffer());
-      const { tmpdir } = await import("node:os");
-      const tmpDir = join(tmpdir(), `skill-install-${Date.now()}`);
-      const zipPath = join(tmpDir, `${body.slug}.zip`);
-      await fs.mkdir(tmpDir, { recursive: true });
-      await fs.writeFile(zipPath, zipBuffer);
 
       const skillsDir = USER_SKILLS_DIR;
       const skillDir = join(skillsDir, body.slug);
       await fs.mkdir(skillDir, { recursive: true });
 
-      // Extract zip: ditto on macOS, unzip on Linux/Windows
-      const extractCmd = process.platform === "darwin" ? "ditto" : "unzip";
-      const extractArgs = process.platform === "darwin"
-        ? ["-xk", zipPath, skillDir]
-        : ["-o", zipPath, "-d", skillDir];
-      await new Promise<void>((resolve, reject) => {
-        execFile(extractCmd, extractArgs, { timeout: 30_000 }, (err) => {
-          if (err) reject(new Error(`Failed to extract skill zip: ${err.message}`));
-          else resolve();
-        });
-      });
+      // Extract zip using pure-JS library (no external CLI dependency)
+      const zip = new AdmZip(zipBuffer);
+      zip.extractAllTo(skillDir, true);
 
       // Save install metadata (author, version, etc.) for display in installed list
       if (body.meta) {
         await fs.writeFile(join(skillDir, "_meta.json"), JSON.stringify(body.meta), "utf-8");
       }
-
-      // Cleanup temp files
-      await fs.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
 
       sendJson(res, 200, { ok: true });
     } catch (err: unknown) {

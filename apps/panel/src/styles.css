@@ -834,18 +834,6 @@ tbody td {
   font-size: 13px;
 }
 
-.error-alert .error-detail {
-  display: block;
-  margin-top: 6px;
-  padding: 6px 8px;
-  background: rgba(0, 0, 0, 0.06);
-  border-radius: var(--radius-xs);
-  font-size: 12px;
-  word-break: break-all;
-  user-select: text;
-  cursor: text;
-}
-
 .error-alert-actions {
   margin-top: 8px;
 }
@@ -3454,10 +3442,6 @@ tbody td {
   background-color: rgba(255, 77, 109, 0.1);
   border-color: rgba(255, 77, 109, 0.25);
   color: #ff4d6d;
-}
-
-[data-theme="dark"] .error-alert .error-detail {
-  background: rgba(255, 255, 255, 0.08);
 }
 
 /* ===== D23. Empty States ===== */

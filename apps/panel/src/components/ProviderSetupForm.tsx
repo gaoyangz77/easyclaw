@@ -67,7 +67,7 @@ export function ProviderSetupForm({
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [saving, setSaving] = useState(false);
   const [validating, setValidating] = useState(false);
-  const [error, setError] = useState<{ key: string; detail?: string } | null>(null);
+  const [error, setError] = useState<{ key: string; detail?: string; hover?: string } | null>(null);
   const [oauthLoading, setOauthLoading] = useState(false);
   const [oauthTokenPreview, setOauthTokenPreview] = useState("");
   const [oauthManualMode, setOauthManualMode] = useState(false);
@@ -268,7 +268,8 @@ export function ProviderSetupForm({
         setModel(getDefaultModelForProvider(provider as LLMProvider)?.modelId ?? "");
       }
     } catch (err) {
-      setError({ key: "providers.oauthFailed", detail: err instanceof Error ? err.message : String(err) });
+      const e = err instanceof Error ? err : new Error(String(err));
+      setError({ key: "providers.oauthFailed", detail: e.message, hover: (e as Error & { detail?: string }).detail });
     } finally {
       setOauthLoading(false);
     }
@@ -287,7 +288,8 @@ export function ProviderSetupForm({
       setOauthAuthUrl("");
       setOauthCallbackUrl("");
     } catch (err) {
-      setError({ key: "providers.oauthFailed", detail: err instanceof Error ? err.message : String(err) });
+      const e = err instanceof Error ? err : new Error(String(err));
+      setError({ key: "providers.oauthFailed", detail: e.message, hover: (e as Error & { detail?: string }).detail });
     } finally {
       setOauthManualLoading(false);
     }
@@ -316,7 +318,8 @@ export function ProviderSetupForm({
       setExistingKeyCount((c) => (c ?? 0) + 1);
       onSave(provider);
     } catch (err) {
-      setError({ key: "providers.failedToSave", detail: err instanceof Error ? err.message : String(err) });
+      const e = err instanceof Error ? err : new Error(String(err));
+      setError({ key: "providers.failedToSave", detail: e.message, hover: (e as Error & { detail?: string }).detail });
     } finally {
       setSaving(false);
       setValidating(false);
@@ -337,8 +340,8 @@ export function ProviderSetupForm({
         {description && <p>{description}</p>}
 
         {error && (
-          <div className="error-alert">
-            {t(error.key)}{error.detail && <><br /><code className="error-detail">{error.detail}</code></>}
+          <div className="error-alert" title={error.hover || undefined}>
+            {t(error.key)}{error.detail}
           </div>
         )}
 

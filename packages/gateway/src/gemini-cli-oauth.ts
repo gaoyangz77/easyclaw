@@ -13,9 +13,16 @@ import { execFile, execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
 import { homedir } from "node:os";
 import { enrichedPath, findInPath } from "./cli-utils.js";
-import { createLogger } from "@easyclaw/logger";
 
-const log = createLogger("gateway:gemini-oauth");
+/** Error that carries a user-friendly message plus technical detail for hover tooltip. */
+export class DetailedError extends Error {
+  detail: string;
+  constructor(message: string, detail: string) {
+    super(message);
+    this.name = "DetailedError";
+    this.detail = detail;
+  }
+}
 
 const CLIENT_ID_KEYS = ["OPENCLAW_GEMINI_OAUTH_CLIENT_ID", "GEMINI_CLI_OAUTH_CLIENT_ID"];
 const CLIENT_SECRET_KEYS = [
@@ -526,9 +533,10 @@ async function waitForLocalCallback(params: {
     });
 
     timeout = setTimeout(() => {
-      finish(new Error(
+      finish(new DetailedError(
         "OAuth login timed out. The browser did not redirect back. " +
         "Check if a VPN/proxy (TUN mode) or firewall is blocking localhost:8085.",
+        `Waited ${params.timeoutMs / 1000}s for callback on ${hostname}:${port}`,
       ));
     }, params.timeoutMs);
   });
@@ -652,13 +660,6 @@ async function discoverProject(accessToken: string, proxyUrl?: string): Promise<
     throw new Error("loadCodeAssist failed", { cause: err });
   }
 
-  log.info("loadCodeAssist response", {
-    currentTier: data.currentTier ?? null,
-    allowedTiers: data.allowedTiers?.map((t: { id?: string; userDefinedCloudaicompanionProject?: boolean }) =>
-      ({ id: t.id, userDefined: t.userDefinedCloudaicompanionProject })),
-    cloudaicompanionProject: data.cloudaicompanionProject ?? null,
-  });
-
   if (data.currentTier) {
     const project = data.cloudaicompanionProject;
     if (typeof project === "string" && project) {
@@ -685,10 +686,12 @@ async function discoverProject(accessToken: string, proxyUrl?: string): Promise<
   const tier = hasExistingTierButNoProject ? { id: TIER_FREE } : getDefaultTier(data.allowedTiers);
   const tierId = tier?.id || TIER_FREE;
   if (tierId !== TIER_FREE && !envProject) {
-    log.warn("Tier requires user-defined project", { tierId, allowedTiers: data.allowedTiers });
-    throw new Error(
+    throw new DetailedError(
       "Your Google account requires a Cloud project. " +
       "Please create one at console.cloud.google.com and set GOOGLE_CLOUD_PROJECT.",
+      `tierId=${tierId}, currentTier=${JSON.stringify(data.currentTier ?? null)}, ` +
+      `allowedTiers=${JSON.stringify(data.allowedTiers)}, ` +
+      `cloudaicompanionProject=${JSON.stringify(data.cloudaicompanionProject ?? null)}`,
     );
   }
 
@@ -712,7 +715,11 @@ async function discoverProject(accessToken: string, proxyUrl?: string): Promise<
   }, proxyUrl);
 
   if (!onboardResponse.ok) {
-    throw new Error(`onboardUser failed: ${onboardResponse.status} ${onboardResponse.statusText}`);
+    const respText = await onboardResponse.text().catch(() => "");
+    throw new DetailedError(
+      "Google project provisioning failed. Please try again later.",
+      `onboardUser ${onboardResponse.status} ${onboardResponse.statusText}: ${respText}`,
+    );
   }
 
   let lro = (await onboardResponse.json()) as {
@@ -733,8 +740,11 @@ async function discoverProject(accessToken: string, proxyUrl?: string): Promise<
     return envProject;
   }
 
-  throw new Error(
-    "Could not discover or provision a Google Cloud project. Set GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_PROJECT_ID.",
+  throw new DetailedError(
+    "Could not discover or provision a Google Cloud project. " +
+    "Set GOOGLE_CLOUD_PROJECT or GOOGLE_CLOUD_PROJECT_ID.",
+    `tierId=${tierId}, onboardResponse=${JSON.stringify(lro)}, ` +
+    `currentTier=${JSON.stringify(data.currentTier ?? null)}`,
   );
 }
 
