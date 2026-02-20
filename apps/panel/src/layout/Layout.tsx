@@ -90,7 +90,10 @@ export function Layout({
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem("sidebar-collapsed") === "true");
   const isDragging = useRef(false);
 
-  // Check for updates after 5s + retry once at 20s to handle startup race
+  // Check for updates after 5s + retry once at 20s to handle startup race.
+  // Also re-check when the window becomes visible (e.g. tray click triggers
+  // showMainWindow + performUpdateDownload — without this the panel stays
+  // unaware and shows no banner/progress).
   useEffect(() => {
     function check() {
       fetchUpdateInfo()
@@ -100,22 +103,40 @@ export function Layout({
         })
         .catch(() => {});
     }
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") check();
+    }
     const firstTimer = setTimeout(check, 5_000);
     const retryTimer = setTimeout(check, 20_000);
-    return () => { clearTimeout(firstTimer); clearTimeout(retryTimer); };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      clearTimeout(firstTimer);
+      clearTimeout(retryTimer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, []);
 
-  // Poll download status: fast (500ms) when actively downloading, slow (3s) when banner is visible
+  // Poll download status: fast (500ms) when actively downloading, slow (3s) when banner is visible.
+  // Also fetch immediately when the window becomes visible so progress appears instantly
+  // after a tray-triggered download.
   useEffect(() => {
     if (!updateInfo) return;
-    const active = downloadStatus.status === "downloading" || downloadStatus.status === "verifying" || downloadStatus.status === "installing";
-    const interval = active ? 500 : 3000;
-    const id = setInterval(() => {
+    function poll() {
       fetchUpdateDownloadStatus().then((s) => {
         setDownloadStatus(s);
       }).catch(() => {});
-    }, interval);
-    return () => clearInterval(id);
+    }
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") poll();
+    }
+    const active = downloadStatus.status === "downloading" || downloadStatus.status === "verifying" || downloadStatus.status === "installing";
+    const interval = active ? 500 : 3000;
+    const id = setInterval(poll, interval);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [downloadStatus.status, updateInfo]);
 
   function handleDownload() {
