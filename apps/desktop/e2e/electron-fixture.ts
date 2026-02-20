@@ -12,36 +12,53 @@ const electronPath = require("electron") as unknown as string;
 const API_BASE = "http://127.0.0.1:3210";
 const GATEWAY_PORT = 28789;
 
-/** Kill any process listening on the gateway port and wait until it's free. */
+/**
+ * Kill any process using the gateway port and wait until it's free.
+ *
+ * Race-condition fix: after app.close(), the detached gateway may still be
+ * starting up (not yet LISTENING). We first wait a beat for it to bind, then
+ * kill processes in ANY state on the port (not just LISTENING), and repeat
+ * the kill-probe cycle to catch late binders.
+ */
 async function ensurePortFree(port: number): Promise<void> {
-  if (process.platform === "win32") {
-    try {
-      const out = execSync("netstat -ano", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "cmd.exe" });
-      const pids = new Set<string>();
-      for (const line of out.split("\n")) {
-        if (line.includes(`:${port}`) && line.includes("LISTENING")) {
-          const parts = line.trim().split(/\s+/);
-          const pid = parts[parts.length - 1];
-          if (pid && /^\d+$/.test(pid)) pids.add(pid);
-        }
-      }
-      for (const pid of pids) {
-        try { execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore", shell: "cmd.exe" }); } catch {}
-      }
-    } catch {}
-  } else {
-    try { execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null || true`, { stdio: "ignore" }); } catch {}
-  }
+  // Give the detached gateway a moment to finish binding (if it's mid-startup).
+  await new Promise((r) => setTimeout(r, 1000));
 
-  // Wait until the port is actually free (up to 5s)
-  for (let i = 0; i < 50; i++) {
-    const inUse = await new Promise<boolean>((resolve) => {
-      const sock = createConnection({ port, host: "127.0.0.1" });
-      sock.once("connect", () => { sock.destroy(); resolve(true); });
-      sock.once("error", () => resolve(false));
-    });
-    if (!inUse) return;
-    await new Promise((r) => setTimeout(r, 100));
+  for (let attempt = 0; attempt < 3; attempt++) {
+    // Kill any process associated with the port (any state: LISTENING, ESTABLISHED, TIME_WAIT…)
+    if (process.platform === "win32") {
+      try {
+        const out = execSync("netstat -ano", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "cmd.exe" });
+        const pids = new Set<string>();
+        for (const line of out.split("\n")) {
+          if (line.includes(`:${port} `) || line.includes(`:${port}\r`)) {
+            const parts = line.trim().split(/\s+/);
+            const pid = parts[parts.length - 1];
+            if (pid && /^\d+$/.test(pid) && pid !== "0") pids.add(pid);
+          }
+        }
+        for (const pid of pids) {
+          try { execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore", shell: "cmd.exe" }); } catch {}
+        }
+      } catch {}
+    } else {
+      try { execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null || true`, { stdio: "ignore" }); } catch {}
+    }
+
+    // Wait until the port is actually free (up to 5s per attempt)
+    let freed = false;
+    for (let i = 0; i < 50; i++) {
+      const inUse = await new Promise<boolean>((resolve) => {
+        const sock = createConnection({ port, host: "127.0.0.1" });
+        sock.once("connect", () => { sock.destroy(); resolve(true); });
+        sock.once("error", () => resolve(false));
+      });
+      if (!inUse) { freed = true; break; }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    if (freed) return;
+    // Port still in use — wait and retry the kill cycle
+    await new Promise((r) => setTimeout(r, 1000));
   }
 }
 

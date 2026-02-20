@@ -152,19 +152,32 @@ if [ "$SKIP_TESTS" = false ]; then
   # On Windows the gateway can't rebind port 28789 while the old process holds it.
   # We kill by PORT (28789) rather than process name because during dev e2e
   # the gateway runs as electron.exe/node, not openclaw.exe.
-  if [ "$PLATFORM" = "win" ]; then
-    info "Killing stale gateway processes on port 28789 (if any)..."
-    for pid in $(netstat -ano 2>/dev/null | grep ":28789 .*LISTENING" | awk '{print $5}' | sort -u); do
-      taskkill //T //F //PID "$pid" 2>/dev/null || true
-    done
-    # Wait for the port to be released
-    sleep 2
-  else
-    info "Killing stale gateway processes on port 28789 (if any)..."
-    lsof -ti :28789 | xargs kill -9 2>/dev/null || true
-    pkill -f "openclaw.*gateway" 2>/dev/null || true
+  #
+  # Race-condition fix: after dev e2e, the detached gateway may still be
+  # starting up (not yet LISTENING). We check ALL connection states on the
+  # port, not just LISTENING, and retry the kill-probe cycle.
+  info "Killing stale gateway processes on port 28789 (if any)..."
+  for attempt in 1 2 3; do
+    if [ "$PLATFORM" = "win" ]; then
+      pids=$(netstat -ano 2>/dev/null | tr -d '\r' | grep ":28789 " | awk '{print $5}' | sort -u | grep -E '^[0-9]+$' | grep -v '^0$' || true)
+      if [ -n "$pids" ]; then
+        info "Found PIDs on port 28789: $pids"
+        for pid in $pids; do
+          taskkill //T //F //PID "$pid" 2>/dev/null || true
+        done
+      fi
+    else
+      lsof -ti :28789 | xargs kill -9 2>/dev/null || true
+      pkill -f "openclaw.*gateway" 2>/dev/null || true
+    fi
     sleep 1
-  fi
+    # Verify port is free via TCP probe
+    if node -e "require('net').createConnection({port:28789,host:'127.0.0.1'}).on('connect',()=>process.exit(1)).on('error',()=>process.exit(0))" 2>/dev/null; then
+      info "Port 28789 is free (attempt $attempt)."
+      break
+    fi
+    warn "Port 28789 still in use after attempt $attempt, retrying..."
+  done
 
   # Clean up the shared V8 compile cache left by dev e2e gateway processes.
   # OpenClaw calls module.enableCompileCache() which defaults to $TMPDIR/node-compile-cache/.

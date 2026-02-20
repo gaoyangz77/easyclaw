@@ -1410,8 +1410,11 @@ app.whenReady().then(async () => {
   // so the --require is never accidentally dropped.
   const resolvedVendorDir = vendorDir ?? join(import.meta.dirname, "..", "..", "..", "vendor", "openclaw");
   const proxySetupPath = writeProxySetupModule(stateDir, resolvedVendorDir);
-  // Quote the path — Windows usernames with spaces break unquoted --require
-  const gatewayNodeOptions = `--require "${proxySetupPath}"`;
+  // Quote the path — Windows usernames with spaces break unquoted --require.
+  // Use forward slashes: NODE_OPTIONS parser treats backslashes as escape chars,
+  // stripping them from Windows paths (C:\Users → CUsers). Node.js require()
+  // accepts forward slashes on Windows.
+  const gatewayNodeOptions = `--require "${proxySetupPath.replaceAll("\\", "/")}"`;
 
   /**
    * Build the complete proxy env including NODE_OPTIONS.
