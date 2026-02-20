@@ -3,9 +3,6 @@
     "version": "1.4.8",
     "date": "2026-02-20",
     "en": [
-      "Added local LLM support (Ollama)",
-      "Fixed WeChat message reply not working",
-      "Fixed Skill Market install failing on Windows due to missing unzip command",
       "Fixed local model auto-select so save button is enabled immediately",
       "Fixed skills cache not refreshing after install/delete",
       "Fixed Unknown model error from vendor catalog normalization",
@@ -14,9 +11,6 @@
       "Refactored release pipeline: parallel CI build + local testing"
     ],
     "zh": [
-      "新增本地 LLM 支持（Ollama）",
-      "修复微信无法回复的问题",
-      "修复 Windows 系统 Skill Market 因缺少 unzip 命令无法安装 skill",
       "修复本地模型自动选择，保存按钮立即可用",
       "修复 skill 安装/删除后缓存未刷新",
       "修复 vendor 模型目录规范化导致的「未知模型」错误",
