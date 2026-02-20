@@ -1,9 +1,6 @@
 import { spawn, execSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { createLogger } from "@easyclaw/logger";
 import type {
   GatewayLaunchOptions,
@@ -199,18 +196,6 @@ export class GatewayLauncher extends EventEmitter<GatewayEvents> {
     // NODE_V8_COVERAGE — Coverage instrumentation can hang if the output
     //   directory doesn't exist or isn't writable by the child process.
     delete env.NODE_COMPILE_CACHE;
-
-    // Clean the shared V8 compile cache directory before every spawn.
-    // OpenClaw calls module.enableCompileCache() which uses the default
-    // os.tmpdir()/node-compile-cache/ when NODE_COMPILE_CACHE is unset.
-    // On Windows, force-killing the previous gateway (taskkill /T /F) can
-    // leave cache files partially written. The next spawn then hangs
-    // indefinitely in V8's cache deserialization during import().
-    try {
-      rmSync(join(tmpdir(), "node-compile-cache"), { recursive: true, force: true });
-    } catch {
-      // Directory may not exist or may be locked — not fatal
-    }
 
     const child = spawn(this.options.nodeBin, [this.options.entryPath, "gateway"], {
       env,
