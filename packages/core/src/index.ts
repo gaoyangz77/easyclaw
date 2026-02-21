@@ -55,3 +55,5 @@ export {
   reconstructProxyUrl,
   isValidProxyUrl,
 } from "./proxy-utils.js";
+
+export { MAX_CHAT_ATTACHMENT_BYTES } from "./limits.js";

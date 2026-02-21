@@ -2,6 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react
 import { useTranslation } from "react-i18next";
 import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 import { stripReasoningTagsFromText } from "@openclaw/reasoning-tags";
+import { MAX_CHAT_ATTACHMENT_BYTES } from "@easyclaw/core";
 import { fetchGatewayInfo, fetchProviderKeys, trackEvent, fetchChatShowAgentEvents, fetchChatPreserveToolEvents } from "../api.js";
 import { GatewayChatClient } from "../lib/gateway-client.js";
 import type { GatewayEvent, GatewayHelloOk } from "../lib/gateway-client.js";
@@ -17,11 +18,10 @@ type ChatMessage = {
   toolName?: string;
 };
 
-type PendingImage = { dataUrl: string; base64: string; mimeType: string };
+type PendingFile = { dataUrl: string; base64: string; mimeType: string; fileName?: string };
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB — input file size limit before compression
-const MAX_WS_PAYLOAD_BYTES = 400 * 1024; // client-side guard: keep well under gateway's 512KB WS frame limit
-const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+const MAX_WS_PAYLOAD_BYTES = 20 * 1024 * 1024; // client-side guard: keep under gateway's 25MB WS payload limit
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 const COMPRESS_MAX_DIMENSION = 1280; // resize longest side to this
 const COMPRESS_TARGET_BYTES = 300 * 1024; // target base64 size after compression
 const COMPRESS_INITIAL_QUALITY = 0.85;
@@ -51,6 +51,12 @@ function cleanMessageText(text: string): string {
   // to indicate it already sent the reply via the outbound system.
   cleaned = cleaned.replace(/\bNO_REPLY\b/g, "").trim();
 
+  // Collapse <file name="...">...</file> blocks to compact attachment labels
+  cleaned = cleaned.replace(/<file name="([^"]*)">\s*[\s\S]*?<\/file>\s*/g, (_m, name) => `📎 ${name}\n`);
+
+  // Strip inline timestamp — rendered separately above the bubble
+  cleaned = cleaned.replace(/^\[[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})? [A-Z]{2,5}\]\s*/, "");
+
   // Detect audio transcript pattern:
   //   [Audio] User text: [Telegram ... ] <media:audio>\nTranscript: 实际文本
   const audioMatch = cleaned.match(/\[Audio\]\s*User text:\s*\[.*?\]\s*<media:audio>\s*Transcript:\s*([\s\S]*)/);
@@ -59,6 +65,18 @@ function cleanMessageText(text: string): string {
   }
 
   return cleaned;
+}
+
+function formatTimestamp(ts: number, locale: string): string {
+  const d = new Date(ts);
+  if (locale.startsWith("zh")) {
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 /**
@@ -210,7 +228,7 @@ function parseRawMessages(
 }
 
 export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: string | null) => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [streaming, setStreaming] = useState<string | null>(null);
@@ -237,7 +255,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   const shouldInstantScrollRef = useRef(true);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const emojiPickerRef = useRef<HTMLDivElement>(null);
-  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Stable refs so event handler closures always see the latest state
@@ -646,12 +664,12 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
   async function handleSend() {
     const text = draft.trim();
-    const images = pendingImages;
-    if ((!text && images.length === 0) || connectionState !== "connected" || !clientRef.current) return;
+    const files = pendingFiles;
+    if ((!text && files.length === 0) || connectionState !== "connected" || !clientRef.current) return;
 
     // Pre-flight: check total payload size to avoid WebSocket frame limit
-    if (images.length > 0) {
-      const totalBase64Bytes = images.reduce((sum, img) => sum + img.base64.length, 0);
+    if (files.length > 0) {
+      const totalBase64Bytes = files.reduce((sum, f) => sum + f.base64.length, 0);
       if (totalBase64Bytes > MAX_WS_PAYLOAD_BYTES) {
         alert(t("chat.payloadTooLarge"));
         return;
@@ -668,7 +686,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
           { role: "assistant", text: `⚠ ${t("chat.noProviderError")}`, timestamp: Date.now() },
         ]);
         setDraft("");
-        setPendingImages([]);
+        setPendingFiles([]);
         if (textareaRef.current) textareaRef.current.style.height = "auto";
         return;
       }
@@ -678,35 +696,39 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
     const idempotencyKey = crypto.randomUUID();
 
-    // Optimistic: show user message immediately (with images if any)
-    const optimisticImages: ChatImage[] | undefined = images.length > 0
-      ? images.map((img) => ({ data: img.base64, mimeType: img.mimeType }))
+    // Optimistic: show user message immediately
+    const imageFiles = files.filter((f) => IMAGE_TYPES.includes(f.mimeType));
+    const docFiles = files.filter((f) => !IMAGE_TYPES.includes(f.mimeType));
+    const optimisticImages: ChatImage[] | undefined = imageFiles.length > 0
+      ? imageFiles.map((img) => ({ data: img.base64, mimeType: img.mimeType }))
       : undefined;
-    setMessages((prev) => [...prev, { role: "user", text, timestamp: Date.now(), images: optimisticImages }]);
+    // Show attached file names so the user sees them in the chat bubble
+    const docLabel = docFiles.map((f) => `📎 ${f.fileName ?? t("chat.file")}`).join("\n");
+    const displayText = [docLabel, text].filter(Boolean).join("\n");
+    setMessages((prev) => [...prev, { role: "user", text: displayText, timestamp: Date.now(), images: optimisticImages }]);
     setDraft("");
-    setPendingImages([]);
+    setPendingFiles([]);
     setRunId(idempotencyKey);
     sendTimeRef.current = Date.now();
-    trackEvent("chat.message_sent", { hasImage: images.length > 0 });
+    trackEvent("chat.message_sent", { hasAttachment: files.length > 0 });
 
     // Reset textarea height
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
 
-    // Build RPC params.
-    // When sending images without text, provide a placeholder so the agent
-    // pipeline doesn't reject the request for missing text body.
+    // Build RPC params — all files sent as base64 attachments; gateway handles extraction.
     const params: Record<string, unknown> = {
       sessionKey: sessionKeyRef.current,
-      message: text || (images.length > 0 ? t("chat.imageOnlyPlaceholder") : ""),
+      message: text || (files.length > 0 ? t("chat.imageOnlyPlaceholder") : ""),
       idempotencyKey,
     };
-    if (images.length > 0) {
-      params.attachments = images.map((img) => ({
-        type: "image",
-        mimeType: img.mimeType,
-        content: img.base64,
+    if (files.length > 0) {
+      params.attachments = files.map((f) => ({
+        type: IMAGE_TYPES.includes(f.mimeType) ? "image" : "file",
+        mimeType: f.mimeType,
+        content: f.base64,
+        ...(f.fileName ? { fileName: f.fileName } : {}),
       }));
     }
 
@@ -780,7 +802,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
    * Compress an image using canvas: resize to max dimension and encode as JPEG.
    * Progressively lowers quality until the base64 output fits the target size.
    */
-  function compressImage(dataUrl: string): Promise<PendingImage | null> {
+  function compressImage(dataUrl: string): Promise<PendingFile | null> {
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
@@ -816,27 +838,19 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     });
   }
 
-  function readFileAsBase64(file: File): Promise<PendingImage | null> {
+  function readFileAsPending(file: File): Promise<PendingFile | null> {
     return new Promise((resolve) => {
-      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-        resolve(null);
-        return;
-      }
-      if (file.size > MAX_IMAGE_BYTES) {
-        resolve(null);
-        return;
-      }
       const reader = new FileReader();
       reader.onload = async () => {
         const dataUrl = reader.result as string;
         const base64 = dataUrl.split(",")[1] ?? "";
-        // If already small enough, use as-is
-        if (base64.length <= COMPRESS_TARGET_BYTES) {
-          resolve({ dataUrl, base64, mimeType: file.type });
+        const isImage = IMAGE_TYPES.includes(file.type);
+        // Compress large images; non-image files are sent as base64 for gateway extraction
+        if (isImage && base64.length > COMPRESS_TARGET_BYTES) {
+          resolve(await compressImage(dataUrl));
           return;
         }
-        // Compress large images
-        resolve(await compressImage(dataUrl));
+        resolve({ dataUrl, base64, mimeType: file.type, fileName: file.name });
       };
       reader.onerror = () => resolve(null);
       reader.readAsDataURL(file);
@@ -844,21 +858,17 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   }
 
   async function handleFileSelect(files: FileList | File[]) {
-    const results: PendingImage[] = [];
+    const results: PendingFile[] = [];
     for (const file of Array.from(files)) {
-      if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-        alert(t("chat.imageTypeError"));
+      if (file.size > MAX_CHAT_ATTACHMENT_BYTES) {
+        alert(t("chat.fileTooLarge"));
         continue;
       }
-      if (file.size > MAX_IMAGE_BYTES) {
-        alert(t("chat.imageTooLarge"));
-        continue;
-      }
-      const img = await readFileAsBase64(file);
-      if (img) results.push(img);
+      const pending = await readFileAsPending(file);
+      if (pending) results.push(pending);
     }
     if (results.length > 0) {
-      setPendingImages((prev) => [...prev, ...results]);
+      setPendingFiles((prev) => [...prev, ...results]);
     }
   }
 
@@ -884,8 +894,8 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     }
   }
 
-  function removePendingImage(index: number) {
-    setPendingImages((prev) => prev.filter((_, i) => i !== index));
+  function removePendingFile(index: number) {
+    setPendingFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
   const visibleMessages = messages.slice(Math.max(0, messages.length - visibleCount));
@@ -917,8 +927,11 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
               </div>
             ) : null
           ) : (
+            <div key={i} className={`chat-bubble-wrap ${msg.role === "user" ? "chat-bubble-wrap-user" : "chat-bubble-wrap-assistant"}`}>
+              {msg.timestamp > 0 && (
+                <div className="chat-bubble-timestamp">{formatTimestamp(msg.timestamp, i18n.language)}</div>
+              )}
             <div
-              key={i}
               className={`chat-bubble ${msg.role === "user" ? "chat-bubble-user" : "chat-bubble-assistant"}`}
             >
               {msg.images && msg.images.length > 0 && (
@@ -934,6 +947,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
                 </div>
               )}
               {msg.text && formatMessage(cleanMessageText(msg.text))}
+            </div>
             </div>
           ))}
           {((runId !== null && streaming === null) || (externalRunActive && runId === null)) && (
@@ -1006,14 +1020,18 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       </div>
 
       <div className="chat-input-area">
-        {pendingImages.length > 0 && (
+        {pendingFiles.length > 0 && (
           <div className="chat-image-preview-strip">
-            {pendingImages.map((img, i) => (
+            {pendingFiles.map((img, i) => (
               <div key={i} className="chat-image-preview">
-                <img src={img.dataUrl} alt="" />
+                {IMAGE_TYPES.includes(img.mimeType) ? (
+                  <img src={img.dataUrl} alt="" />
+                ) : (
+                  <span className="chat-file-preview-name" title={img.fileName}>{img.fileName ?? t("chat.file")}</span>
+                )}
                 <button
                   className="chat-image-preview-remove"
-                  onClick={() => removePendingImage(i)}
+                  onClick={() => removePendingFile(i)}
                   title={t("chat.removeImage")}
                   type="button"
                 >
@@ -1036,7 +1054,6 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
             multiple
             onChange={handleFileInputChange}
             style={{ display: "none" }}
@@ -1080,7 +1097,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
             <button
               className="btn btn-primary"
               onClick={handleSend}
-              disabled={(!draft.trim() && pendingImages.length === 0) || connectionState !== "connected"}
+              disabled={(!draft.trim() && pendingFiles.length === 0) || connectionState !== "connected"}
             >
               {t("chat.send")}
             </button>
