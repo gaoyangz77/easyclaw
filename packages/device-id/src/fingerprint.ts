@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 
 /** Module-level cache: computed once per process lifetime. */
 let cachedDeviceId: string | null = null;
@@ -10,6 +11,7 @@ let cachedDeviceId: string | null = null;
  * Derived by SHA-256 hashing a platform-specific hardware identifier:
  * - macOS: IOPlatformUUID from `ioreg`
  * - Windows: MachineGuid from registry
+ * - Linux: /etc/machine-id (systemd) or /var/lib/dbus/machine-id
  *
  * The result is cached in memory for the process lifetime.
  * Since the ID is deterministic from hardware, it survives app reinstalls.
@@ -32,6 +34,8 @@ function getHardwareId(): string {
       return getMacHardwareId();
     case "win32":
       return getWindowsHardwareId();
+    case "linux":
+      return getLinuxHardwareId();
     default:
       throw new Error(`Unsupported platform: ${process.platform}`);
   }
@@ -69,4 +73,21 @@ function getWindowsHardwareId(): string {
   }
 
   return match[1];
+}
+
+/**
+ * Linux: Read /etc/machine-id (systemd) or /var/lib/dbus/machine-id (older distros).
+ */
+function getLinuxHardwareId(): string {
+  for (const filePath of ["/etc/machine-id", "/var/lib/dbus/machine-id"]) {
+    try {
+      const id = readFileSync(filePath, "utf-8").trim();
+      if (id) return id;
+    } catch {
+      // Try next path
+    }
+  }
+  throw new Error(
+    "Failed to read machine-id from /etc/machine-id or /var/lib/dbus/machine-id",
+  );
 }
