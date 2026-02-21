@@ -1,18 +1,30 @@
 [
   {
     "version": "1.5.0",
-    "date": "2026-02-20",
+    "date": "2026-02-21",
     "en": [
-      "Added Linux support (AppImage + deb)",
+      "Added Linux support (AppImage + deb packages)",
       "Migrated to electron-updater for blockmap differential downloads",
+      "Chat: support all file types in uploads and add message timestamps",
+      "Fixed device ID generation on Linux using /etc/machine-id",
+      "Fixed stale gateway lock file cleanup on startup",
+      "Fixed tools.exec config schema path and enabled full access mode",
+      "Fixed gateway scope registration for agent exec on host",
       "Fixed local model health checks bypassing Chromium proxy",
-      "Fixed update status re-check on window visibility change"
+      "Fixed E2E test reliability on macOS (count only visible key cards after deletion)",
+      "Improved pnpm symlink preservation during development"
     ],
     "zh": [
-      "新增 Linux 支持（AppImage + deb）",
+      "新增 Linux 支持（AppImage + deb 安装包）",
       "迁移到 electron-updater，支持增量更新",
+      "聊天：支持所有文件类型上传，新增消息时间戳",
+      "修复 Linux 设备 ID 生成，使用 /etc/machine-id",
+      "修复启动时 gateway 锁文件清理",
+      "修复 tools.exec 配置路径，启用完全访问模式",
+      "修复 gateway scope 注册，支持主机上 agent 执行",
       "修复本地模型健康检查绕过 Chromium 代理",
-      "修复窗口可见性变化时重新检查更新状态"
+      "修复 macOS E2E 测试稳定性（删除后仅计算可见卡片）",
+      "改进开发时 pnpm 符号链接保留机制"
     ]
   },
   {
