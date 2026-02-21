@@ -1254,17 +1254,14 @@ app.whenReady().then(async () => {
     secretStore,
     deviceId,
     getRpcClient: () => rpcClient,
-    getUpdateResult: () => {
-      if (!latestUpdateInfo) return null;
-      return {
-        updateAvailable: true,
-        currentVersion: app.getVersion(),
-        latestVersion: latestUpdateInfo.version,
-        releaseNotes: typeof latestUpdateInfo.releaseNotes === "string"
-          ? latestUpdateInfo.releaseNotes
-          : undefined,
-      };
-    },
+    getUpdateResult: () => ({
+      updateAvailable: latestUpdateInfo != null,
+      currentVersion: app.getVersion(),
+      latestVersion: latestUpdateInfo?.version,
+      releaseNotes: typeof latestUpdateInfo?.releaseNotes === "string"
+        ? latestUpdateInfo.releaseNotes
+        : undefined,
+    }),
     onUpdateDownload: () => performUpdateDownload(),
     onUpdateCancel: () => {
       updateDownloadState = { status: "idle" };
