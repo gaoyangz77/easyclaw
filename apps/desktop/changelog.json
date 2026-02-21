@@ -1,5 +1,21 @@
 [
   {
+    "version": "1.5.0",
+    "date": "2026-02-20",
+    "en": [
+      "Added Linux support (AppImage + deb)",
+      "Migrated to electron-updater for blockmap differential downloads",
+      "Fixed local model health checks bypassing Chromium proxy",
+      "Fixed update status re-check on window visibility change"
+    ],
+    "zh": [
+      "新增 Linux 支持（AppImage + deb）",
+      "迁移到 electron-updater，支持增量更新",
+      "修复本地模型健康检查绕过 Chromium 代理",
+      "修复窗口可见性变化时重新检查更新状态"
+    ]
+  },
+  {
     "version": "1.4.8",
     "date": "2026-02-20",
     "en": [
