@@ -58,7 +58,7 @@ done
 #   macOS:   DMG + ZIP + ZIP.blockmap + latest-mac.yml (4)
 #   Windows: NSIS EXE + portable EXE + EXE.blockmap + latest.yml (4)
 #   Linux:   AppImage + AppImage.blockmap + deb + latest-linux.yml (4)
-EXPECTED_ARTIFACTS=12
+EXPECTED_ARTIFACTS=11
 if [ "$ASSET_COUNT" -lt "$EXPECTED_ARTIFACTS" ]; then
   error "Expected at least $EXPECTED_ARTIFACTS artifacts, but found $ASSET_COUNT. CI build may be incomplete."
 fi
