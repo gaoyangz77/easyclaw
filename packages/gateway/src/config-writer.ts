@@ -195,16 +195,13 @@ export interface OpenClawGatewayConfig {
       model?: {
         primary?: string;
       };
-      tools?: {
-        exec?: {
-          host?: string;
-          security?: string;
-          ask?: string;
-        };
-        elevated?: {
-          enabled?: boolean;
-        };
-      };
+    };
+  };
+  tools?: {
+    exec?: {
+      host?: string;
+      security?: string;
+      ask?: string;
     };
   };
   plugins?: {
@@ -489,35 +486,30 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
     };
   }
 
-  // Agent exec host — EasyClaw is a desktop app, agent runs locally.
+  // Exec host — EasyClaw is a desktop app, agent runs locally.
   // Allow exec on the gateway host (not sandboxed).
   {
-    const existingAgents =
-      typeof config.agents === "object" && config.agents !== null
-        ? (config.agents as Record<string, unknown>)
-        : {};
-    const existingDefaults =
-      typeof existingAgents.defaults === "object" && existingAgents.defaults !== null
-        ? (existingAgents.defaults as Record<string, unknown>)
-        : {};
     const existingTools =
-      typeof existingDefaults.tools === "object" && existingDefaults.tools !== null
-        ? (existingDefaults.tools as Record<string, unknown>)
+      typeof config.tools === "object" && config.tools !== null
+        ? (config.tools as Record<string, unknown>)
         : {};
     const existingExec =
       typeof existingTools.exec === "object" && existingTools.exec !== null
         ? (existingTools.exec as Record<string, unknown>)
         : {};
-    config.agents = {
-      ...existingAgents,
-      defaults: {
-        ...existingDefaults,
-        tools: {
-          ...existingTools,
-          exec: { ...existingExec, host: "gateway" },
-        },
-      },
+    config.tools = {
+      ...existingTools,
+      exec: { ...existingExec, host: "gateway", security: "full", ask: "off" },
     };
+  }
+
+  // Clean up stale agents.defaults.tools (was incorrectly written there in an earlier version).
+  {
+    const agents = config.agents as Record<string, unknown> | undefined;
+    const defaults = agents?.defaults as Record<string, unknown> | undefined;
+    if (defaults && "tools" in defaults) {
+      delete defaults.tools;
+    }
   }
 
   // Plugins configuration
