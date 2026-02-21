@@ -488,13 +488,19 @@ app.whenReady().then(async () => {
   let latestUpdateInfo: UpdateInfo | null = null;
   let updateDownloadState: UpdateDownloadState = { status: "idle" };
 
-  // Configure region-aware feed URL
+  // Configure update feed URL.
+  // UPDATE_FROM_STAGING=1 → use staging server for testing updates locally.
+  const useStaging = process.env.UPDATE_FROM_STAGING === "1";
   const updateRegion = locale === "zh" ? "cn" : "us";
+  const updateFeedUrl = useStaging
+    ? "https://stg.easy-claw.com/releases"
+    : updateRegion === "cn"
+      ? "https://cn.easy-claw.com/releases"
+      : "https://www.easy-claw.com/releases";
+  if (useStaging) log.info("Using staging update feed: " + updateFeedUrl);
   autoUpdater.setFeedURL({
     provider: "generic",
-    url: updateRegion === "cn"
-      ? "https://cn.easy-claw.com/releases"
-      : "https://www.easy-claw.com/releases",
+    url: updateFeedUrl,
   });
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
