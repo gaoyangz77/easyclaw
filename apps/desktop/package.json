@@ -14,6 +14,7 @@
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
     "test:e2e:dev": "playwright test --config e2e/playwright.config.ts",
     "test:e2e:prod": "playwright test --config e2e/playwright.config.ts",
+    "pack:__NOTE__": "WARNING: 'pack' skips rebuild-native and prune-vendor-deps, so vendor/openclaw/node_modules will be incomplete and the gateway will fail to start. Use scripts/test-local.sh for a working packaged build.",
     "pack": "electron-builder --dir",
     "dist:mac": "node scripts/prune-vendor-deps.cjs && electron-builder --mac",
     "dist:mac:arm64": "node scripts/prune-vendor-deps.cjs && electron-builder --mac dmg --arm64 && node scripts/sign-arm64.cjs",

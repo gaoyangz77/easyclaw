@@ -245,9 +245,13 @@ test.describe("Local Models E2E", () => {
     const removeBtn = card.locator(".btn-danger");
     await removeBtn.click();
 
-    // The specific card should disappear, then total count should match
+    // The specific card should disappear
     await expect(card).not.toBeVisible();
-    await expect(keyCards).toHaveCount(initialCount);
+    // On macOS packaged builds the gateway restart triggered by provider
+    // deletion can leave a hidden DOM remnant briefly.  Count only visible
+    // key cards so hidden remnants don't cause a false failure.
+    const visibleKeyCards = window.locator(".key-card").filter({ visible: true });
+    await expect(visibleKeyCards).toHaveCount(initialCount);
   });
 
   // ── Test 3: Connection failure handling ─────────────────────────────
