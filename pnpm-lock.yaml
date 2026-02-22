@@ -276,6 +276,9 @@ importers:
       '@types/ws':
         specifier: ^8.18.0
         version: 8.18.1
+      ansis:
+        specifier: ^4.2.0
+        version: 4.2.0
       oxlint:
         specifier: ^1.43.0
         version: 1.43.0
@@ -1952,6 +1955,7 @@ packages:
   '@rolldown/binding-darwin-arm64@1.0.0-rc.3':
     resolution: {integrity: sha512-JWWLzvcmc/3pe7qdJqPpuPk91SoE/N+f3PcWx/6ZwuyDVyungAEJPvKm/eEldiDdwTmaEzWfIR+HORxYWrCi1A==}
     engines: {node: ^20.19.0 || >=22.12.0}
+    cpu: [arm64]
     os: [darwin]
 
   '@rolldown/binding-darwin-x64@1.0.0-rc.3':

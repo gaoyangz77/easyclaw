@@ -22,8 +22,9 @@
   },
   "devDependencies": {
     "@types/ws": "^8.18.0",
-    "tsdown": "^0.20.3",
+    "ansis": "^4.2.0",
     "oxlint": "^1.43.0",
+    "tsdown": "^0.20.3",
     "vitest": "^4.0.18"
   }
 }
