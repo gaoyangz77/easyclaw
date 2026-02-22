@@ -87,6 +87,7 @@ export function SettingsPage() {
       setSaving(true);
       setError(null);
       await updateChatShowAgentEvents(enabled);
+      window.dispatchEvent(new CustomEvent("chat-settings-changed"));
     } catch (err) {
       setError(t("settings.chat.failedToSave") + String(err));
       setShowAgentEvents(previous);
@@ -102,6 +103,7 @@ export function SettingsPage() {
       setSaving(true);
       setError(null);
       await updateChatPreserveToolEvents(enabled);
+      window.dispatchEvent(new CustomEvent("chat-settings-changed"));
     } catch (err) {
       setError(t("settings.chat.failedToSave") + String(err));
       setPreserveToolEvents(previous);

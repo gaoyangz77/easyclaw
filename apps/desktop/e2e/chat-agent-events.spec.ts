@@ -291,12 +291,19 @@ test.describe("Chat Agent Events & Settings", () => {
 
   test("All agent event i18n keys resolve to non-empty strings", async ({ window }) => {
     const keys = [
+      "chat.phase_queued",
       "chat.phase_processing",
+      "chat.phase_awaiting_llm",
       "chat.phase_generating",
       "chat.phaseUsingTool",
       "chat.timeoutNoEvents",
       "chat.timeoutWaitingForLLM",
       "chat.timeoutToolRunning",
+      "chat.stopCommand",
+      "chat.resetCommand",
+      "chat.stopCommandFeedback",
+      "chat.resetCommandFeedback",
+      "chat.resetConfirm",
       "settings.chat.title",
       "settings.chat.showAgentEvents",
       "settings.chat.showAgentEventsHint",

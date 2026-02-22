@@ -261,6 +261,7 @@ export class GatewayRpcClient {
       },
       role,
       scopes,
+      caps: ["tool-events"],
       auth: this.opts.token ? { token: this.opts.token } : undefined,
     };
 

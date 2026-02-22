@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useReducer } from "react";
 import { useTranslation } from "react-i18next";
 import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 import { stripReasoningTagsFromText } from "@openclaw/reasoning-tags";
@@ -6,6 +6,9 @@ import { MAX_CHAT_ATTACHMENT_BYTES } from "@easyclaw/core";
 import { fetchGatewayInfo, fetchProviderKeys, trackEvent, fetchChatShowAgentEvents, fetchChatPreserveToolEvents } from "../api.js";
 import { GatewayChatClient } from "../lib/gateway-client.js";
 import type { GatewayEvent, GatewayHelloOk } from "../lib/gateway-client.js";
+import { RunTracker } from "../lib/run-tracker.js";
+import { ChatEventBridge } from "../lib/chat-event-bridge.js";
+import { Modal } from "../components/Modal.js";
 import "./ChatPage.css";
 
 type ChatImage = { data: string; mimeType: string };
@@ -236,13 +239,14 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   const [connectionState, setConnectionState] = useState<"connecting" | "connected" | "disconnected">("connecting");
   const [agentName, setAgentName] = useState<string | null>(null);
   const [allFetched, setAllFetched] = useState(false);
-  const [externalRunActive, setExternalRunActive] = useState(false);
-  const [agentPhase, setAgentPhase] = useState<string | null>(null);
+  const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
+  const trackerRef = useRef(new RunTracker(forceUpdate));
   const [showAgentEvents, setShowAgentEvents] = useState(true);
   const [preserveToolEvents, setPreserveToolEvents] = useState(false);
   const [chatExamplesExpanded, setChatExamplesExpanded] = useState(() => localStorage.getItem("chat-examples-collapsed") !== "1");
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const clientRef = useRef<GatewayChatClient | null>(null);
+  const bridgeRef = useRef<ChatEventBridge | null>(null);
   const sessionKeyRef = useRef(DEFAULT_SESSION_KEY);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -257,6 +261,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const [pendingFiles, setPendingFiles] = useState<PendingFile[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Stable refs so event handler closures always see the latest state
   const runIdRef = useRef(runId);
@@ -285,7 +290,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     } else {
       scrollToBottom();
     }
-  }, [messages, streaming, runId, externalRunActive, scrollToBottom]);
+  }, [messages, streaming, runId, scrollToBottom]);
 
   // Fetch more messages from gateway when user scrolled past all cached messages
   const fetchMore = useCallback(async () => {
@@ -385,7 +390,9 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
   // Handle chat events from gateway
   const handleEvent = useCallback((evt: GatewayEvent) => {
-    // Process agent events for processing-phase tracking
+    const tracker = trackerRef.current;
+
+    // Process agent events — dispatch to RunTracker for phase tracking
     if (evt.event === "agent") {
       const agentPayload = evt.payload as {
         runId?: string;
@@ -396,11 +403,14 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       if (!agentPayload) return;
       if (agentPayload.sessionKey && agentPayload.sessionKey !== sessionKeyRef.current) return;
 
+      const agentRunId = agentPayload.runId;
+
       // Always track last agent stream for timeout refinement
       lastAgentStreamRef.current = agentPayload.stream ?? null;
       lastActivityRef.current = Date.now();
 
-      if (!runIdRef.current) return;
+      // Only process events for tracked runs (replaces old runIdRef guard)
+      if (!agentRunId || !tracker.isTracked(agentRunId)) return;
 
       const stream = agentPayload.stream;
 
@@ -409,28 +419,25 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         const phase = agentPayload.data?.phase;
         const name = agentPayload.data?.name as string | undefined;
         if (phase === "start" && name) {
+          // Clear streaming text from previous LLM turn so it doesn't
+          // overlap with the tool-use thinking bubble (Bug: streaming
+          // state and RunTracker phase were independent, causing both
+          // the streaming cursor and thinking bubble to render).
+          if (runIdRef.current && agentRunId === runIdRef.current) {
+            setStreaming(null);
+          }
           setMessages((prev) => [...prev, { role: "tool-event", text: name, toolName: name, timestamp: Date.now() }]);
-        }
-      }
-
-      // Phase UI requires showAgentEvents
-      if (!showAgentEventsRef.current) return;
-
-      if (stream === "lifecycle") {
-        const phase = agentPayload.data?.phase;
-        if (phase === "start") setAgentPhase("processing");
-        else if (phase === "end" || phase === "error") setAgentPhase(null);
-      } else if (stream === "tool") {
-        const phase = agentPayload.data?.phase;
-        const name = agentPayload.data?.name as string | undefined;
-        if (phase === "start" && name) {
-          setAgentPhase(`tool:${name}`);
+          tracker.dispatch({ type: "TOOL_START", runId: agentRunId, toolName: name });
         } else if (phase === "result") {
-          setAgentPhase("processing");
+          tracker.dispatch({ type: "TOOL_RESULT", runId: agentRunId });
         }
+      } else if (stream === "lifecycle") {
+        const phase = agentPayload.data?.phase;
+        if (phase === "start") tracker.dispatch({ type: "LIFECYCLE_START", runId: agentRunId });
+        else if (phase === "end") tracker.dispatch({ type: "LIFECYCLE_END", runId: agentRunId });
+        else if (phase === "error") tracker.dispatch({ type: "LIFECYCLE_ERROR", runId: agentRunId });
       } else if (stream === "assistant") {
-        // Don't overwrite an active tool phase — tool status is more informative
-        setAgentPhase((prev) => (prev && prev.startsWith("tool:") ? prev : "generating"));
+        tracker.dispatch({ type: "ASSISTANT_STREAM", runId: agentRunId });
       }
       return;
     }
@@ -451,77 +458,109 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     // (filters out rule compilation, OpenAI-compat endpoints, etc.)
     if (payload.sessionKey && payload.sessionKey !== sessionKeyRef.current) return;
 
-    const isOurRun = runIdRef.current && payload.runId === runIdRef.current;
+    const chatRunId = payload.runId;
+    const isOurLocalRun = runIdRef.current && chatRunId === runIdRef.current;
+    const isTrackedRun = chatRunId ? tracker.isTracked(chatRunId) : false;
 
-    if (!isOurRun && runIdRef.current) {
-      console.warn("[chat] runId mismatch — ours:", runIdRef.current, "received:", payload.runId, "state:", payload.state);
+    // If not tracked and not our local run, this may be an external run
+    // we haven't seen yet (e.g. SSE inbound event arrived late or not at all).
+    // Track it so we handle its lifecycle properly.
+    if (chatRunId && !isTrackedRun && !isOurLocalRun) {
+      // Only track if it's on our session (delta/final/error from external channel)
+      if (payload.state === "delta") {
+        tracker.dispatch({
+          type: "EXTERNAL_INBOUND",
+          runId: chatRunId,
+          sessionKey: payload.sessionKey ?? sessionKeyRef.current,
+          channel: "unknown",
+        });
+      }
     }
 
-    // Events from a different run on the same session (e.g. channel messages)
-    if (!isOurRun) {
-      if (payload.state === "delta") {
-        // External run is actively streaming — show thinking indicator
-        setExternalRunActive(true);
-      } else if (payload.state === "error") {
-        console.error("[chat] external run error:", payload.errorMessage ?? "unknown error", "runId:", payload.runId);
-        setExternalRunActive(false);
-      } else if (payload.state === "final") {
-        setExternalRunActive(false);
-        // Another run finished on our session (channel message reply done) — reload history
+    // Dispatch chat events to RunTracker
+    if (chatRunId) {
+      switch (payload.state) {
+        case "delta": {
+          lastActivityRef.current = Date.now();
+          const text = extractText(payload.message?.content);
+          if (text) {
+            tracker.dispatch({ type: "CHAT_DELTA", runId: chatRunId, text });
+          }
+          break;
+        }
+        case "final":
+          tracker.dispatch({ type: "CHAT_FINAL", runId: chatRunId });
+          break;
+        case "error":
+          tracker.dispatch({ type: "CHAT_ERROR", runId: chatRunId });
+          break;
+        case "aborted":
+          tracker.dispatch({ type: "CHAT_ABORTED", runId: chatRunId });
+          break;
+      }
+    }
+
+    // Local run — handle streaming text and messages
+    if (isOurLocalRun) {
+      switch (payload.state) {
+        case "delta": {
+          lastActivityRef.current = Date.now();
+          const text = extractText(payload.message?.content);
+          if (text) setStreaming(text);
+          break;
+        }
+        case "final": {
+          const text = extractText(payload.message?.content);
+          if (text) {
+            setMessages((prev) => [...prev, { role: "assistant", text, timestamp: Date.now() }]);
+          }
+          if (sendTimeRef.current > 0) {
+            trackEvent("chat.response_received", { durationMs: Date.now() - sendTimeRef.current });
+            sendTimeRef.current = 0;
+          }
+          setStreaming(null);
+          setRunId(null);
+          lastAgentStreamRef.current = null;
+          tracker.cleanup();
+          break;
+        }
+        case "error": {
+          console.error("[chat] error event:", payload.errorMessage ?? "unknown error", "runId:", chatRunId);
+          const raw = payload.errorMessage ?? t("chat.unknownError");
+          const errText = localizeError(raw, t);
+          setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${errText}`, timestamp: Date.now() }]);
+          setStreaming(null);
+          setRunId(null);
+          lastAgentStreamRef.current = null;
+          tracker.cleanup();
+          break;
+        }
+        case "aborted": {
+          // If there was partial streaming text, keep it as a message
+          setStreaming((current) => {
+            if (current) {
+              setMessages((prev) => [...prev, { role: "assistant", text: current, timestamp: Date.now() }]);
+            }
+            return null;
+          });
+          setRunId(null);
+          lastAgentStreamRef.current = null;
+          tracker.cleanup();
+          break;
+        }
+      }
+    } else if (chatRunId) {
+      // External run — handle completion
+      if (payload.state === "error") {
+        console.error("[chat] external run error:", payload.errorMessage ?? "unknown error", "runId:", chatRunId);
+      }
+      if (payload.state === "final") {
+        // External run finished — reload history to show the full conversation
         const client = clientRef.current;
         if (client) loadHistory(client);
-      } else if (payload.state === "aborted") {
-        setExternalRunActive(false);
       }
-      return;
-    }
-
-    // Our own run — process normally
-    switch (payload.state) {
-      case "delta": {
-        lastActivityRef.current = Date.now();
-        const text = extractText(payload.message?.content);
-        if (text) setStreaming(text);
-        break;
-      }
-      case "final": {
-        const text = extractText(payload.message?.content);
-        if (text) {
-          setMessages((prev) => [...prev, { role: "assistant", text, timestamp: Date.now() }]);
-        }
-        if (sendTimeRef.current > 0) {
-          trackEvent("chat.response_received", { durationMs: Date.now() - sendTimeRef.current });
-          sendTimeRef.current = 0;
-        }
-        setStreaming(null);
-        setRunId(null);
-        setAgentPhase(null);
-        lastAgentStreamRef.current = null;
-        break;
-      }
-      case "error": {
-        console.error("[chat] error event:", payload.errorMessage ?? "unknown error", "runId:", payload.runId);
-        const raw = payload.errorMessage ?? t("chat.unknownError");
-        const errText = localizeError(raw, t);
-        setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${errText}`, timestamp: Date.now() }]);
-        setStreaming(null);
-        setRunId(null);
-        setAgentPhase(null);
-        lastAgentStreamRef.current = null;
-        break;
-      }
-      case "aborted": {
-        // If there was partial streaming text, keep it as a message
-        setStreaming((current) => {
-          if (current) {
-            setMessages((prev) => [...prev, { role: "assistant", text: current, timestamp: Date.now() }]);
-          }
-          return null;
-        });
-        setRunId(null);
-        setAgentPhase(null);
-        lastAgentStreamRef.current = null;
-        break;
+      if (payload.state === "final" || payload.state === "error" || payload.state === "aborted") {
+        tracker.cleanup();
       }
     }
   }, [loadHistory, t]);
@@ -550,7 +589,12 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       } else {
         errorKey = "chat.timeoutError";
       }
-      console.error("[chat] stall detected — no activity for", elapsed, "ms, runId:", runIdRef.current, "lastStream:", lastStream);
+      const staleRunId = runIdRef.current!;
+      console.error("[chat] stall detected — no activity for", elapsed, "ms, runId:", staleRunId, "lastStream:", lastStream);
+      // Transition the stalled run to error state BEFORE cleanup,
+      // otherwise cleanup() skips active-phase runs and the thinking
+      // bubble persists indefinitely.
+      trackerRef.current.dispatch({ type: "CHAT_ERROR", runId: staleRunId });
       setMessages((prev) => [...prev, {
         role: "assistant",
         text: `⚠ ${t(errorKey)}`,
@@ -558,11 +602,28 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       }]);
       setStreaming(null);
       setRunId(null);
-      setAgentPhase(null);
+      trackerRef.current.cleanup();
       lastAgentStreamRef.current = null;
     }, CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [runId]);
+
+  // Re-fetch chat display settings when changed in SettingsPage.
+  // ChatPage stays mounted (display:none) so the init effect won't re-run.
+  useEffect(() => {
+    function onSettingsChanged() {
+      Promise.all([
+        fetchChatShowAgentEvents().catch(() => true),
+        fetchChatPreserveToolEvents().catch(() => false),
+      ]).then(([showEvents, preserveEvents]) => {
+        showAgentEventsRef.current = showEvents;
+        setShowAgentEvents(showEvents);
+        setPreserveToolEvents(preserveEvents);
+      });
+    }
+    window.addEventListener("chat-settings-changed", onSettingsChanged);
+    return () => window.removeEventListener("chat-settings-changed", onSettingsChanged);
+  }, []);
 
   function refreshAgentName(client: GatewayChatClient, cancelled?: boolean) {
     client.request<{ name?: string }>("agent.identity.get", {
@@ -629,7 +690,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
               return null;
             });
             setRunId(null);
-            setAgentPhase(null);
+            trackerRef.current.reset();
             lastAgentStreamRef.current = null;
             // Defer error display: auto-reconnect calls loadHistory which
             // overwrites messages. The ref is checked after loadHistory completes.
@@ -642,6 +703,26 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
         clientRef.current = client;
         client.start();
+
+        // Connect SSE bridge for inbound messages and tool events (see ADR-022)
+        // SSE endpoint is on the panel-server (same origin as the panel UI)
+        const sseUrl = new URL("/api/chat/events", window.location.origin).href;
+        const bridge = new ChatEventBridge(sseUrl, {
+          onAction: (action) => {
+            if (cancelled) return;
+            trackerRef.current.dispatch(action);
+          },
+          onUserMessage: (msg) => {
+            if (cancelled) return;
+            setMessages((prev) => [...prev, {
+              role: "user",
+              text: msg.text,
+              timestamp: msg.timestamp,
+            }]);
+          },
+        });
+        bridge.connect();
+        bridgeRef.current = bridge;
       } catch {
         if (!cancelled) setConnectionState("disconnected");
       }
@@ -659,6 +740,8 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       clearInterval(nameTimer);
       clientRef.current?.stop();
       clientRef.current = null;
+      bridgeRef.current?.disconnect();
+      bridgeRef.current = null;
     };
   }, [loadHistory, handleEvent]);
 
@@ -709,6 +792,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     setDraft("");
     setPendingFiles([]);
     setRunId(idempotencyKey);
+    trackerRef.current.dispatch({ type: "LOCAL_SEND", runId: idempotencyKey, sessionKey: sessionKeyRef.current });
     sendTimeRef.current = Date.now();
     trackEvent("chat.message_sent", { hasAttachment: files.length > 0 });
 
@@ -743,12 +827,48 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   }
 
   function handleStop() {
-    if (!clientRef.current || !runIdRef.current) return;
+    if (!clientRef.current) return;
+    const view = trackerRef.current.getView();
+    const targetRunId = runIdRef.current ?? view.abortTargetRunId;
+    if (!targetRunId) return;
     trackEvent("chat.generation_stopped");
     clientRef.current.request("chat.abort", {
       sessionKey: sessionKeyRef.current,
-      runId: runIdRef.current,
+      runId: targetRunId,
     }).catch(() => {});
+    setMessages((prev) => [...prev, { role: "assistant", text: `⏹ ${t("chat.stopCommandFeedback")}`, timestamp: Date.now() }]);
+  }
+
+  function handleReset() {
+    if (!clientRef.current || connectionState !== "connected") return;
+    setShowResetConfirm(true);
+  }
+
+  function confirmReset() {
+    setShowResetConfirm(false);
+    if (!clientRef.current) return;
+    // Abort any active run first
+    const view = trackerRef.current.getView();
+    const targetRunId = runIdRef.current ?? view.abortTargetRunId;
+    if (targetRunId) {
+      clientRef.current.request("chat.abort", {
+        sessionKey: sessionKeyRef.current,
+        runId: targetRunId,
+      }).catch(() => {});
+    }
+    // Reset session on gateway
+    clientRef.current.request("sessions.reset", {
+      key: sessionKeyRef.current,
+    }).then(() => {
+      setMessages([{ role: "assistant", text: `🔄 ${t("chat.resetCommandFeedback")}`, timestamp: Date.now() }]);
+      setStreaming(null);
+      setRunId(null);
+      trackerRef.current.reset();
+      lastAgentStreamRef.current = null;
+    }).catch((err) => {
+      const errText = (err as Error).message || t("chat.unknownError");
+      setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${errText}`, timestamp: Date.now() }]);
+    });
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -950,25 +1070,37 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
             </div>
             </div>
           ))}
-          {((runId !== null && streaming === null) || (externalRunActive && runId === null)) && (
-            <div className="chat-bubble chat-bubble-assistant chat-thinking">
-              {agentPhase && showAgentEvents ? (
-                <span className="chat-agent-phase">
-                  {agentPhase.startsWith("tool:")
-                    ? t("chat.phaseUsingTool", { tool: agentPhase.slice(5) })
-                    : t(`chat.phase_${agentPhase}`)}
-                </span>
-              ) : null}
-              <span className="chat-thinking-dots"><span /><span /><span /></span>
-            </div>
-          )}
+          {(() => {
+            const view = trackerRef.current.getView();
+            // Show the thinking bubble only when there's no streaming text.
+            // When streaming text is visible, it IS the visual feedback —
+            // showing both would cause duplicate/overlapping bubbles.
+            const showThinking = streaming === null && (
+              runId !== null || (view.isActive && view.displayPhase !== "done")
+            );
+            return showThinking ? (
+              <div className="chat-bubble chat-bubble-assistant chat-thinking">
+                {view.displayPhase && showAgentEvents ? (
+                  <span className="chat-agent-phase">
+                    {view.displayPhase === "tooling"
+                      ? t("chat.phaseUsingTool", { tool: view.displayToolName ?? "" })
+                      : t(`chat.phase_${view.displayPhase}`)}
+                  </span>
+                ) : null}
+                <span className="chat-thinking-dots"><span /><span /><span /></span>
+              </div>
+            ) : null;
+          })()}
           {streaming !== null && (
             <>
-              {agentPhase && agentPhase.startsWith("tool:") && showAgentEvents && (
-                <div className="chat-agent-phase-inline">
-                  {t("chat.phaseUsingTool", { tool: agentPhase.slice(5) })}
-                </div>
-              )}
+              {(() => {
+                const view = trackerRef.current.getView();
+                return view.displayPhase === "tooling" && showAgentEvents ? (
+                  <div className="chat-agent-phase-inline">
+                    {t("chat.phaseUsingTool", { tool: view.displayToolName ?? "" })}
+                  </div>
+                ) : null;
+              })()}
               <div className="chat-bubble chat-bubble-assistant chat-streaming-cursor">
                 {formatMessage(cleanMessageText(streaming))}
               </div>
@@ -1017,6 +1149,21 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       <div className="chat-status">
         <span className={`chat-status-dot chat-status-dot-${connectionState}`} />
         <span>{agentName ? `${agentName} · ${t(statusKey)}` : t(statusKey)}</span>
+        <span className="chat-status-spacer" />
+        <button
+          className="btn btn-sm btn-secondary"
+          onClick={handleStop}
+          disabled={!isStreaming && !trackerRef.current.getView().canAbort}
+        >
+          {t("chat.stopCommand")}
+        </button>
+        <button
+          className="btn btn-sm btn-secondary"
+          onClick={handleReset}
+          disabled={connectionState !== "connected"}
+        >
+          {t("chat.resetCommand")}
+        </button>
       </div>
 
       <div className="chat-input-area">
@@ -1089,7 +1236,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
               </div>
             )}
           </div>
-          {isStreaming ? (
+          {(isStreaming || trackerRef.current.getView().canAbort) ? (
             <button className="btn btn-danger" onClick={handleStop}>
               {t("chat.stop")}
             </button>
@@ -1104,6 +1251,22 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
           )}
         </div>
       </div>
+      <Modal
+        isOpen={showResetConfirm}
+        onClose={() => setShowResetConfirm(false)}
+        title={t("chat.resetCommand")}
+        maxWidth={400}
+      >
+        <p>{t("chat.resetConfirm")}</p>
+        <div className="modal-actions">
+          <button className="btn btn-secondary" onClick={() => setShowResetConfirm(false)}>
+            {t("common.cancel")}
+          </button>
+          <button className="btn btn-danger" onClick={confirmReset}>
+            {t("chat.resetCommand")}
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

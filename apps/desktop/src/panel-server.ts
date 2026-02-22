@@ -186,6 +186,19 @@ let wecomConnParams: {
   gatewayToken?: string;
 } | null = null;
 
+// === Chat Event SSE Bridge ===
+// Push inbound messages and tool events to the Chat Page via Server-Sent Events.
+// See ADR-022 for design rationale.
+
+const chatEventSSEClients = new Set<ServerResponse>();
+
+function pushChatSSE(event: string, data: unknown): void {
+  const msg = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  for (const res of chatEventSSEClients) {
+    res.write(msg);
+  }
+}
+
 /**
  * Start a persistent connection to the WeCom relay and a dedicated
  * gateway RPC client for forwarding messages to the AI agent.
@@ -209,6 +222,18 @@ function startWeComRelay(params: {
     onEvent: (evt) => {
       if (evt.event === "chat") {
         handleWeComChatEvent(evt.payload).catch((err) => log.error("WeCom: chat event handler error:", err));
+      }
+      // Forward tool events to Chat Page via SSE (see ADR-022)
+      if (evt.event === "agent") {
+        const p = evt.payload as Record<string, unknown> | undefined;
+        if (p?.stream === "tool") {
+          const data = p.data as Record<string, unknown> | undefined;
+          pushChatSSE("tool", {
+            runId: p.runId,
+            phase: data?.phase,
+            toolName: data?.name,
+          });
+        }
       }
     },
   });
@@ -410,6 +435,13 @@ async function handleWeComInbound(frame: {
     });
     if (result?.runId) {
       wecomRunIdMap.set(result.runId, frame.external_user_id);
+      pushChatSSE("inbound", {
+        runId: result.runId,
+        sessionKey: "agent:main:main",
+        channel: "wechat",
+        message,
+        timestamp: frame.timestamp,
+      });
     }
   } catch (err) {
     log.error("WeCom: agent request failed:", err);
@@ -1449,6 +1481,19 @@ export function startPanelServer(options: PanelServerOptions): Server {
     if (req.method === "OPTIONS") {
       res.writeHead(204);
       res.end();
+      return;
+    }
+
+    // SSE endpoint for chat page real-time events (inbound messages + tool events)
+    if (pathname === "/api/chat/events" && req.method === "GET") {
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      });
+      res.write(":ok\n\n");
+      chatEventSSEClients.add(res);
+      req.on("close", () => chatEventSSEClients.delete(res));
       return;
     }
 

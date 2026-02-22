@@ -6,7 +6,8 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "lint": "oxlint"
+    "lint": "oxlint",
+    "test": "vitest run"
   },
   "dependencies": {
     "@easyclaw/core": "workspace:*",
@@ -27,6 +28,7 @@
     "@vitejs/plugin-react": "^4.5.2",
     "oxlint": "^1.43.0",
     "typescript": "^5.9.3",
-    "vite": "^6.3.5"
+    "vite": "^6.3.5",
+    "vitest": "^4.0.18"
   }
 }
