@@ -80,7 +80,7 @@ const NAV_ICONS: Record<string, ReactNode> = {
       <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19" />
     </svg>
   ),
-  "/customer-service": (
+  "/apps": (
     <svg
       width="18"
       height="18"
@@ -316,7 +316,7 @@ export function Layout({
     { path: "/permissions", label: t("nav.permissions") },
     { path: "/stt", label: t("nav.stt") },
     { path: "/skills", label: t("nav.skills") },
-    // { path: "/customer-service", label: t("customerService.nav") },
+    // { path: "/apps", label: t("customerService.nav") },
     { path: "/usage", label: t("nav.usage") },
     { path: "/settings", label: t("nav.settings") },
   ];

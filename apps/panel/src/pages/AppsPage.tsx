@@ -58,7 +58,7 @@ function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onCha
   );
 }
 
-export function CustomerServicePage() {
+export function AppsPage() {
   const { t, i18n } = useTranslation();
 
   // WeCom config state
