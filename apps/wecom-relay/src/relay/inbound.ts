@@ -36,6 +36,9 @@ export async function handleInboundMessages(
   const store = getBindingStore();
 
   for (const msg of messages) {
+    // Skip messages not destined for this customer service account
+    if (msg.open_kfid !== config.WECOM_OPEN_KFID) continue;
+
     // Handle event messages for scene-based auto-binding
     if (msg.msgtype === "event") {
       log.info(`Event: type=${msg.event_type}, user=${msg.external_userid}`);
@@ -70,8 +73,9 @@ export async function handleInboundMessages(
           const gwWs = registry.get(sceneGatewayId);
           if (gwWs) {
             gwWs.send(encodeFrame({
-              type: "binding_resolved",
-              external_user_id: msg.external_userid,
+              type: "cs_binding_resolved",
+              platform: "wecom",
+              customer_id: msg.external_userid,
               gateway_id: sceneGatewayId,
             }));
           }
@@ -120,8 +124,9 @@ export async function handleInboundMessages(
         const gwWs = registry.get(gatewayId);
         if (gwWs) {
           gwWs.send(encodeFrame({
-            type: "binding_resolved",
-            external_user_id: externalUserId,
+            type: "cs_binding_resolved",
+            platform: "wecom",
+            customer_id: externalUserId,
             gateway_id: gatewayId,
           }));
         }
@@ -187,9 +192,10 @@ export async function handleInboundMessages(
     }
 
     const frame: InboundFrame = {
-      type: "inbound",
+      type: "cs_inbound",
       id: randomUUID(),
-      external_user_id: externalUserId,
+      platform: "wecom",
+      customer_id: externalUserId,
       msg_type: msgType,
       content,
       timestamp: msg.send_time,

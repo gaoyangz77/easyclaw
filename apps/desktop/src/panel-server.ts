@@ -21,6 +21,7 @@ import WebSocket from "ws";
 import { UsageSnapshotEngine } from "./usage-snapshot-engine.js";
 import type { ModelUsageTotals } from "./usage-snapshot-engine.js";
 import { UsageQueryService } from "./usage-query-service.js";
+import { initCSBridge, startCS, stopCS, getCSStatus, updateCSConfig, restoreCS } from "./customer-service-bridge.js";
 
 const log = createLogger("panel-server");
 
@@ -295,6 +296,15 @@ function doConnectWeComRelay(): void {
           wecomRelayState.externalUserId = frame.external_user_id;
         }
         wecomStorageRef?.settings.set("wecom-external-user-id", frame.external_user_id);
+        return;
+      }
+
+      if (frame.type === "binding_cleared") {
+        log.info("WeCom relay: binding cleared (no active binding for this gateway)");
+        if (wecomRelayState) {
+          wecomRelayState.externalUserId = undefined;
+        }
+        wecomStorageRef?.settings.delete("wecom-external-user-id");
         return;
       }
 
@@ -1405,6 +1415,9 @@ export function startPanelServer(options: PanelServerOptions): Server {
     wecomSttManager = sttManager;
   }
 
+  // Initialize the customer service bridge
+  initCSBridge({ storage, secretStore, getGatewayInfo, deviceId });
+
   // Read changelog.json once at startup (cached in closure)
   let changelogEntries: unknown[] = [];
   if (changelogPath && existsSync(changelogPath)) {
@@ -1624,6 +1637,11 @@ export function startPanelServer(options: PanelServerOptions): Server {
       log.warn("WeCom relay: failed to restore saved credentials:", err);
     });
   }
+
+  // Restore customer service module from persisted config
+  restoreCS().catch((err) => {
+    log.warn("CS: failed to restore from saved config:", err);
+  });
 
   return server;
 }
@@ -3093,6 +3111,131 @@ async function handleApiRoute(
     return;
   }
 
+  // --- WeCom Cloud Config (GraphQL proxy) ---
+  if (pathname === "/api/wecom-config/save" && req.method === "POST") {
+    const body = (await parseBody(req)) as {
+      corpId?: string;
+      appSecret?: string;
+      token?: string;
+      encodingAesKey?: string;
+      kfLinkId?: string;
+      panelToken?: string;
+      lang?: string;
+    };
+    const { corpId, appSecret, token: webhookToken, encodingAesKey, kfLinkId, panelToken, lang } = body;
+    if (!corpId || !appSecret || !webhookToken || !encodingAesKey || !kfLinkId) {
+      sendJson(res, 400, { error: "All 5 credential fields are required" });
+      return;
+    }
+    // Use provided panelToken or fall back to stored one
+    const authToken = panelToken || (await secretStore.get("cs-panel-token")) || "";
+    if (!authToken) {
+      sendJson(res, 400, { error: "Panel token is required. Please enter it in the configuration form." });
+      return;
+    }
+    // Persist the panel token for future use
+    if (panelToken) {
+      await secretStore.set("cs-panel-token", panelToken);
+    }
+    const apiUrl = lang === "zh" ? "https://api-cn.easy-claw.com/graphql" : "https://api.easy-claw.com/graphql";
+    try {
+      const gqlRes = await proxiedFetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          query: `mutation saveWeComConfig($input: WeComConfigInput!) {
+            saveWeComConfig(input: $input) {
+              wecom { corpId appSecret token encodingAesKey openKfId kfLinkId }
+            }
+          }`,
+          variables: {
+            input: { corpId, appSecret, token: webhookToken, encodingAesKey, kfLinkId },
+          },
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!gqlRes.ok) {
+        sendJson(res, 502, { error: `GraphQL API returned ${gqlRes.status}` });
+        return;
+      }
+      const json = (await gqlRes.json()) as { data?: { saveWeComConfig?: unknown }; errors?: Array<{ message: string }> };
+      if (json.errors && json.errors.length > 0) {
+        sendJson(res, 400, { error: json.errors[0].message });
+        return;
+      }
+      // Persist the corpId locally so we can show config status
+      storage.settings.set("wecom-cloud-corp-id", corpId);
+      sendJson(res, 200, json.data?.saveWeComConfig ?? { wecom: null });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      sendJson(res, 502, { error: msg });
+    }
+    return;
+  }
+
+  if (pathname === "/api/wecom-config/delete" && req.method === "POST") {
+    const body = (await parseBody(req)) as { corpId?: string; panelToken?: string; lang?: string };
+    const { corpId, panelToken, lang } = body;
+    if (!corpId) {
+      sendJson(res, 400, { error: "corpId is required for deletion" });
+      return;
+    }
+    const authToken = panelToken || (await secretStore.get("cs-panel-token")) || "";
+    if (!authToken) {
+      sendJson(res, 400, { error: "Panel token is required" });
+      return;
+    }
+    if (panelToken) {
+      await secretStore.set("cs-panel-token", panelToken);
+    }
+    const apiUrl = lang === "zh" ? "https://api-cn.easy-claw.com/graphql" : "https://api.easy-claw.com/graphql";
+    try {
+      const gqlRes = await proxiedFetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          query: `mutation deleteWeComConfig($corpId: String!) {
+            deleteWeComConfig(corpId: $corpId) {
+              wecom { corpId }
+            }
+          }`,
+          variables: { corpId },
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!gqlRes.ok) {
+        sendJson(res, 502, { error: `GraphQL API returned ${gqlRes.status}` });
+        return;
+      }
+      const json = (await gqlRes.json()) as { data?: { deleteWeComConfig?: unknown }; errors?: Array<{ message: string }> };
+      if (json.errors && json.errors.length > 0) {
+        sendJson(res, 400, { error: json.errors[0].message });
+        return;
+      }
+      // Clear the locally persisted corpId
+      storage.settings.delete("wecom-cloud-corp-id");
+      sendJson(res, 200, json.data?.deleteWeComConfig ?? { wecom: null });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      sendJson(res, 502, { error: msg });
+    }
+    return;
+  }
+
+  if (pathname === "/api/wecom-config/status" && req.method === "GET") {
+    // Return stored panel token existence and last saved corpId
+    const hasToken = !!(await secretStore.get("cs-panel-token"));
+    const savedCorpId = storage.settings.get("wecom-cloud-corp-id") as string | undefined;
+    sendJson(res, 200, { hasToken, corpId: savedCorpId ?? null });
+    return;
+  }
+
   // --- WeCom Channel ---
   if (pathname === "/api/channels/wecom/binding-status" && req.method === "GET") {
     if (!wecomRelayState) {
@@ -3415,6 +3558,58 @@ async function handleApiRoute(
         sendJson(res, 200, { ok: true });
       }
     });
+    return;
+  }
+
+  // --- Customer Service (W19-B3) ---
+  if (pathname === "/api/customer-service/status" && req.method === "GET") {
+    const status = getCSStatus();
+    sendJson(res, 200, status);
+    return;
+  }
+  if (pathname === "/api/customer-service/start" && req.method === "POST") {
+    try {
+      const body = await parseBody(req) as {
+        businessPrompt?: string;
+        platforms?: string[];
+      };
+      startCS({
+        businessPrompt: body.businessPrompt ?? "",
+        platforms: body.platforms ?? [],
+      });
+      sendJson(res, 200, { ok: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      sendJson(res, 500, { error: msg });
+    }
+    return;
+  }
+  if (pathname === "/api/customer-service/stop" && req.method === "POST") {
+    stopCS();
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+  if (pathname === "/api/customer-service/config" && req.method === "PUT") {
+    try {
+      const body = await parseBody(req) as {
+        businessPrompt?: string;
+        platforms?: string[];
+      };
+      updateCSConfig(body);
+      sendJson(res, 200, { ok: true });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      sendJson(res, 500, { error: msg });
+    }
+    return;
+  }
+  if (pathname === "/api/customer-service/platforms" && req.method === "GET") {
+    const status = getCSStatus();
+    const platforms = (status?.platforms ?? []).map((p: { platform: string; boundCustomers: number }) => ({
+      platform: p.platform,
+      boundCustomers: p.boundCustomers,
+    }));
+    sendJson(res, 200, { platforms });
     return;
   }
 

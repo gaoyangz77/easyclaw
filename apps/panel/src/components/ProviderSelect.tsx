@@ -14,6 +14,7 @@ const SUBSCRIPTION_SET = new Set(SUBSCRIPTION_PROVIDER_IDS);
 
 /** Priority-ordered providers by language. */
 const ZH_PRIORITY_PROVIDERS: LLMProvider[] = [
+  "volcengine-coding",
   "zhipu-coding",
   "moonshot-coding",
   "minimax-coding",

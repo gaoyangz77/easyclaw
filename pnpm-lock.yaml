@@ -33,6 +33,9 @@ importers:
       '@easyclaw/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@easyclaw/customer-service':
+        specifier: workspace:*
+        version: link:../../packages/apps/customer-service
       '@easyclaw/device-id':
         specifier: workspace:*
         version: link:../../packages/device-id
@@ -167,6 +170,9 @@ importers:
       vite:
         specifier: ^6.3.5
         version: 6.4.1(@types/node@25.2.2)(jiti@2.6.1)(yaml@2.8.2)
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@types/node@25.2.2)(jiti@2.6.1)(yaml@2.8.2)
 
   apps/wecom-relay:
     dependencies:
@@ -247,6 +253,28 @@ importers:
     devDependencies:
       '@types/ws':
         specifier: ^8.18.1
+        version: 8.18.1
+      oxlint:
+        specifier: ^1.43.0
+        version: 1.43.0
+      tsdown:
+        specifier: ^0.20.3
+        version: 0.20.3(typescript@5.9.3)
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@types/node@25.2.2)(jiti@2.6.1)(yaml@2.8.2)
+
+  packages/apps/customer-service:
+    dependencies:
+      '@easyclaw/core':
+        specifier: workspace:*
+        version: link:../../core
+      ws:
+        specifier: ^8.18.0
+        version: 8.19.0
+    devDependencies:
+      '@types/ws':
+        specifier: ^8.18.0
         version: 8.18.1
       oxlint:
         specifier: ^1.43.0

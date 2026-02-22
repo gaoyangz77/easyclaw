@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@easyclaw/core": "workspace:*",
+    "@easyclaw/customer-service": "workspace:*",
     "@easyclaw/device-id": "workspace:*",
     "@easyclaw/gateway": "workspace:*",
     "@easyclaw/logger": "workspace:*",

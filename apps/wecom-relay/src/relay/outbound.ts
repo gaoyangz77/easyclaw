@@ -14,18 +14,18 @@ export async function handleOutboundReply(
   reply: ReplyFrame,
   config: Config,
 ): Promise<void> {
-  log.info(`Sending reply to ${reply.external_user_id}, frame id: ${reply.id}`);
+  log.info(`Sending reply to ${reply.customer_id}, frame id: ${reply.id}`);
 
   const accessToken = await getAccessToken(config.WECOM_CORPID, config.WECOM_APP_SECRET);
 
   await sendTextMessage(
     accessToken,
-    reply.external_user_id,
+    reply.customer_id,
     config.WECOM_OPEN_KFID,
     reply.content,
   );
 
-  log.info(`Reply sent to ${reply.external_user_id}`);
+  log.info(`Reply sent to ${reply.customer_id}`);
 }
 
 /**
@@ -36,7 +36,7 @@ export async function handleOutboundImageReply(
   reply: ImageReplyFrame,
   config: Config,
 ): Promise<void> {
-  log.info(`Sending image reply to ${reply.external_user_id}, frame id: ${reply.id}`);
+  log.info(`Sending image reply to ${reply.customer_id}, frame id: ${reply.id}`);
 
   const accessToken = await getAccessToken(config.WECOM_CORPID, config.WECOM_APP_SECRET);
   const imageBuffer = Buffer.from(reply.image_data, "base64");
@@ -44,10 +44,10 @@ export async function handleOutboundImageReply(
 
   await sendImageMessage(
     accessToken,
-    reply.external_user_id,
+    reply.customer_id,
     config.WECOM_OPEN_KFID,
     mediaId,
   );
 
-  log.info(`Image reply sent to ${reply.external_user_id}`);
+  log.info(`Image reply sent to ${reply.customer_id}`);
 }

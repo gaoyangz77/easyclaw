@@ -1,15 +1,16 @@
-/** WebSocket protocol frame types */
+/** WebSocket protocol frame types (cs_* prefix, matching @easyclaw/core) */
 
 export interface HelloFrame {
-  type: "hello";
+  type: "cs_hello";
   gateway_id: string;
   auth_token: string;
 }
 
 export interface InboundFrame {
-  type: "inbound";
+  type: "cs_inbound";
   id: string;
-  external_user_id: string;
+  platform: string;
+  customer_id: string;
   msg_type: string;
   content: string;
   timestamp: number;
@@ -20,16 +21,18 @@ export interface InboundFrame {
 }
 
 export interface ReplyFrame {
-  type: "reply";
+  type: "cs_reply";
   id: string;
-  external_user_id: string;
+  platform: string;
+  customer_id: string;
   content: string;
 }
 
 export interface ImageReplyFrame {
-  type: "image_reply";
+  type: "cs_image_reply";
   id: string;
-  external_user_id: string;
+  platform: string;
+  customer_id: string;
   /** Base64-encoded image data. */
   image_data: string;
   /** MIME type (e.g. "image/png"). */
@@ -37,34 +40,41 @@ export interface ImageReplyFrame {
 }
 
 export interface AckFrame {
-  type: "ack";
+  type: "cs_ack";
   id: string;
 }
 
 export interface ErrorFrame {
-  type: "error";
+  type: "cs_error";
   message: string;
 }
 
 export interface CreateBindingFrame {
-  type: "create_binding";
+  type: "cs_create_binding";
   gateway_id: string;
+  platform?: string;
 }
 
 export interface CreateBindingAckFrame {
-  type: "create_binding_ack";
+  type: "cs_create_binding_ack";
   token: string;
   customer_service_url: string;
 }
 
 export interface UnbindAllFrame {
-  type: "unbind_all";
+  type: "cs_unbind_all";
   gateway_id: string;
 }
 
 export interface BindingResolvedFrame {
-  type: "binding_resolved";
-  external_user_id: string;
+  type: "cs_binding_resolved";
+  platform: string;
+  customer_id: string;
+  gateway_id: string;
+}
+
+export interface BindingClearedFrame {
+  type: "cs_binding_cleared";
   gateway_id: string;
 }
 
@@ -78,7 +88,8 @@ export type WSFrame =
   | CreateBindingFrame
   | CreateBindingAckFrame
   | UnbindAllFrame
-  | BindingResolvedFrame;
+  | BindingResolvedFrame
+  | BindingClearedFrame;
 
 /** Parsed WeCom message types */
 

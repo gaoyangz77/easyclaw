@@ -45,6 +45,7 @@ import { tmpdir } from "node:os";
 import { createTrayIcon } from "./tray-icon.js";
 import { buildTrayMenu } from "./tray-menu.js";
 import { startPanelServer } from "./panel-server.js";
+import { stopCS } from "./customer-service-bridge.js";
 import { SttManager } from "./stt-manager.js";
 
 const log = createLogger("desktop");
@@ -1507,6 +1508,9 @@ app.whenReady().then(async () => {
     clearInterval(updateCheckTimer);
 
     const cleanup = async () => {
+      // Stop customer service bridge (closes relay WS + gateway RPC, rejects pending replies)
+      stopCS();
+
       // Kill gateway and proxy router FIRST — these are critical.
       // If later steps (telemetry, oauth sync) hang, at least the gateway is dead.
       await Promise.all([

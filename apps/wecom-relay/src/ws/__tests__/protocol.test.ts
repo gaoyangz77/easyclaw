@@ -10,9 +10,9 @@ import type {
 
 describe("protocol", () => {
   describe("encodeFrame / decodeFrame roundtrip", () => {
-    it("should roundtrip a hello frame", () => {
+    it("should roundtrip a cs_hello frame", () => {
       const frame: HelloFrame = {
-        type: "hello",
+        type: "cs_hello",
         gateway_id: "gw-123",
         auth_token: "secret-token",
       };
@@ -23,11 +23,12 @@ describe("protocol", () => {
       expect(decoded).toEqual(frame);
     });
 
-    it("should roundtrip an inbound frame", () => {
+    it("should roundtrip a cs_inbound frame", () => {
       const frame: InboundFrame = {
-        type: "inbound",
+        type: "cs_inbound",
         id: "msg-001",
-        external_user_id: "user-ext-001",
+        platform: "wecom",
+        customer_id: "user-ext-001",
         msg_type: "text",
         content: "Hello, world!",
         timestamp: 1700000000,
@@ -39,11 +40,12 @@ describe("protocol", () => {
       expect(decoded).toEqual(frame);
     });
 
-    it("should roundtrip a reply frame", () => {
+    it("should roundtrip a cs_reply frame", () => {
       const frame: ReplyFrame = {
-        type: "reply",
+        type: "cs_reply",
         id: "msg-001",
-        external_user_id: "user-ext-001",
+        platform: "wecom",
+        customer_id: "user-ext-001",
         content: "Here is my response",
       };
 
@@ -53,9 +55,9 @@ describe("protocol", () => {
       expect(decoded).toEqual(frame);
     });
 
-    it("should roundtrip an ack frame", () => {
+    it("should roundtrip a cs_ack frame", () => {
       const frame: AckFrame = {
-        type: "ack",
+        type: "cs_ack",
         id: "msg-001",
       };
 
@@ -65,9 +67,9 @@ describe("protocol", () => {
       expect(decoded).toEqual(frame);
     });
 
-    it("should roundtrip an error frame", () => {
+    it("should roundtrip a cs_error frame", () => {
       const frame: ErrorFrame = {
-        type: "error",
+        type: "cs_error",
         message: "Something went wrong",
       };
 
@@ -95,6 +97,12 @@ describe("protocol", () => {
       expect(() => decodeFrame('{"type": "unknown_type"}')).toThrow("Invalid frame type");
     });
 
+    it("should reject old non-prefixed frame types", () => {
+      expect(() => decodeFrame('{"type": "hello"}')).toThrow("Invalid frame type");
+      expect(() => decodeFrame('{"type": "reply"}')).toThrow("Invalid frame type");
+      expect(() => decodeFrame('{"type": "inbound"}')).toThrow("Invalid frame type");
+    });
+
     it("should throw on null input", () => {
       expect(() => decodeFrame("null")).toThrow();
     });
@@ -102,7 +110,7 @@ describe("protocol", () => {
 
   describe("encodeFrame", () => {
     it("should produce valid JSON", () => {
-      const frame: AckFrame = { type: "ack", id: "test" };
+      const frame: AckFrame = { type: "cs_ack", id: "test" };
       const encoded = encodeFrame(frame);
 
       expect(() => JSON.parse(encoded)).not.toThrow();
@@ -110,9 +118,10 @@ describe("protocol", () => {
 
     it("should handle special characters in content", () => {
       const frame: ReplyFrame = {
-        type: "reply",
+        type: "cs_reply",
         id: "1",
-        external_user_id: "user",
+        platform: "wecom",
+        customer_id: "user",
         content: 'Hello "world"\n\ttab & <xml>',
       };
 

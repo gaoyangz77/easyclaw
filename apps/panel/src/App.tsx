@@ -11,6 +11,7 @@ import { SttPage } from "./pages/SttPage.js";
 import { KeyUsagePage } from "./pages/KeyUsagePage.js";
 import { SkillsPage } from "./pages/SkillsPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
+import { CustomerServicePage } from "./pages/CustomerServicePage.js";
 import { OnboardingPage } from "./pages/OnboardingPage.js";
 import { WhatsNewModal } from "./components/WhatsNewModal.js";
 import { TelemetryConsentModal } from "./components/TelemetryConsentModal.js";
@@ -26,6 +27,7 @@ const PAGES: Record<string, () => ReactNode> = {
   "/stt": SttPage,
   "/usage": KeyUsagePage,
   "/skills": SkillsPage,
+  "/customer-service": CustomerServicePage,
   "/settings": SettingsPage,
 };
 

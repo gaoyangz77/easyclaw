@@ -23,6 +23,23 @@ export type {
   SkillCategory,
   MarketQuery,
   MarketResponse,
+  CSInboundMessage,
+  CSOutboundMessage,
+  CustomerServiceConfig,
+  CustomerServiceStatus,
+  CustomerServicePlatformStatus,
+  CSHelloFrame,
+  CSInboundFrame,
+  CSReplyFrame,
+  CSImageReplyFrame,
+  CSAckFrame,
+  CSErrorFrame,
+  CSCreateBindingFrame,
+  CSCreateBindingAckFrame,
+  CSUnbindAllFrame,
+  CSBindingResolvedFrame,
+  CSWSFrame,
+  PlatformAdapter,
 } from "./types/index.js";
 export { easyClawConfigSchema, DEFAULT_STT_SETTINGS, STT_SETTINGS_KEYS, STT_SECRET_KEYS } from "./types/index.js";
 

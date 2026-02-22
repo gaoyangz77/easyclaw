@@ -323,8 +323,8 @@ export function ChannelsPage() {
   // Collect all accounts from all channels, filtering out synthetic "default" placeholders
   const allAccounts: Array<{ channelId: string; channelLabel: string; account: ChannelAccountSnapshot; isWecom?: boolean }> = [];
 
-  // Add WeCom virtual account if binding is active
-  if (wecomStatus && wecomStatus.externalUserId) {
+  // Add WeCom virtual account if relay connection exists
+  if (wecomStatus && wecomStatus.connected) {
     allAccounts.push({
       channelId: "wecom",
       channelLabel: t("channels.channelWecom"),
@@ -332,8 +332,8 @@ export function ChannelsPage() {
       account: {
         accountId: "default",
         name: t("channels.channelWecom"),
-        configured: true,
-        running: wecomStatus.connected === true,
+        configured: !!wecomStatus.externalUserId,
+        running: true,
         enabled: true,
         dmPolicy: "pairing",
       } as ChannelAccountSnapshot,

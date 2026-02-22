@@ -200,6 +200,10 @@
   gap: 8px;
 }
 
+.chat-status-model {
+  margin-left: 2px;
+}
+
 .chat-status-spacer {
   flex: 1;
 }

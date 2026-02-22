@@ -38,3 +38,22 @@ export type {
   MarketQuery,
   MarketResponse,
 } from "./skills.js";
+export type {
+  CSInboundMessage,
+  CSOutboundMessage,
+  CustomerServiceConfig,
+  CustomerServiceStatus,
+  CustomerServicePlatformStatus,
+  CSHelloFrame,
+  CSInboundFrame,
+  CSReplyFrame,
+  CSImageReplyFrame,
+  CSAckFrame,
+  CSErrorFrame,
+  CSCreateBindingFrame,
+  CSCreateBindingAckFrame,
+  CSUnbindAllFrame,
+  CSBindingResolvedFrame,
+  CSWSFrame,
+  PlatformAdapter,
+} from "./customer-service.js";

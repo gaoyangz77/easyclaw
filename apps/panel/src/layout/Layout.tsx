@@ -38,6 +38,11 @@ const NAV_ICONS: Record<string, ReactNode> = {
       <path d="M19.1 4.9C23 8.8 23 15.1 19.1 19" />
     </svg>
   ),
+  "/customer-service": (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
+    </svg>
+  ),
   "/permissions": (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
@@ -194,9 +199,10 @@ export function Layout({
 
   const NAV_ITEMS = [
     { path: "/", label: t("nav.chat") },
-    { path: "/rules", label: t("nav.rules") },
     { path: "/providers", label: t("nav.providers") },
     { path: "/channels", label: t("nav.channels") },
+    { path: "/customer-service", label: t("customerService.nav") },
+    { path: "/rules", label: t("nav.rules") },
     { path: "/permissions", label: t("nav.permissions") },
     { path: "/stt", label: t("nav.stt") },
     { path: "/skills", label: t("nav.skills") },

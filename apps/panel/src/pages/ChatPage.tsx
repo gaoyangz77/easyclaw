@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 import { stripReasoningTagsFromText } from "@openclaw/reasoning-tags";
 import { MAX_CHAT_ATTACHMENT_BYTES } from "@easyclaw/core";
-import { fetchGatewayInfo, fetchProviderKeys, trackEvent, fetchChatShowAgentEvents, fetchChatPreserveToolEvents } from "../api.js";
+import { fetchGatewayInfo, fetchProviderKeys, trackEvent, fetchChatShowAgentEvents, fetchChatPreserveToolEvents, fetchActiveKeyUsage } from "../api.js";
 import { GatewayChatClient } from "../lib/gateway-client.js";
 import type { GatewayEvent, GatewayHelloOk } from "../lib/gateway-client.js";
 import { RunTracker } from "../lib/run-tracker.js";
@@ -238,6 +238,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   const [runId, setRunId] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<"connecting" | "connected" | "disconnected">("connecting");
   const [agentName, setAgentName] = useState<string | null>(null);
+  const [activeModel, setActiveModel] = useState<{ provider: string; model: string } | null>(null);
   const [allFetched, setAllFetched] = useState(false);
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
   const trackerRef = useRef(new RunTracker(forceUpdate));
@@ -620,10 +621,27 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         setShowAgentEvents(showEvents);
         setPreserveToolEvents(preserveEvents);
       });
+      // Refresh model label in case provider/model changed
+      refreshModelLabel();
     }
     window.addEventListener("chat-settings-changed", onSettingsChanged);
     return () => window.removeEventListener("chat-settings-changed", onSettingsChanged);
   }, []);
+
+  function refreshModelLabel() {
+    fetchActiveKeyUsage().then((info) => {
+      if (info) {
+        setActiveModel({ provider: info.provider, model: info.model });
+      } else {
+        setActiveModel(null);
+      }
+    }).catch(() => setActiveModel(null));
+  }
+
+  // Fetch active model info when connection state changes to connected
+  useEffect(() => {
+    if (connectionState === "connected") refreshModelLabel();
+  }, [connectionState]);
 
   function refreshAgentName(client: GatewayChatClient, cancelled?: boolean) {
     client.request<{ name?: string }>("agent.identity.get", {
@@ -1149,6 +1167,9 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       <div className="chat-status">
         <span className={`chat-status-dot chat-status-dot-${connectionState}`} />
         <span>{agentName ? `${agentName} · ${t(statusKey)}` : t(statusKey)}</span>
+        {connectionState === "connected" && activeModel && (
+          <span className="chat-status-model">{t(`providers.label_${activeModel.provider}`, { defaultValue: activeModel.provider })} · {activeModel.model}</span>
+        )}
         <span className="chat-status-spacer" />
         <button
           className="btn btn-sm btn-secondary"

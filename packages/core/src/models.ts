@@ -21,13 +21,14 @@ export type LLMProvider =
   | "venice"
   | "xiaomi"
   | "volcengine"
+  | "volcengine-coding"
   | "amazon-bedrock"
   | "gemini"
   | "claude"
   | "ollama";
 
 /** Root provider IDs (excludes subscription plan IDs). */
-export type RootProvider = Exclude<LLMProvider, "zhipu-coding" | "moonshot-coding" | "minimax-coding" | "gemini" | "claude">;
+export type RootProvider = Exclude<LLMProvider, "zhipu-coding" | "moonshot-coding" | "minimax-coding" | "volcengine-coding" | "gemini" | "claude">;
 
 /** Per-million-token cost in USD for OpenClaw usage tracking. */
 export interface ModelCost {
@@ -549,6 +550,23 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
         displayName: "Doubao Seed 1.6 Flash",
         cost: { input: cny(0.2), output: cny(2), cacheRead: 0, cacheWrite: 0 },
         supportsVision: true,
+      },
+    ],
+    subscriptionPlans: [
+      {
+        id: "volcengine-coding",
+        label: "Volcengine Coding Plan (Doubao)",
+        baseUrl: "https://ark.cn-beijing.volces.com/api/coding/v3",
+        subscriptionUrl: "https://volcengine.com/L/E01Fja-Vve8/",
+        apiKeyUrl: "https://console.volcengine.com/ark/region:ark+cn-beijing/apikey?apikey=%7B%7D",
+        envVar: "ARK_CODING_API_KEY",
+        extraModels: [
+          {
+            provider: "volcengine-coding",
+            modelId: "ark-code-latest",
+            displayName: "Ark Code (Latest)",
+          },
+        ],
       },
     ],
   },
