@@ -526,6 +526,34 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
     extraModels: [
       {
         provider: "volcengine",
+        modelId: "doubao-seed-2-0-pro-260215",
+        displayName: "Doubao Seed 2.0 Pro",
+        cost: { input: cny(3.2), output: cny(16), cacheRead: 0, cacheWrite: 0 },
+        supportsVision: true,
+      },
+      {
+        provider: "volcengine",
+        modelId: "doubao-seed-2-0-code-preview-260215",
+        displayName: "Doubao Seed 2.0 Code",
+        cost: { input: cny(3.2), output: cny(16), cacheRead: 0, cacheWrite: 0 },
+        supportsVision: true,
+      },
+      {
+        provider: "volcengine",
+        modelId: "doubao-seed-2-0-lite-260215",
+        displayName: "Doubao Seed 2.0 Lite",
+        cost: { input: cny(0.6), output: cny(3.6), cacheRead: 0, cacheWrite: 0 },
+        supportsVision: true,
+      },
+      {
+        provider: "volcengine",
+        modelId: "doubao-seed-2-0-mini-260215",
+        displayName: "Doubao Seed 2.0 Mini",
+        cost: { input: cny(0.2), output: cny(2), cacheRead: 0, cacheWrite: 0 },
+        supportsVision: true,
+      },
+      {
+        provider: "volcengine",
         modelId: "doubao-seed-1-8-251228",
         displayName: "Doubao Seed 1.8",
         cost: { input: cny(4), output: cny(16), cacheRead: 0, cacheWrite: 0 },
