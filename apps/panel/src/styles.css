@@ -2960,6 +2960,7 @@ tbody td {
 .cs-card-footer {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 10px;
   margin-top: 16px;
   padding-top: 16px;

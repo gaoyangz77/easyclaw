@@ -872,5 +872,15 @@ export default {
     wecomInvitationCodeHint: "An invitation code is required during the beta testing phase.",
     wecomCallbackCredentialsHint: "The following 4 fields can be found in WeCom Customer Service Admin → Developer Config",
     wecomCallbackCredentialsLink: "Go to settings",
+    // Error messages
+    errorInvalidToken: "Invalid invitation code. Please check and try again.",
+    errorTokenNotConfigured: "Invitation code verification failed. Please check your invitation code.",
+    errorInvalidCredentials: "Invalid WeCom credentials. Please check your Corp ID and App Secret.",
+    errorNoKfAccounts: "No customer service accounts found. Please create one in the WeCom admin first.",
+    errorKfLinkIdMismatch: "No customer service account matches the KF Link ID you entered. Please verify it.",
+    errorCorpIdMismatch: "The Corp ID does not match the saved configuration.",
+    errorApiUnavailable: "WeCom API is temporarily unavailable. Please try again later.",
+    errorServerUnavailable: "Unable to reach the server. Please check your network connection.",
+    errorUnknown: "An unexpected error occurred. Please try again.",
   },
 } as const;

@@ -872,5 +872,15 @@ export default {
     wecomInvitationCodeHint: "内测阶段需要邀请码才能使用此功能。",
     wecomCallbackCredentialsHint: "以下 4 项信息可在「微信客服管理后台 → 开发配置」页面获取",
     wecomCallbackCredentialsLink: "前往获取",
+    // Error messages
+    errorInvalidToken: "邀请码无效，请检查后重试。",
+    errorTokenNotConfigured: "邀请码验证失败，请确认邀请码是否正确。",
+    errorInvalidCredentials: "企业微信凭据无效，请检查企业ID和应用密钥。",
+    errorNoKfAccounts: "未找到客服账号，请先在企业微信管理后台创建。",
+    errorKfLinkIdMismatch: "未找到与该客服链接ID匹配的账号，请核实后重试。",
+    errorCorpIdMismatch: "企业ID与已保存的配置不一致。",
+    errorApiUnavailable: "企业微信 API 暂时不可用，请稍后重试。",
+    errorServerUnavailable: "无法连接到服务器，请检查网络连接。",
+    errorUnknown: "发生未知错误，请重试。",
   },
 } as const;

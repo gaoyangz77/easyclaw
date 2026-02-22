@@ -13,6 +13,35 @@ import {
   type WeComConfigInput,
 } from "../api.js";
 
+/** Map raw backend error messages to i18n keys for user-friendly display. */
+function translateBackendError(rawMessage: string, t: (key: string) => string): string {
+  if (rawMessage.includes("Invalid or missing panel token") || rawMessage.includes("Invalid or missing API token")) {
+    return t("customerService.errorInvalidToken");
+  }
+  if (rawMessage.includes("Panel token is not configured")) {
+    return t("customerService.errorTokenNotConfigured");
+  }
+  if (rawMessage.includes("Invalid WeCom credentials")) {
+    return t("customerService.errorInvalidCredentials");
+  }
+  if (rawMessage.includes("No customer service accounts found")) {
+    return t("customerService.errorNoKfAccounts");
+  }
+  if (rawMessage.includes("No customer service account matches")) {
+    return t("customerService.errorKfLinkIdMismatch");
+  }
+  if (rawMessage.includes("corpId does not match")) {
+    return t("customerService.errorCorpIdMismatch");
+  }
+  if (rawMessage.includes("WeCom API request failed") || rawMessage.includes("Failed to list CS accounts")) {
+    return t("customerService.errorApiUnavailable");
+  }
+  if (rawMessage.includes("GraphQL API returned") || rawMessage.includes("fetch failed") || rawMessage.includes("ECONNREFUSED")) {
+    return t("customerService.errorServerUnavailable");
+  }
+  return t("customerService.errorUnknown");
+}
+
 function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   return (
     <label className="toggle-switch">
@@ -132,7 +161,8 @@ export function CustomerServicePage() {
       }, 1500);
     } catch (err) {
       setWecomConfigStatus("error");
-      setWecomConfigError(err instanceof Error ? err.message : String(err));
+      const raw = err instanceof Error ? err.message : String(err);
+      setWecomConfigError(translateBackendError(raw, t));
     }
   }
 
@@ -156,7 +186,8 @@ export function CustomerServicePage() {
       }, 1500);
     } catch (err) {
       setWecomConfigStatus("error");
-      setWecomConfigError(err instanceof Error ? err.message : String(err));
+      const raw = err instanceof Error ? err.message : String(err);
+      setWecomConfigError(translateBackendError(raw, t));
     }
   }
 
