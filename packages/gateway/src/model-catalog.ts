@@ -249,10 +249,11 @@ export async function readFullModelCatalog(
   // Gateway entries override vendor entries per provider
   const merged = { ...vendor, ...gateway };
 
-  // Add extraModels providers that are missing from both vendor and gateway
+  // extraModels is our curated, authoritative model list — always takes
+  // precedence over stale gateway models.json entries for that provider.
   for (const p of ALL_PROVIDERS) {
     const models = getProviderMeta(p)?.extraModels;
-    if (!merged[p] && models) {
+    if (models) {
       merged[p] = models.map((m) => ({ id: m.modelId, name: m.displayName }));
     }
   }
