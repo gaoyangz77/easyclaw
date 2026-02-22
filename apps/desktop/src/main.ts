@@ -558,10 +558,10 @@ app.whenReady().then(async () => {
 
   async function performUpdateCheck(): Promise<void> {
     try {
-      const result = await autoUpdater.checkForUpdates();
-      if (result?.updateInfo) {
-        latestUpdateInfo = result.updateInfo;
-      }
+      // Don't assign result.updateInfo here — it always contains the server's
+      // latest version info even when it's older than the current version.
+      // Let the "update-available" event handler set latestUpdateInfo instead.
+      await autoUpdater.checkForUpdates();
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       log.warn(`Update check failed: ${message}`);
