@@ -139,7 +139,32 @@ async function main() {
     for (const p of critical) {
       console.log(`    - ${p}`);
     }
-    console.log(`    Action: add extraModels to packages/core/src/models.ts\n`);
+    console.log();
+    console.log("    HOW TO FIX:");
+    console.log("    These providers are registered in ALL_PROVIDERS but have zero models");
+    console.log("    (no extraModels in models.ts, and not in the pi-ai vendor catalog).");
+    console.log("    Users who select these providers will see an empty model dropdown.");
+    console.log();
+    console.log("    For each provider listed above:");
+    console.log("    1. Open packages/core/src/models.ts");
+    console.log("    2. Find the provider entry in the PROVIDERS object");
+    console.log("    3. Add an extraModels array with 3-8 popular models, e.g.:");
+    console.log();
+    console.log("       someProvider: {");
+    console.log("         ...existing fields...,");
+    console.log("         extraModels: [");
+    console.log('           { provider: "someProvider", modelId: "model-id-from-api", displayName: "Human Name" },');
+    console.log("         ],");
+    console.log("       },");
+    console.log();
+    console.log("    Model IDs must match the provider's native API (the string you pass in");
+    console.log("    the API request body). Check the provider's official documentation.");
+    console.log();
+    console.log("    If the provider is a subscription plan (nested under subscriptionPlans[]),");
+    console.log("    add extraModels inside the plan object, not the parent.");
+    console.log();
+    console.log("    After adding extraModels, rebuild: pnpm run build");
+    console.log("    Then re-run this script: node scripts/audit-provider-sync.mjs\n");
   } else {
     console.log("[1] No critical gaps found.\n");
   }
@@ -149,7 +174,20 @@ async function main() {
     for (const p of newUpstream) {
       console.log(`    - ${p}`);
     }
-    console.log(`    Action: evaluate adding to LLMProvider type + PROVIDERS registry\n`);
+    console.log();
+    console.log("    INFO: These providers exist in the vendor but are not registered in EasyClaw.");
+    console.log("    This is informational — not all vendor providers need to be in EasyClaw.");
+    console.log("    To add one, you need to manually curate these fields (not available from vendor):");
+    console.log();
+    console.log("    1. Add the provider ID to the LLMProvider union type in packages/core/src/models.ts");
+    console.log("    2. Add an entry in the PROVIDERS object with:");
+    console.log("       - label: display name (e.g. \"ProviderName\")");
+    console.log("       - baseUrl: OpenAI-compatible API base URL");
+    console.log("       - url: pricing or documentation page URL");
+    console.log("       - apiKeyUrl: URL where users create API keys");
+    console.log("       - envVar: environment variable name for the API key");
+    console.log("    3. Add i18n entries in apps/panel/src/i18n/{en,zh}.ts:");
+    console.log("       - label_<id>, desc_<id>, hint_<id>\n");
   } else {
     console.log("[2] No new upstream providers.\n");
   }
