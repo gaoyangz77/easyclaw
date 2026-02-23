@@ -308,12 +308,16 @@ export interface WriteGatewayConfigOptions {
   /** Agent workspace directory. Written as agents.defaults.workspace so OpenClaw stores
    *  SOUL.md, USER.md, memory/ etc. under the EasyClaw-managed state dir instead of ~/.openclaw/workspace. */
   agentWorkspace?: string;
-  /**
-   * Force standalone browser mode ("openclaw" driver) and disable Chrome extension relay.
-   * When true, sets browser.defaultProfile to "openclaw" and overrides the "chrome" profile
-   * to also use the "openclaw" driver, so the agent never uses extension relay mode.
-   */
+  /** @deprecated Use browserMode instead. */
   forceStandaloneBrowser?: boolean;
+  /**
+   * Browser launch mode.
+   * - "standalone" (default): OpenClaw launches its own isolated Chrome with the "clawd" driver.
+   * - "cdp": Connect to the user's existing Chrome via CDP remote debugging port.
+   */
+  browserMode?: "standalone" | "cdp";
+  /** CDP remote debugging port (default 9222). Only used when browserMode is "cdp". */
+  browserCdpPort?: number;
   /**
    * Extra LLM providers to register in OpenClaw's models.providers config.
    * Used for providers not natively supported by OpenClaw (e.g. zhipu, volcengine).
@@ -729,10 +733,10 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
     };
   }
 
-  // Force standalone browser: set default profile to "openclaw" and override
-  // the "chrome" profile to also use the "openclaw" driver, preventing the
-  // extension relay auto-creation (vendor code skips if chrome key exists).
-  if (options.forceStandaloneBrowser) {
+  // Browser mode configuration.
+  // Backward compat: treat forceStandaloneBrowser as browserMode: "standalone".
+  const browserMode = options.browserMode ?? (options.forceStandaloneBrowser ? "standalone" : undefined);
+  if (browserMode !== undefined) {
     const existingBrowser =
       typeof config.browser === "object" && config.browser !== null
         ? (config.browser as Record<string, unknown>)
@@ -741,14 +745,41 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
       typeof existingBrowser.profiles === "object" && existingBrowser.profiles !== null
         ? (existingBrowser.profiles as Record<string, unknown>)
         : {};
-    config.browser = {
-      ...existingBrowser,
-      defaultProfile: "openclaw",
-      profiles: {
-        ...existingProfiles,
-        chrome: { driver: "clawd", cdpPort: (options.gatewayPort ?? DEFAULT_GATEWAY_PORT) + 12, color: "#00AA00" },
-      },
-    };
+
+    if (browserMode === "cdp") {
+      // CDP mode: connect to user's existing Chrome via remote debugging port.
+      // Profile MUST be named "openclaw" — the LLM tool description hardcodes
+      // `profile="openclaw"` for the isolated browser, so naming it anything
+      // else causes the auto-injected fallback profile to be used instead.
+      const cdpPort = options.browserCdpPort ?? 9222;
+      const { attachOnly: _, ...cleanBrowser } = existingBrowser as Record<string, unknown> & { attachOnly?: unknown };
+      // Clean up stale "user-chrome" profile from old configs
+      const { "user-chrome": __, ...cleanProfiles } = existingProfiles as Record<string, unknown>;
+      config.browser = {
+        ...cleanBrowser,
+        defaultProfile: "openclaw",
+        attachOnly: true,
+        profiles: {
+          ...cleanProfiles,
+          openclaw: { cdpUrl: `http://127.0.0.1:${cdpPort}`, color: "#4A90D9" },
+        },
+      };
+    } else {
+      // Standalone mode (default): launch isolated Chrome with "clawd" driver.
+      // Clean up stale CDP-mode keys and profiles.
+      // Remove "user-chrome" (old CDP profile name) and "openclaw" (current CDP profile name)
+      // so ensureDefaultProfile() auto-creates a fresh "openclaw" with correct cdpPort.
+      const { attachOnly: _, ...cleanBrowser } = existingBrowser as Record<string, unknown> & { attachOnly?: unknown };
+      const { "user-chrome": _uc, openclaw: _oc, ...cleanProfiles } = existingProfiles as Record<string, unknown>;
+      config.browser = {
+        ...cleanBrowser,
+        defaultProfile: "openclaw",
+        profiles: {
+          ...cleanProfiles,
+          chrome: { driver: "clawd", cdpPort: (options.gatewayPort ?? DEFAULT_GATEWAY_PORT) + 12, color: "#00AA00" },
+        },
+      };
+    }
   }
 
   // Strip unknown top-level keys before writing so that stale entries

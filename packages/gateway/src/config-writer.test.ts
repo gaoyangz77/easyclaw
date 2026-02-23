@@ -866,4 +866,77 @@ describe("config-writer", () => {
       expect(extraInKnown, "Keys in KNOWN_CONFIG_KEYS but not in vendor schema").toEqual([]);
     });
   });
+
+  describe("writeGatewayConfig - browserMode", () => {
+    it("writes standalone browser config", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({ configPath, browserMode: "standalone" });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.browser.defaultProfile).toBe("openclaw");
+      expect(config.browser.profiles.chrome.driver).toBe("clawd");
+      expect(config.browser.profiles.chrome.cdpPort).toBe(DEFAULT_GATEWAY_PORT + 12);
+    });
+
+    it("writes CDP browser config with default port", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({ configPath, browserMode: "cdp" });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.browser.defaultProfile).toBe("openclaw");
+      expect(config.browser.attachOnly).toBe(true);
+      expect(config.browser.profiles.openclaw.cdpUrl).toBe("http://127.0.0.1:9222");
+      expect(config.browser.profiles.openclaw.color).toBe("#4A90D9");
+    });
+
+    it("writes CDP browser config with custom port", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({ configPath, browserMode: "cdp", browserCdpPort: 9333 });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.browser.profiles.openclaw.cdpUrl).toBe("http://127.0.0.1:9333");
+      expect(config.browser.profiles.openclaw.color).toBe("#4A90D9");
+    });
+
+    it("backward compat: forceStandaloneBrowser maps to standalone", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({ configPath, forceStandaloneBrowser: true });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.browser.defaultProfile).toBe("openclaw");
+      expect(config.browser.profiles.chrome.driver).toBe("clawd");
+    });
+
+    it("switching from CDP to standalone clears stale keys", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({ configPath, browserMode: "cdp" });
+
+      // Verify CDP mode was written
+      let config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.browser.attachOnly).toBe(true);
+      expect(config.browser.profiles.openclaw.cdpUrl).toBeDefined();
+
+      // Switch to standalone
+      writeGatewayConfig({ configPath, browserMode: "standalone" });
+
+      config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.browser.defaultProfile).toBe("openclaw");
+      expect(config.browser.attachOnly).toBeUndefined();
+      // CDP openclaw profile should be replaced by standalone chrome profile
+      expect(config.browser.profiles.chrome.driver).toBe("clawd");
+    });
+
+    it("preserves existing browser fields when setting mode", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeFileSync(configPath, JSON.stringify({
+        browser: { remoteCdpTimeoutMs: 3000 },
+      }));
+
+      writeGatewayConfig({ configPath, browserMode: "standalone" });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.browser.remoteCdpTimeoutMs).toBe(3000);
+      expect(config.browser.defaultProfile).toBe("openclaw");
+    });
+  });
 });

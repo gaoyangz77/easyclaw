@@ -37,11 +37,12 @@ import { autoUpdater } from "electron-updater";
 import type { UpdateInfo, ProgressInfo } from "electron-updater";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { writeFileSync, mkdirSync, unlinkSync, existsSync, readFileSync, rmSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { writeFileSync, mkdirSync, unlinkSync, existsSync, readFileSync, rmSync, symlinkSync, readdirSync, lstatSync, copyFileSync } from "node:fs";
+import { execSync, spawn } from "node:child_process";
+import { get as httpGet } from "node:http";
 import { createConnection } from "node:net";
 import { createHash } from "node:crypto";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { createTrayIcon } from "./tray-icon.js";
 import { buildTrayMenu } from "./tray-menu.js";
 import { startPanelServer } from "./panel-server.js";
@@ -665,25 +666,6 @@ app.whenReady().then(async () => {
   resetDevicePairing(stateDir);
   const configPath = ensureGatewayConfig();
 
-  // Resolve current default model from DB and sync to gateway config on every startup.
-  // This ensures config is always consistent with what the user selected in the panel.
-  const startupProvider = storage.settings.get("llm-provider") as LLMProvider | undefined;
-  const startupRegion = storage.settings.get("region") ?? "us";
-  let startupModelId: string | undefined;
-  if (startupProvider) {
-    const activeKey = storage.providerKeys.getDefault(startupProvider);
-    if (activeKey?.model) startupModelId = activeKey.model;
-  }
-  const startupModelConfig = resolveModelConfig({
-    region: startupRegion,
-    userProvider: startupProvider,
-    userModelId: startupModelId,
-  });
-
-  // Read STT settings
-  const sttEnabled = storage.settings.get("stt.enabled") === "true";
-  const sttProvider = (storage.settings.get("stt.provider") || "groq") as "groq" | "volcengine";
-
   // In packaged app, plugins/extensions live in Resources/.
   // In dev, config-writer auto-resolves via monorepo root.
   const filePermissionsPluginPath = app.isPackaged
@@ -713,31 +695,58 @@ app.whenReady().then(async () => {
     }
     return { provider: "google-gemini-cli", modelId };
   }
-  const hasGeminiOAuth = isGeminiOAuthActive();
+  /**
+   * Build a complete WriteGatewayConfigOptions from all current settings.
+   * Centralises config assembly so every call site (startup, STT change,
+   * provider change, browser change, OAuth save) produces a consistent config.
+   */
+  function buildFullGatewayConfig(): Parameters<typeof writeGatewayConfig>[0] {
+    const curProvider = storage.settings.get("llm-provider") as LLMProvider | undefined;
+    const curRegion = storage.settings.get("region") ?? (locale === "zh" ? "cn" : "us");
+    let curModelId: string | undefined;
+    if (curProvider) {
+      const activeKey = storage.providerKeys.getDefault(curProvider);
+      if (activeKey?.model) curModelId = activeKey.model;
+    }
+    const curModel = resolveModelConfig({
+      region: curRegion,
+      userProvider: curProvider,
+      userModelId: curModelId,
+    });
 
-  writeGatewayConfig({
-    configPath,
-    gatewayPort: DEFAULT_GATEWAY_PORT,
-    enableChatCompletions: true,
-    commandsRestart: true,
-    enableFilePermissions: true,
-    extensionsDir,
-    enableGeminiCliAuth: hasGeminiOAuth,
-    skipBootstrap: false,
-    filePermissionsPluginPath,
-    defaultModel: resolveGeminiOAuthModel(startupModelConfig.provider, startupModelConfig.modelId),
-    stt: {
-      enabled: sttEnabled,
-      provider: sttProvider,
-      nodeBin: process.execPath,
-      sttCliPath,
-    },
-    extraProviders: buildExtraProviderConfigs(),
-    localProviderOverrides: buildLocalProviderOverrides(),
-    forceStandaloneBrowser: true,
-    agentWorkspace: join(stateDir, "workspace"),
-    extraSkillDirs: [join(stateDir, "skills")],
-  });
+    const curSttEnabled = storage.settings.get("stt.enabled") === "true";
+    const curSttProvider = (storage.settings.get("stt.provider") || "groq") as "groq" | "volcengine";
+
+    const curBrowserMode = (storage.settings.get("browser-mode") || "standalone") as "standalone" | "cdp";
+    const curBrowserCdpPort = parseInt(storage.settings.get("browser-cdp-port") || "9222", 10);
+
+    return {
+      configPath,
+      gatewayPort: DEFAULT_GATEWAY_PORT,
+      enableChatCompletions: true,
+      commandsRestart: true,
+      enableFilePermissions: true,
+      extensionsDir,
+      enableGeminiCliAuth: isGeminiOAuthActive(),
+      skipBootstrap: false,
+      filePermissionsPluginPath,
+      defaultModel: resolveGeminiOAuthModel(curModel.provider, curModel.modelId),
+      stt: {
+        enabled: curSttEnabled,
+        provider: curSttProvider,
+        nodeBin: process.execPath,
+        sttCliPath,
+      },
+      extraProviders: buildExtraProviderConfigs(),
+      localProviderOverrides: buildLocalProviderOverrides(),
+      browserMode: curBrowserMode,
+      browserCdpPort: curBrowserCdpPort,  // auto-managed, saved by ensureCdpChrome()
+      agentWorkspace: join(stateDir, "workspace"),
+      extraSkillDirs: [join(stateDir, "skills")],
+    };
+  }
+
+  writeGatewayConfig(buildFullGatewayConfig());
 
   // Clean up any existing openclaw processes before starting.
   // First do a fast TCP probe (~1ms) to check if the port is in use.
@@ -881,20 +890,8 @@ app.whenReady().then(async () => {
   async function handleSttChange(): Promise<void> {
     log.info("STT settings changed, regenerating config and restarting gateway");
 
-    // Read updated STT settings
-    const sttEnabled = storage.settings.get("stt.enabled") === "true";
-    const sttProvider = (storage.settings.get("stt.provider") || "groq") as "groq" | "volcengine";
-
-    // Regenerate OpenClaw config with updated STT/audio settings
-    writeGatewayConfig({
-      configPath,
-      stt: {
-        enabled: sttEnabled,
-        provider: sttProvider,
-        nodeBin: process.execPath,
-        sttCliPath,
-      },
-    });
+    // Regenerate full OpenClaw config (reads current STT settings from storage)
+    writeGatewayConfig(buildFullGatewayConfig());
 
     // Rebuild environment with updated STT credentials (GROQ_API_KEY, etc.)
     const secretEnv = await buildGatewayEnv(secretStore, { ELECTRON_RUN_AS_NODE: "1" }, storage, workspacePath);
@@ -924,6 +921,232 @@ app.whenReady().then(async () => {
     // Full restart to apply new environment variables
     await launcher.stop();
     await launcher.start();
+  }
+
+  /** Probe whether a CDP endpoint is accessible on the given port. */
+  function probeCdp(port: number): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      const req = httpGet(`http://127.0.0.1:${port}/json/version`, (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      });
+      req.on("error", () => resolve(false));
+      req.setTimeout(1500, () => { req.destroy(); resolve(false); });
+    });
+  }
+
+  /** Check if a TCP port is in use (by anything, not necessarily CDP). */
+  function isPortInUse(port: number): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      const sock = createConnection({ port, host: "127.0.0.1" });
+      sock.once("connect", () => { sock.destroy(); resolve(true); });
+      sock.once("error", () => resolve(false));
+    });
+  }
+
+  /**
+   * Ensure Chrome is running with --remote-debugging-port for CDP browser mode.
+   *
+   * 1. Try the last-known port from storage (default 9222).
+   *    If CDP responds → reuse, no restart.
+   * 2. If not → kill Chrome, find a free port starting from last-known,
+   *    relaunch Chrome, save the actual port to storage.
+   */
+  /**
+   * Resolve the Chrome/Edge/Chromium user data directory for reading Local State.
+   * Returns null if not found.
+   */
+  function resolveChromeUserDataDir(chromePath: string): string | null {
+    const home = homedir();
+    if (process.platform === "darwin") {
+      if (chromePath.includes("Microsoft Edge")) return join(home, "Library", "Application Support", "Microsoft Edge");
+      if (chromePath.includes("Chromium")) return join(home, "Library", "Application Support", "Chromium");
+      return join(home, "Library", "Application Support", "Google", "Chrome");
+    }
+    if (process.platform === "win32") {
+      const localAppData = process.env.LOCALAPPDATA ?? join(home, "AppData", "Local");
+      if (chromePath.toLowerCase().includes("edge")) return join(localAppData, "Microsoft", "Edge", "User Data");
+      return join(localAppData, "Google", "Chrome", "User Data");
+    }
+    // Linux
+    if (chromePath.includes("chromium")) return join(home, ".config", "chromium");
+    return join(home, ".config", "google-chrome");
+  }
+
+  /**
+   * Read the last-used Chrome profile directory name from Local State.
+   * Returns "Default" as fallback.
+   */
+  function readChromeLastUsedProfile(userDataDir: string): string {
+    try {
+      const localStatePath = join(userDataDir, "Local State");
+      if (!existsSync(localStatePath)) return "Default";
+      const data = JSON.parse(readFileSync(localStatePath, "utf-8"));
+      const lastUsed = data?.profile?.last_used;
+      if (typeof lastUsed === "string" && lastUsed.trim()) return lastUsed.trim();
+    } catch {
+      // Ignore parse errors
+    }
+    return "Default";
+  }
+
+  /**
+   * Create a wrapper user-data-dir that symlinks the user's Chrome profile.
+   * Chrome refuses --remote-debugging-port on its default data directory,
+   * so we create a separate directory with symlinks to the real profile.
+   * On Windows, directory symlinks use junctions (no admin required).
+   */
+  function prepareCdpUserDataDir(realUserDataDir: string, profileDir: string): string {
+    const cdpDataDir = join(homedir(), ".easyclaw", "chrome-cdp");
+
+    // Clean up previous wrapper to avoid stale symlinks.
+    rmSync(cdpDataDir, { recursive: true, force: true });
+    mkdirSync(cdpDataDir, { recursive: true });
+
+    // Symlink the profile directory (e.g. Default → user's actual profile).
+    const realProfilePath = join(realUserDataDir, profileDir);
+    const cdpProfilePath = join(cdpDataDir, profileDir);
+    if (existsSync(realProfilePath)) {
+      symlinkSync(realProfilePath, cdpProfilePath, process.platform === "win32" ? "junction" : "dir");
+    }
+
+    // Copy Local State (Chrome reads/writes it; don't symlink to avoid
+    // corrupting the original when the user's Chrome runs later).
+    const localStateSrc = join(realUserDataDir, "Local State");
+    if (existsSync(localStateSrc)) {
+      copyFileSync(localStateSrc, join(cdpDataDir, "Local State"));
+    }
+
+    return cdpDataDir;
+  }
+
+  async function ensureCdpChrome(): Promise<void> {
+    const preferredPort = parseInt(storage.settings.get("browser-cdp-port") || "9222", 10);
+
+    // 1. Probe preferred port — if CDP already accessible, reuse.
+    if (await probeCdp(preferredPort)) {
+      log.info(`CDP already reachable on port ${preferredPort}`);
+      return;
+    }
+
+    // 2. Find Chrome executable (platform-specific).
+    let chromePath: string | null = null;
+    if (process.platform === "darwin") {
+      const candidates = [
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
+      ];
+      chromePath = candidates.find((p) => existsSync(p)) ?? null;
+    } else if (process.platform === "win32") {
+      const localAppData = process.env.LOCALAPPDATA ?? "";
+      const programFiles = process.env["ProgramFiles"] ?? "C:\\Program Files";
+      const programFilesX86 = process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)";
+      const candidates = [
+        join(localAppData, "Google", "Chrome", "Application", "chrome.exe"),
+        join(programFiles, "Google", "Chrome", "Application", "chrome.exe"),
+        join(programFilesX86, "Google", "Chrome", "Application", "chrome.exe"),
+        join(localAppData, "Microsoft", "Edge", "Application", "msedge.exe"),
+        join(programFiles, "Microsoft", "Edge", "Application", "msedge.exe"),
+      ];
+      chromePath = candidates.find((p) => existsSync(p)) ?? null;
+    } else {
+      // Linux
+      const candidates = ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
+      chromePath = candidates.find((p) => existsSync(p)) ?? null;
+      if (!chromePath) {
+        try { chromePath = execSync("which google-chrome", { encoding: "utf-8" }).trim() || null; } catch {}
+      }
+    }
+
+    if (!chromePath) {
+      log.warn("Could not find Chrome executable for CDP mode");
+      return;
+    }
+    log.info(`Found Chrome at ${chromePath}`);
+
+    // 3. Read user's last-used Chrome profile BEFORE killing Chrome.
+    const userDataDir = resolveChromeUserDataDir(chromePath);
+    const profileDir = userDataDir ? readChromeLastUsedProfile(userDataDir) : "Default";
+    log.info(`Chrome profile directory: ${profileDir} (from ${userDataDir ?? "fallback"})`);
+
+    // 4. Kill existing Chrome processes so we can relaunch with debug port.
+    try {
+      if (process.platform === "win32") {
+        execSync("taskkill /f /im chrome.exe 2>nul & exit /b 0", { stdio: "ignore", shell: "cmd.exe" });
+      } else {
+        const name = chromePath.includes("Chromium") ? "Chromium" :
+                     chromePath.includes("Edge") ? "Microsoft Edge" : "Google Chrome";
+        execSync(`pkill -x '${name}' 2>/dev/null || true`, { stdio: "ignore" });
+      }
+      // Wait for process cleanup — Chrome with many tabs needs more time
+      await new Promise((r) => setTimeout(r, 3000));
+    } catch {
+      // Ignore kill errors — Chrome might not be running
+    }
+
+    // 5. Create wrapper user-data-dir with symlinks to the user's profile.
+    //    Chrome requires a non-default --user-data-dir for remote debugging.
+    const cdpDataDir = userDataDir ? prepareCdpUserDataDir(userDataDir, profileDir) : null;
+    if (!cdpDataDir) {
+      log.warn("Could not resolve Chrome user data directory for CDP mode");
+      return;
+    }
+
+    // 6. Find a free port starting from preferredPort.
+    let actualPort = preferredPort;
+    for (let p = preferredPort; p < preferredPort + 100; p++) {
+      if (!(await isPortInUse(p))) {
+        actualPort = p;
+        break;
+      }
+    }
+
+    // 7. Relaunch Chrome with --remote-debugging-port and the symlinked
+    //    --user-data-dir to preserve the user's profile (cookies, extensions, logins).
+    const chromeArgs = [
+      `--remote-debugging-port=${actualPort}`,
+      `--user-data-dir=${cdpDataDir}`,
+      `--profile-directory=${profileDir}`,
+    ];
+    log.info(`Launching Chrome: ${chromePath} ${chromeArgs.join(" ")}`);
+    const child = spawn(chromePath, chromeArgs, {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+
+    // 8. Wait for CDP port to become accessible (poll with timeout).
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 500));
+      if (await probeCdp(actualPort)) {
+        log.info(`Chrome CDP ready on port ${actualPort} (profile: ${profileDir})`);
+        // 9. Save actual port to storage so next launch probes the right port.
+        storage.settings.set("browser-cdp-port", String(actualPort));
+        // Rewrite gateway config with the actual port.
+        writeGatewayConfig(buildFullGatewayConfig());
+        return;
+      }
+    }
+    log.warn(`Chrome CDP not reachable on port ${actualPort} after 15s`);
+  }
+
+  /**
+   * Called when browser mode settings change.
+   * Regenerates gateway config, manages Chrome for CDP mode, and hot-reloads.
+   */
+  async function handleBrowserChange(): Promise<void> {
+    log.info("Browser settings changed, regenerating config");
+    writeGatewayConfig(buildFullGatewayConfig());
+
+    const mode = storage.settings.get("browser-mode") || "standalone";
+    if (mode === "cdp") {
+      await ensureCdpChrome();
+    }
+
+    // Browser config is hot-reloadable — SIGUSR1 suffices, no full restart.
+    await launcher.reload();
   }
 
   function buildLocalProviderOverrides(): Record<string, { baseUrl: string; models: Array<{ id: string; name: string }> }> {
@@ -991,33 +1214,8 @@ app.whenReady().then(async () => {
       return;
     }
 
-    // Read current provider/region settings
-    const provider = storage.settings.get("llm-provider") as LLMProvider | undefined;
-    const region = locale === "zh" ? "cn" : "us";
-
-    // Get the active key's model for the active provider
-    let userModelId: string | undefined;
-    if (provider) {
-      const activeKey = storage.providerKeys.getDefault(provider);
-      if (activeKey?.model) {
-        userModelId = activeKey.model;
-      }
-    }
-
-    // Resolve the effective model config
-    const modelConfig = resolveModelConfig({
-      region,
-      userProvider: provider,
-      userModelId,
-    });
-
-    // Rewrite the OpenClaw config with the new default model
-    writeGatewayConfig({
-      configPath,
-      defaultModel: resolveGeminiOAuthModel(modelConfig.provider, modelConfig.modelId),
-      extraProviders: buildExtraProviderConfigs(),
-      localProviderOverrides: buildLocalProviderOverrides(),
-    });
+    // Rewrite full OpenClaw config (reads current provider/model from storage)
+    writeGatewayConfig(buildFullGatewayConfig());
 
     // Full gateway restart to ensure model change takes effect.
     // SIGUSR1 graceful reload re-reads config but agent sessions keep their
@@ -1166,6 +1364,35 @@ app.whenReady().then(async () => {
       : input.control && input.shift && input.key === "I";
     if (devToolsShortcut) {
       mainWindow!.webContents.toggleDevTools();
+    }
+  });
+
+  // Enable right-click context menu (cut/copy/paste/select all) for all text inputs
+  mainWindow.webContents.on("context-menu", (_event, params) => {
+    const { editFlags, isEditable, selectionText } = params;
+    // Only show for editable fields or when text is selected
+    if (!isEditable && !selectionText) return;
+
+    const menuItems: Electron.MenuItemConstructorOptions[] = [];
+    if (isEditable) {
+      menuItems.push(
+        { label: "Cut", role: "cut", enabled: editFlags.canCut },
+      );
+    }
+    if (selectionText || isEditable) {
+      menuItems.push(
+        { label: "Copy", role: "copy", enabled: editFlags.canCopy },
+      );
+    }
+    if (isEditable) {
+      menuItems.push(
+        { label: "Paste", role: "paste", enabled: editFlags.canPaste },
+        { type: "separator" },
+        { label: "Select All", role: "selectAll", enabled: editFlags.canSelectAll },
+      );
+    }
+    if (menuItems.length > 0) {
+      Menu.buildFromTemplate(menuItems).popup();
     }
   });
 
@@ -1327,6 +1554,11 @@ app.whenReady().then(async () => {
         log.error("Failed to handle permissions change:", err);
       });
     },
+    onBrowserChange: () => {
+      handleBrowserChange().catch((err) => {
+        log.error("Failed to handle browser change:", err);
+      });
+    },
     onOAuthAcquire: async (provider: string): Promise<{ email?: string; tokenPreview: string; manualMode?: boolean; authUrl?: string }> => {
       const proxyRouterUrl = `http://127.0.0.1:${PROXY_ROUTER_PORT}`;
       try {
@@ -1399,20 +1631,12 @@ app.whenReady().then(async () => {
       });
       pendingOAuthCreds = null;
 
-      // Enable plugin + sync auth profiles + rewrite config with google-gemini-cli model
+      // Sync auth profiles + rewrite full config with google-gemini-cli model.
+      // Switch the active provider to "gemini" so buildFullGatewayConfig() picks it up.
+      storage.settings.set("llm-provider", "gemini");
       await syncAllAuthProfiles(stateDir, storage, secretStore);
       await writeProxyRouterConfig(storage, secretStore, lastSystemProxy);
-      // Resolve the model to write: prefer user-selected model from the form,
-      // fall back to current settings, then to the default CLI model.
-      const oauthModelId = options.model
-        ?? storage.providerKeys.getDefault("gemini")?.model
-        ?? "gemini-2.5-pro";
-      writeGatewayConfig({
-        configPath,
-        enableGeminiCliAuth: true,
-        defaultModel: resolveGeminiOAuthModel("gemini", oauthModelId),
-        extraProviders: buildExtraProviderConfigs(),
-      });
+      writeGatewayConfig(buildFullGatewayConfig());
       // Restart gateway to pick up new plugin + auth profile
       await launcher.stop();
       await launcher.start();
@@ -1471,6 +1695,18 @@ app.whenReady().then(async () => {
 
       // Set env vars: API keys + proxy (incl. NODE_OPTIONS) + file permissions
       launcher.setEnv({ ...secretEnv, ...buildFullProxyEnv() });
+
+      // If CDP browser mode was previously saved, ensure Chrome is running with
+      // --remote-debugging-port.  This may kill and relaunch Chrome — an inherent
+      // requirement of CDP mode (the flag must be present at Chrome startup).
+      // If Chrome is already listening on the CDP port, it is reused without restart.
+      const savedBrowserMode = storage.settings.get("browser-mode");
+      if (savedBrowserMode === "cdp") {
+        ensureCdpChrome().catch((err) => {
+          log.warn("Failed to ensure CDP Chrome on startup:", err);
+        });
+      }
+
       return launcher.start();
     })
     .catch((err) => {

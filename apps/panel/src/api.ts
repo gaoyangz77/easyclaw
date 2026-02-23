@@ -605,6 +605,18 @@ export async function updateAgentSettings(data: Partial<AgentSettings>): Promise
   });
 }
 
+// --- Browser Settings ---
+
+export async function fetchBrowserMode(): Promise<"standalone" | "cdp"> {
+  const settings = await fetchSettings();
+  return (settings["browser-mode"] || "standalone") as "standalone" | "cdp";
+}
+
+export async function updateBrowserMode(mode: "standalone" | "cdp"): Promise<void> {
+  await updateSettings({ "browser-mode": mode });
+  invalidateCache("settings");
+}
+
 // --- Telemetry Event Tracking ---
 
 /** Fire-and-forget telemetry event relay to desktop main process. */

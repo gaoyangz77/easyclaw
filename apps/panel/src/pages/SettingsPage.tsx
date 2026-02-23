@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { fetchTelemetrySetting, updateTelemetrySetting, trackEvent, fetchAgentSettings, updateAgentSettings, fetchChatShowAgentEvents, updateChatShowAgentEvents, fetchChatPreserveToolEvents, updateChatPreserveToolEvents } from "../api.js";
+import { fetchTelemetrySetting, updateTelemetrySetting, trackEvent, fetchAgentSettings, updateAgentSettings, fetchChatShowAgentEvents, updateChatShowAgentEvents, fetchChatPreserveToolEvents, updateChatPreserveToolEvents, fetchBrowserMode, updateBrowserMode } from "../api.js";
 import { Select } from "../components/Select.js";
+import { ConfirmDialog } from "../components/ConfirmDialog.js";
 
 const DM_SCOPE_OPTIONS = [
   { value: "main", labelKey: "settings.agent.dmScopeMain" },
@@ -36,6 +37,8 @@ export function SettingsPage() {
   const [dmScope, setDmScope] = useState("main");
   const [showAgentEvents, setShowAgentEvents] = useState(false);
   const [preserveToolEvents, setPreserveToolEvents] = useState(false);
+  const [browserMode, setBrowserMode] = useState<"standalone" | "cdp">("standalone");
+  const [cdpConfirmOpen, setCdpConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -47,16 +50,18 @@ export function SettingsPage() {
   async function loadSettings() {
     try {
       setLoading(true);
-      const [enabled, agentSettings, chatEvents, toolEvents] = await Promise.all([
+      const [enabled, agentSettings, chatEvents, toolEvents, curBrowserMode] = await Promise.all([
         fetchTelemetrySetting(),
         fetchAgentSettings(),
         fetchChatShowAgentEvents(),
         fetchChatPreserveToolEvents(),
+        fetchBrowserMode(),
       ]);
       setTelemetryEnabled(enabled);
       setDmScope(agentSettings.dmScope);
       setShowAgentEvents(chatEvents);
       setPreserveToolEvents(toolEvents);
+      setBrowserMode(curBrowserMode);
       setError(null);
     } catch (err) {
       setError(t("settings.agent.failedToLoad") + String(err));
@@ -127,6 +132,30 @@ export function SettingsPage() {
     }
   }
 
+  function handleBrowserModeChange(value: string) {
+    const newMode = value as "standalone" | "cdp";
+    if (newMode === "cdp" && browserMode !== "cdp") {
+      setCdpConfirmOpen(true);
+      return;
+    }
+    applyBrowserMode(newMode);
+  }
+
+  async function applyBrowserMode(newMode: "standalone" | "cdp") {
+    const previous = browserMode;
+    setBrowserMode(newMode);
+    try {
+      setSaving(true);
+      setError(null);
+      await updateBrowserMode(newMode);
+    } catch (err) {
+      setError(t("settings.browser.failedToSave") + String(err));
+      setBrowserMode(previous);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading) {
     return (
       <div>
@@ -166,6 +195,29 @@ export function SettingsPage() {
           />
           <div className="form-hint">
             {t("settings.agent.dmScopeHint")}
+          </div>
+        </div>
+      </div>
+
+      {/* Browser Settings Section */}
+      <div className="section-card">
+        <h3>{t("settings.browser.title")}</h3>
+
+        <div>
+          <label className="form-label-block">
+            {t("settings.browser.mode")}
+          </label>
+          <Select
+            value={browserMode}
+            onChange={handleBrowserModeChange}
+            options={[
+              { value: "standalone", label: t("settings.browser.modeStandalone"), description: t("settings.browser.modeStandaloneDesc") },
+              { value: "cdp", label: t("settings.browser.modeCdp"), description: t("settings.browser.modeCdpDesc") },
+            ]}
+            disabled={saving}
+          />
+          <div className="form-hint">
+            {t("settings.browser.modeHint")}
           </div>
         </div>
       </div>
@@ -237,6 +289,17 @@ export function SettingsPage() {
           </ul>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={cdpConfirmOpen}
+        onConfirm={() => { setCdpConfirmOpen(false); applyBrowserMode("cdp"); }}
+        onCancel={() => setCdpConfirmOpen(false)}
+        title={t("settings.browser.cdpConfirmTitle")}
+        message={t("settings.browser.cdpConfirm")}
+        confirmLabel={t("settings.browser.cdpConfirmOk")}
+        cancelLabel={t("common.cancel")}
+        confirmVariant="primary"
+      />
     </div>
   );
 }
