@@ -5,7 +5,8 @@
     "en": [
       "Added CDP mode to connect agent to user's own Chrome browser",
       "Added file path attachment button for chat messages",
-      "Added pure-JS AMR to WAV converter for Windows ffmpeg-free speech-to-text",
+      "Fixed streaming text duplication when tool calls arrive during chat",
+      "Reverted vendored AMR decoder in favor of ffmpeg-based conversion",
       "Fixed 30s stall detection that wrongly aborted long agent runs",
       "Fixed provider links placement and removed inline styles on STT page",
       "Fixed chat attachments to restrict to images only",
@@ -14,7 +15,8 @@
     "zh": [
       "新增 CDP 模式，可连接用户自己的 Chrome 浏览器",
       "新增聊天消息文件路径附件按钮",
-      "新增纯 JS 的 AMR 转 WAV 转换器，Windows 免装 ffmpeg 即可语音转文字",
+      "修复聊天中 tool call 触发时流式文本重复显示的问题",
+      "移除内置 AMR 解码器，恢复使用 ffmpeg 转换",
       "修复 30 秒超时检测误中断长时间运行的 agent 任务",
       "修复 LLM 服务商链接位置，清理语音转文字页面样式",
       "修复聊天附件限制为仅图片",
