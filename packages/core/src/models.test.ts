@@ -73,10 +73,12 @@ describe("initKnownModels", () => {
     expect(KNOWN_MODELS.openai![0].modelId).toBe("gpt-4o");
     expect(KNOWN_MODELS.openai![0].provider).toBe("openai");
     expect(KNOWN_MODELS.anthropic).toHaveLength(1);
-    expect(KNOWN_MODELS.deepseek).toHaveLength(1);
+    // deepseek has 2 extraModels; catalog entry overlaps with one → merged to 2
+    expect(KNOWN_MODELS.deepseek).toHaveLength(2);
+    expect(KNOWN_MODELS.deepseek![0].modelId).toBe("deepseek-chat");
   });
 
-  it("should keep extraModels providers over catalog", () => {
+  it("should merge extraModels with catalog entries (supplement, not replace)", () => {
     const catalog = {
       volcengine: [
         { id: "some-other-model", name: "Other Model" },
@@ -85,8 +87,16 @@ describe("initKnownModels", () => {
 
     initKnownModels(catalog);
 
-    // extraModels take precedence — volcengine should still have our models
-    expect(KNOWN_MODELS.volcengine).toEqual(PROVIDERS.volcengine.extraModels);
+    // extraModels should be present
+    const ids = KNOWN_MODELS.volcengine!.map((m) => m.modelId);
+    for (const extra of PROVIDERS.volcengine.extraModels!) {
+      expect(ids).toContain(extra.modelId);
+    }
+    // catalog-only model should also be appended
+    expect(ids).toContain("some-other-model");
+    expect(KNOWN_MODELS.volcengine!.length).toBe(
+      PROVIDERS.volcengine.extraModels!.length + 1,
+    );
   });
 
   it("should ignore unknown providers", () => {

@@ -321,4 +321,52 @@ describe("readFullModelCatalog", () => {
     // zhipu-coding should have fewer models than zhipu (6 vs 12)
     expect(result["zhipu-coding"]!.length).toBeLessThan(result.zhipu!.length);
   });
+
+  it("should supplement (not replace) gateway models with extraModels", async () => {
+    // Gateway has a volcengine model not in our extraModels
+    mocks.existsSync.mockImplementation((p: string) =>
+      String(p).includes(join("agents", "main", "agent", "models.json")),
+    );
+    mocks.readFileSync.mockReturnValue(JSON.stringify({
+      providers: {
+        volcengine: {
+          models: [{ id: "vendor-only-model", name: "Vendor Only Model" }],
+        },
+      },
+    }));
+
+    const result = await readFullModelCatalog({ EASYCLAW_STATE_DIR: "/tmp/fake" });
+
+    // Should contain both gateway model AND extraModels
+    const ids = result.volcengine!.map((m) => m.id);
+    expect(ids).toContain("vendor-only-model");
+    // Also has all extraModels entries
+    for (const extra of getProviderMeta("volcengine")!.extraModels!) {
+      expect(ids).toContain(extra.modelId);
+    }
+    // Total should be gateway (1 new) + extraModels (N)
+    expect(result.volcengine!.length).toBe(
+      getProviderMeta("volcengine")!.extraModels!.length + 1,
+    );
+  });
+
+  it("should not duplicate models present in both gateway and extraModels", async () => {
+    const firstExtra = getProviderMeta("volcengine")!.extraModels![0];
+    mocks.existsSync.mockImplementation((p: string) =>
+      String(p).includes(join("agents", "main", "agent", "models.json")),
+    );
+    mocks.readFileSync.mockReturnValue(JSON.stringify({
+      providers: {
+        volcengine: {
+          models: [{ id: firstExtra.modelId, name: "Gateway Version" }],
+        },
+      },
+    }));
+
+    const result = await readFullModelCatalog({ EASYCLAW_STATE_DIR: "/tmp/fake" });
+
+    // Duplicate should not appear — gateway model kept, extraModels appends non-overlapping
+    const matchingIds = result.volcengine!.filter((m) => m.id === firstExtra.modelId);
+    expect(matchingIds).toHaveLength(1);
+  });
 });

@@ -11,6 +11,8 @@ export type LLMProvider =
   | "kimi"
   | "moonshot-coding"
   | "qwen"
+  | "qwen-coding"
+  | "modelscope"
   | "groq"
   | "mistral"
   | "xai"
@@ -23,12 +25,14 @@ export type LLMProvider =
   | "volcengine"
   | "volcengine-coding"
   | "amazon-bedrock"
+  | "nvidia"
+  | "nvidia-nim"
   | "gemini"
   | "claude"
   | "ollama";
 
 /** Root provider IDs (excludes subscription plan IDs). */
-export type RootProvider = Exclude<LLMProvider, "zhipu-coding" | "moonshot-coding" | "minimax-coding" | "volcengine-coding" | "gemini" | "claude">;
+export type RootProvider = Exclude<LLMProvider, "zhipu-coding" | "moonshot-coding" | "minimax-coding" | "volcengine-coding" | "qwen-coding" | "modelscope" | "nvidia-nim" | "gemini" | "claude">;
 
 /** Per-million-token cost in USD for OpenClaw usage tracking. */
 export interface ModelCost {
@@ -186,6 +190,11 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
     url: "https://platform.deepseek.com/api-docs/pricing",
     apiKeyUrl: "https://platform.deepseek.com/api_keys",
     envVar: "DEEPSEEK_API_KEY",
+    preferredModel: "deepseek-chat",
+    extraModels: [
+      { provider: "deepseek", modelId: "deepseek-chat", displayName: "DeepSeek Chat (V3)" },
+      { provider: "deepseek", modelId: "deepseek-reasoner", displayName: "DeepSeek Reasoner (R1)" },
+    ],
   },
   zhipu: {
     label: "Zhipu (GLM)",
@@ -286,34 +295,15 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
           },
           {
             provider: "zhipu-coding",
-            modelId: "glm-5-code",
-            displayName: "GLM-5-Code",
-            cost: { input: cny(6), output: cny(28), cacheRead: 0, cacheWrite: 0 },
-          },
-          {
-            provider: "zhipu-coding",
-            modelId: "glm-4.7-flash",
-            displayName: "GLM-4.7-Flash",
-            cost: FREE_COST,
-          },
-          {
-            provider: "zhipu-coding",
             modelId: "glm-4.7",
             displayName: "GLM-4.7",
             cost: { input: cny(4), output: cny(16), cacheRead: 0, cacheWrite: 0 },
           },
           {
             provider: "zhipu-coding",
-            modelId: "glm-4.6",
-            displayName: "GLM-4.6",
-            cost: { input: cny(4), output: cny(16), cacheRead: 0, cacheWrite: 0 },
-          },
-          {
-            provider: "zhipu-coding",
-            modelId: "glm-4.6v",
-            displayName: "GLM-4.6V",
-            cost: { input: cny(2), output: cny(6), cacheRead: 0, cacheWrite: 0 },
-            supportsVision: true,
+            modelId: "glm-4.5-air",
+            displayName: "GLM-4.5-Air",
+            cost: { input: cny(1), output: cny(8), cacheRead: 0, cacheWrite: 0 },
           },
         ],
       },
@@ -418,6 +408,57 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
     url: "https://help.aliyun.com/zh/model-studio/getting-started/models",
     apiKeyUrl: "https://bailian.console.aliyun.com/#/model-market/api-key",
     envVar: "DASHSCOPE_API_KEY",
+    preferredModel: "qwen-plus",
+    extraModels: [
+      { provider: "qwen", modelId: "qwen-max", displayName: "Qwen Max" },
+      { provider: "qwen", modelId: "qwen-plus", displayName: "Qwen Plus" },
+      { provider: "qwen", modelId: "qwen-turbo", displayName: "Qwen Turbo" },
+      { provider: "qwen", modelId: "qwen-long", displayName: "Qwen Long" },
+      { provider: "qwen", modelId: "qwen3-235b-a22b", displayName: "Qwen3 235B" },
+      { provider: "qwen", modelId: "qwen3-30b-a3b", displayName: "Qwen3 30B" },
+      { provider: "qwen", modelId: "qwen3-coder-plus", displayName: "Qwen3 Coder Plus" },
+      { provider: "qwen", modelId: "qwq-plus", displayName: "QwQ Plus" },
+    ],
+    subscriptionPlans: [
+      {
+        id: "qwen-coding",
+        label: "Qwen Coding Plan (百炼)",
+        baseUrl: "https://coding.dashscope.aliyuncs.com/v1",
+        subscriptionUrl: "https://www.aliyun.com/benefit/scene/codingplan",
+        apiKeyUrl: "https://bailian.console.aliyun.com/cn-beijing/?tab=model#/efm/coding_plan",
+        envVar: "DASHSCOPE_CODING_API_KEY",
+        extraModels: [
+          { provider: "qwen-coding", modelId: "qwen3.5-plus", displayName: "Qwen3.5 Plus" },
+          { provider: "qwen-coding", modelId: "qwen3-max-2026-01-23", displayName: "Qwen3 Max" },
+          { provider: "qwen-coding", modelId: "qwen3-coder-next", displayName: "Qwen3 Coder Next" },
+          { provider: "qwen-coding", modelId: "qwen3-coder-plus", displayName: "Qwen3 Coder Plus" },
+          { provider: "qwen-coding", modelId: "glm-4.7", displayName: "GLM-4.7" },
+          { provider: "qwen-coding", modelId: "kimi-k2.5", displayName: "Kimi K2.5" },
+        ],
+      },
+      {
+        id: "modelscope",
+        label: "ModelScope (魔搭)",
+        baseUrl: "https://api-inference.modelscope.cn/v1",
+        subscriptionUrl: "https://modelscope.cn/docs/model-service/API-Inference/intro",
+        apiKeyUrl: "https://modelscope.cn/my/myaccesstoken",
+        envVar: "MODELSCOPE_API_KEY",
+        extraModels: [
+          { provider: "modelscope", modelId: "Qwen/Qwen3.5-397B-A17B", displayName: "Qwen3.5 397B" },
+          { provider: "modelscope", modelId: "Qwen/Qwen3-235B-A22B-Instruct-2507", displayName: "Qwen3 235B Instruct" },
+          { provider: "modelscope", modelId: "Qwen/Qwen3-235B-A22B-Thinking-2507", displayName: "Qwen3 235B Thinking" },
+          { provider: "modelscope", modelId: "Qwen/Qwen3-Coder-480B-A35B-Instruct", displayName: "Qwen3 Coder 480B" },
+          { provider: "modelscope", modelId: "Qwen/Qwen3-Coder-30B-A3B-Instruct", displayName: "Qwen3 Coder 30B" },
+          { provider: "modelscope", modelId: "Qwen/Qwen3-32B", displayName: "Qwen3 32B" },
+          { provider: "modelscope", modelId: "Qwen/QwQ-32B", displayName: "QwQ 32B" },
+          { provider: "modelscope", modelId: "deepseek-ai/DeepSeek-R1-0528", displayName: "DeepSeek R1" },
+          { provider: "modelscope", modelId: "deepseek-ai/DeepSeek-V3.2", displayName: "DeepSeek V3.2" },
+          { provider: "modelscope", modelId: "moonshotai/Kimi-K2.5", displayName: "Kimi K2.5" },
+          { provider: "modelscope", modelId: "ZhipuAI/GLM-5", displayName: "GLM-5" },
+          { provider: "modelscope", modelId: "ZhipuAI/GLM-4.7-Flash", displayName: "GLM-4.7 Flash" },
+        ],
+      },
+    ],
   },
   groq: {
     label: "Groq",
@@ -500,6 +541,12 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
         subscriptionUrl: "https://platform.minimaxi.com/docs/pricing/coding-plan",
         apiKeyUrl: "https://platform.minimaxi.com/user-center/basic-information/interface-key",
         envVar: "MINIMAX_CODING_API_KEY",
+        extraModels: [
+          { provider: "minimax-coding", modelId: "MiniMax-M2.5", displayName: "MiniMax M2.5" },
+          { provider: "minimax-coding", modelId: "MiniMax-M2.5-highspeed", displayName: "MiniMax M2.5 Highspeed" },
+          { provider: "minimax-coding", modelId: "MiniMax-M2.1", displayName: "MiniMax M2.1" },
+          { provider: "minimax-coding", modelId: "MiniMax-M2", displayName: "MiniMax M2" },
+        ],
       },
     ],
   },
@@ -594,6 +641,33 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
             modelId: "ark-code-latest",
             displayName: "Ark Code (Latest)",
           },
+        ],
+      },
+    ],
+  },
+  nvidia: {
+    label: "NVIDIA (NIM)",
+    baseUrl: "https://integrate.api.nvidia.com/v1",
+    url: "https://build.nvidia.com",
+    apiKeyUrl: "https://build.nvidia.com/settings/api-keys",
+    envVar: "NVIDIA_API_KEY",
+    subscriptionPlans: [
+      {
+        id: "nvidia-nim",
+        label: "NVIDIA NIM",
+        baseUrl: "https://integrate.api.nvidia.com/v1",
+        subscriptionUrl: "https://build.nvidia.com",
+        apiKeyUrl: "https://build.nvidia.com/settings/api-keys",
+        envVar: "NVIDIA_NIM_API_KEY",
+        extraModels: [
+          { provider: "nvidia-nim", modelId: "meta/llama-3.3-70b-instruct", displayName: "Llama 3.3 70B Instruct" },
+          { provider: "nvidia-nim", modelId: "meta/llama-3.1-405b-instruct", displayName: "Llama 3.1 405B Instruct" },
+          { provider: "nvidia-nim", modelId: "meta/llama-3.1-8b-instruct", displayName: "Llama 3.1 8B Instruct" },
+          { provider: "nvidia-nim", modelId: "deepseek-ai/deepseek-r1", displayName: "DeepSeek R1" },
+          { provider: "nvidia-nim", modelId: "qwen/qwen2.5-72b-instruct", displayName: "Qwen 2.5 72B Instruct" },
+          { provider: "nvidia-nim", modelId: "google/gemma-2-27b-it", displayName: "Gemma 2 27B IT" },
+          { provider: "nvidia-nim", modelId: "mistralai/mistral-large-2-instruct", displayName: "Mistral Large 2 Instruct" },
+          { provider: "nvidia-nim", modelId: "nvidia/llama-3.1-nemotron-70b-instruct", displayName: "Nemotron 70B Instruct" },
         ],
       },
     ],
@@ -741,7 +815,9 @@ export let KNOWN_MODELS: Partial<Record<LLMProvider, ModelConfig[]>> =
  * Populate KNOWN_MODELS from the gateway's model catalog.
  *
  * Called by `readFullModelCatalog()` in @easyclaw/gateway after reading
- * models.json. extraModels providers take precedence (our own config).
+ * models.json. extraModels supplements catalog data — items from extraModels
+ * are placed first (they carry richer data like cost) and catalog entries
+ * that don't overlap are appended after.
  */
 export function initKnownModels(
   catalog: Record<string, Array<{ id: string; name: string }>>,
@@ -751,15 +827,20 @@ export function initKnownModels(
   for (const [provider, entries] of Object.entries(catalog)) {
     if (!ALL_PROVIDERS.includes(provider as LLMProvider)) continue;
     const p = provider as LLMProvider;
-    result[p] = entries.map((e) => ({
+    const catalogModels: ModelConfig[] = entries.map((e) => ({
       provider: p,
       modelId: e.id,
       displayName: e.name,
     }));
+    const extra = getProviderMeta(p)?.extraModels ?? [];
+    const extraIds = new Set(extra.map((m) => m.modelId));
+    // extraModels first (richer data with cost), then catalog entries not in extraModels
+    result[p] = [...extra, ...catalogModels.filter((m) => !extraIds.has(m.modelId))];
   }
 
-  // extraModels take precedence
+  // Include extraModels-only providers not in catalog at all
   for (const p of ALL_PROVIDERS) {
+    if (result[p]) continue;
     const extra = getProviderMeta(p)?.extraModels;
     if (extra && extra.length > 0) {
       result[p] = extra;
@@ -864,10 +945,13 @@ export function getProvidersForRegion(region: string): LLMProvider[] {
       "kimi",
       "moonshot-coding",
       "qwen",
+      "qwen-coding",
+      "modelscope",
       "volcengine",
       "minimax-cn",
       "minimax-coding",
       "xiaomi",
+      "nvidia-nim",
       "openai",
       "anthropic",
       "claude",
@@ -883,6 +967,7 @@ export function getProvidersForRegion(region: string): LLMProvider[] {
     "deepseek",
     "moonshot",
     "zai",
+    "nvidia-nim",
     "groq",
     "mistral",
     "xai",

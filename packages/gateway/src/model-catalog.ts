@@ -249,12 +249,16 @@ export async function readFullModelCatalog(
   // Gateway entries override vendor entries per provider
   const merged = { ...vendor, ...gateway };
 
-  // extraModels is our curated, authoritative model list — always takes
-  // precedence over stale gateway models.json entries for that provider.
+  // extraModels supplements vendor/gateway data — append models that the
+  // vendor catalog doesn't already provide. For providers not in the vendor
+  // catalog at all (e.g. deepseek, qwen), extraModels is the sole source.
   for (const p of ALL_PROVIDERS) {
     const models = getProviderMeta(p)?.extraModels;
     if (models) {
-      merged[p] = models.map((m) => ({ id: m.modelId, name: m.displayName }));
+      const extras = models.map((m) => ({ id: m.modelId, name: m.displayName }));
+      const existing = merged[p] ?? [];
+      const existingIds = new Set(existing.map((e) => e.id));
+      merged[p] = [...existing, ...extras.filter((e) => !existingIds.has(e.id))];
     }
   }
 
