@@ -1101,51 +1101,35 @@ app.whenReady().then(async () => {
       }
     }
 
-    // 6. Launch Chrome with --remote-debugging-port.
-    //    Strategy: try the real user-data-dir first (preserves cookies, taskbar
-    //    identity, and SingletonLock prevents duplicate instances).  If Chrome
-    //    refuses remote debugging on its default data dir (macOS Chrome 145+),
-    //    fall back to a symlinked wrapper directory.
-    const launchWithDataDir = async (dataDir: string): Promise<boolean> => {
-      const chromeArgs = [
-        `--remote-debugging-port=${actualPort}`,
-        `--user-data-dir=${dataDir}`,
-        `--profile-directory=${profileDir}`,
-      ];
-      log.info(`Launching Chrome: ${chromePath} ${chromeArgs.join(" ")}`);
-      const child = spawn(chromePath!, chromeArgs, { detached: true, stdio: "ignore" });
-      child.unref();
-
-      const deadline = Date.now() + 15_000;
-      while (Date.now() < deadline) {
-        await new Promise((r) => setTimeout(r, 500));
-        if (await probeCdp(actualPort)) {
-          log.info(`Chrome CDP ready on port ${actualPort} (dataDir: ${dataDir}, profile: ${profileDir})`);
-          storage.settings.set("browser-cdp-port", String(actualPort));
-          writeGatewayConfig(buildFullGatewayConfig());
-          return true;
-        }
-      }
-      return false;
-    };
-
-    // Try 1: real user-data-dir (best: same cookies, same taskbar icon, SingletonLock).
-    if (await launchWithDataDir(userDataDir)) {
-      return;
-    }
-    log.warn(`CDP not reachable with real user-data-dir — falling back to symlinked wrapper`);
-
-    // Kill the Chrome from Try 1 before retrying with a different data dir.
-    killChrome();
-    await new Promise((r) => setTimeout(r, 3000));
-
-    // Try 2: symlinked wrapper (needed on macOS Chrome 145+ which blocks
-    // remote debugging on the default data directory).
+    // 6. Create wrapper user-data-dir with symlinks/junctions to the user's
+    //    profile.  Chrome (145+) refuses --remote-debugging-port on its default
+    //    data directory on both macOS and Windows.  The wrapper uses a different
+    //    path but links to the real profile so cookies, extensions, and logins
+    //    are preserved.
     const cdpDataDir = prepareCdpUserDataDir(userDataDir, profileDir);
-    if (await launchWithDataDir(cdpDataDir)) {
-      return;
+
+    // 7. Launch Chrome with --remote-debugging-port and the wrapper data dir.
+    const chromeArgs = [
+      `--remote-debugging-port=${actualPort}`,
+      `--user-data-dir=${cdpDataDir}`,
+      `--profile-directory=${profileDir}`,
+    ];
+    log.info(`Launching Chrome: ${chromePath} ${chromeArgs.join(" ")}`);
+    const child = spawn(chromePath!, chromeArgs, { detached: true, stdio: "ignore" });
+    child.unref();
+
+    // 8. Wait for CDP port to become accessible (poll with timeout).
+    const deadline = Date.now() + 15_000;
+    while (Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, 500));
+      if (await probeCdp(actualPort)) {
+        log.info(`Chrome CDP ready on port ${actualPort} (profile: ${profileDir})`);
+        storage.settings.set("browser-cdp-port", String(actualPort));
+        writeGatewayConfig(buildFullGatewayConfig());
+        return;
+      }
     }
-    log.warn(`Chrome CDP not reachable on port ${actualPort} after both attempts`);
+    log.warn(`Chrome CDP not reachable on port ${actualPort} after 15s`);
   }
 
   /**
