@@ -259,6 +259,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   const emojiPickerRef = useRef<HTMLDivElement>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const filePathInputRef = useRef<HTMLInputElement>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // Stable refs so event handler closures always see the latest state
@@ -995,6 +996,22 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     fileInputRef.current?.click();
   }
 
+  function handleFilePathClick() {
+    filePathInputRef.current?.click();
+  }
+
+  function handleFilePathChange(e: React.ChangeEvent<HTMLInputElement>) {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const paths = Array.from(e.target.files).map((f) => (f as File & { path?: string }).path ?? f.name);
+    const snippet = paths.join(" ");
+    // Insert paths at cursor with surrounding spaces to avoid merging with existing text
+    setDraft((prev) => {
+      const before = prev.length > 0 && !prev.endsWith(" ") ? " " : "";
+      return `${prev}${before}${snippet} `;
+    });
+    e.target.value = "";
+  }
+
   function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     if (e.target.files && e.target.files.length > 0) {
       handleFileSelect(e.target.files);
@@ -1038,14 +1055,20 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
           {showHistoryEnd && (
             <div className="chat-history-end">{t("chat.historyEnd")}</div>
           )}
-          {visibleMessages.map((msg, i) => msg.role === "tool-event" ? (
-            preserveToolEvents ? (
-              <div key={i} className="chat-tool-event">
-                <span className="chat-tool-event-icon">&#9881;</span>
-                {t("chat.toolEventLabel", { tool: msg.toolName })}
-              </div>
-            ) : null
-          ) : (
+          {visibleMessages.map((msg, i) => {
+            if (msg.role === "tool-event") {
+              return preserveToolEvents ? (
+                <div key={i} className="chat-tool-event">
+                  <span className="chat-tool-event-icon">&#9881;</span>
+                  {t("chat.toolEventLabel", { tool: msg.toolName })}
+                </div>
+              ) : null;
+            }
+            const cleaned = cleanMessageText(msg.text);
+            const hasImages = msg.images && msg.images.length > 0;
+            // Skip empty bubbles (text stripped by cleanMessageText and no images)
+            if (!cleaned && !hasImages) return null;
+            return (
             <div key={i} className={`chat-bubble-wrap ${msg.role === "user" ? "chat-bubble-wrap-user" : "chat-bubble-wrap-assistant"}`}>
               {msg.timestamp > 0 && (
                 <div className="chat-bubble-timestamp">{formatTimestamp(msg.timestamp, i18n.language)}</div>
@@ -1053,9 +1076,9 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
             <div
               className={`chat-bubble ${msg.role === "user" ? "chat-bubble-user" : "chat-bubble-assistant"}`}
             >
-              {msg.images && msg.images.length > 0 && (
+              {hasImages && (
                 <div className="chat-bubble-images">
-                  {msg.images.map((img, j) => (
+                  {msg.images!.map((img, j) => (
                     <img
                       key={j}
                       src={`data:${img.mimeType};base64,${img.data}`}
@@ -1065,10 +1088,11 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
                   ))}
                 </div>
               )}
-              {msg.text && formatMessage(cleanMessageText(msg.text))}
+              {cleaned && formatMessage(cleaned)}
             </div>
             </div>
-          ))}
+            );
+          })}
           {(() => {
             const view = trackerRef.current.getView();
             // Show the thinking bubble only when there's no streaming text.
@@ -1204,6 +1228,23 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
             onChange={handleFileInputChange}
             style={{ display: "none" }}
           />
+          <input
+            ref={filePathInputRef}
+            type="file"
+            multiple
+            onChange={handleFilePathChange}
+            style={{ display: "none" }}
+          />
+          <button
+            className="chat-attach-btn"
+            onClick={handleFilePathClick}
+            title={t("chat.attachFile")}
+            type="button"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
+            </svg>
+          </button>
           <button
             className="chat-attach-btn"
             onClick={handleAttachClick}
