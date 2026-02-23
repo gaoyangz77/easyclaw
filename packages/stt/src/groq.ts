@@ -1,5 +1,6 @@
 import { createLogger } from "@easyclaw/logger";
 import type { SttProvider, SttResult } from "./types.js";
+import { convertAmrToWav } from "./amr-converter.js";
 
 const log = createLogger("stt:groq");
 
@@ -38,9 +39,16 @@ export class GroqSttProvider implements SttProvider {
   async transcribe(audio: Buffer, format: string): Promise<SttResult> {
     const startTime = Date.now();
 
+    // Auto-convert AMR (WeCom voice format) to WAV using pure JS decoder
+    if (format === "amr") {
+      log.info("Converting AMR → WAV via pure-JS decoder");
+      audio = convertAmrToWav(audio);
+      format = "wav";
+    }
+
     if (!SUPPORTED_FORMATS.has(format)) {
       throw new Error(
-        `Unsupported audio format "${format}". Supported: ${[...SUPPORTED_FORMATS].join(", ")}`,
+        `Unsupported audio format "${format}". Supported: ${[...SUPPORTED_FORMATS].join(", ")}, amr`,
       );
     }
 

@@ -59,32 +59,6 @@ function invalidateSkillsSnapshot(): void {
   }
 }
 
-/** Supported formats that Groq Whisper accepts directly (no conversion needed). */
-const STT_SUPPORTED_FORMATS = new Set(["flac", "mp3", "mp4", "mpeg", "mpga", "m4a", "ogg", "wav", "webm"]);
-
-/**
- * Convert audio to MP3 using ffmpeg (piped via stdin/stdout).
- * Returns the converted buffer and "mp3" format string.
- * Falls back to the original buffer if ffmpeg is unavailable.
- */
-function convertAudioToMp3(input: Buffer, inputFormat: string): Promise<{ data: Buffer; format: string }> {
-  return new Promise((resolve) => {
-    const proc = execFile(
-      "ffmpeg",
-      ["-i", `pipe:0`, "-f", inputFormat, "-f", "mp3", "-ac", "1", "-ar", "16000", "pipe:1"],
-      { encoding: "buffer", maxBuffer: 10 * 1024 * 1024, timeout: 15_000 },
-      (err, stdout) => {
-        if (err || !stdout || stdout.length === 0) {
-          log.warn(`ffmpeg conversion failed (${err?.message ?? "empty output"}), trying raw`);
-          resolve({ data: input, format: inputFormat });
-          return;
-        }
-        resolve({ data: stdout as unknown as Buffer, format: "mp3" });
-      },
-    );
-    proc.stdin?.end(input);
-  });
-}
 
 /**
  * Fetch through local proxy router so GFW-blocked APIs (Telegram, LINE, etc.)
@@ -377,22 +351,17 @@ async function handleWeComInbound(frame: {
   if (frame.msg_type === "voice" && frame.media_data) {
     if (wecomSttManager?.isEnabled()) {
       try {
-        let audioBuffer: Buffer = Buffer.from(frame.media_data, "base64");
+        const audioBuffer: Buffer = Buffer.from(frame.media_data, "base64");
         // WeCom voice is AMR format; extract format hint from MIME or default to "amr"
-        let format = frame.media_mime?.split("/").pop()?.split(";")[0] ?? "amr";
+        const format = frame.media_mime?.split("/").pop()?.split(";")[0] ?? "amr";
 
-        // Convert unsupported formats (e.g. AMR) to MP3 via ffmpeg
-        if (!STT_SUPPORTED_FORMATS.has(format.toLowerCase())) {
-          log.info(`WeCom: converting ${format} → mp3 via ffmpeg`);
-          const converted = await convertAudioToMp3(audioBuffer, format);
-          audioBuffer = converted.data;
-          format = converted.format;
-        }
-
+        // STT providers handle format conversion internally:
+        // - Groq: auto-converts AMR → WAV via pure-JS decoder
+        // - Volcengine: accepts AMR natively
         log.info(`WeCom: transcribing voice (${audioBuffer.length} bytes, format=${format})`);
         const transcribed = await wecomSttManager.transcribe(audioBuffer, format);
         if (transcribed) {
-          message = transcribed;
+          message = `[语音消息] ${transcribed}`;
           log.info(`WeCom: voice transcribed: ${transcribed.substring(0, 80)}...`);
         } else {
           message = "[语音消息 - 转写失败]";
@@ -1151,6 +1120,8 @@ export interface PanelServerOptions {
   onSttChange?: () => void;
   /** Callback fired when file permissions change. Requires gateway restart to apply env vars. */
   onPermissionsChange?: () => void;
+  /** Callback fired when browser mode settings change. */
+  onBrowserChange?: () => void;
   /** Callback fired when a channel account is created or updated. */
   onChannelConfigured?: (channelId: string) => void;
   /** Callback to initiate an OAuth flow for a provider (e.g. gemini). */
@@ -1407,7 +1378,7 @@ async function syncActiveKey(
 export function startPanelServer(options: PanelServerOptions): Server {
   const port = options.port ?? 3210;
   const distDir = resolve(options.panelDistDir);
-  const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, changelogPath, onUpdateDownload, onUpdateCancel, onUpdateInstall, getUpdateDownloadState } = options;
+  const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onBrowserChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, changelogPath, onUpdateDownload, onUpdateCancel, onUpdateInstall, getUpdateDownloadState } = options;
 
   // Store references so module-level WeCom handlers can access them
   wecomStorageRef = storage;
@@ -1593,7 +1564,7 @@ export function startPanelServer(options: PanelServerOptions): Server {
       }
 
       try {
-        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, snapshotEngine, queryService);
+        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onBrowserChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, snapshotEngine, queryService);
       } catch (err) {
         log.error("API error:", err);
         sendJson(res, 500, { error: "Internal server error" });
@@ -1675,6 +1646,7 @@ async function handleApiRoute(
   },
   onSttChange?: () => void,
   onPermissionsChange?: () => void,
+  onBrowserChange?: () => void,
   onChannelConfigured?: (channelId: string) => void,
   onOAuthFlow?: (provider: string) => Promise<{ providerKeyId: string; email?: string; provider: string }>,
   onOAuthAcquire?: (provider: string) => Promise<{ email?: string; tokenPreview: string; manualMode?: boolean; authUrl?: string }>,
@@ -1875,6 +1847,7 @@ async function handleApiRoute(
     let providerChanged = false;
     let sttChanged = false;
     let permissionsChanged = false;
+    let browserChanged = false;
     for (const [key, value] of Object.entries(body)) {
       if (typeof key === "string" && typeof value === "string") {
         if (key.endsWith("-api-key")) {
@@ -1897,6 +1870,9 @@ async function handleApiRoute(
           if (key === "file-permissions-full-access") {
             permissionsChanged = true;
           }
+          if (key === "browser-mode") {
+            browserChanged = true;
+          }
         }
       }
     }
@@ -1909,6 +1885,9 @@ async function handleApiRoute(
     }
     if (permissionsChanged) {
       onPermissionsChange?.();
+    }
+    if (browserChanged) {
+      onBrowserChange?.();
     }
     return;
   }

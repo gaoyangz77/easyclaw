@@ -1,9 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { selectSttProvider } from "./region.js";
 import { createSttProvider } from "./factory.js";
 import { GroqSttProvider } from "./groq.js";
 import { VolcengineSttProvider } from "./volcengine.js";
+import { convertAmrToWav } from "./amr-converter.js";
 import type { SttConfig } from "./types.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ─── selectSttProvider ──────────────────────────────────────────────────────
 
@@ -148,12 +154,37 @@ describe("GroqSttProvider", () => {
     expect(formData.get("file")).toBeInstanceOf(Blob);
   });
 
-  it("throws on unsupported audio format", async () => {
+  it("throws on unsupported audio format (not amr)", async () => {
     const provider = new GroqSttProvider("test-api-key");
     const audio = Buffer.from("fake");
     await expect(provider.transcribe(audio, "aac")).rejects.toThrow(
       'Unsupported audio format "aac"',
     );
+  });
+
+  it("auto-converts AMR to WAV and sends WAV to Groq", async () => {
+    const mockResponse = {
+      ok: true,
+      status: 200,
+      json: async () => ({ text: "Hello from AMR!" }),
+      text: async () => "",
+    } as unknown as Response;
+
+    const fetchMock = vi.fn().mockResolvedValue(mockResponse);
+    globalThis.fetch = fetchMock;
+
+    const provider = new GroqSttProvider("test-api-key");
+    const amrAudio = readFileSync(join(__dirname, "vendor", "test-fixture.amr"));
+    const result = await provider.transcribe(amrAudio, "amr");
+
+    expect(result.text).toBe("Hello from AMR!");
+    expect(result.provider).toBe("groq");
+
+    // Verify that the file was sent as WAV, not AMR
+    const [, options] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const formData = options.body as FormData;
+    const file = formData.get("file") as Blob;
+    expect(file.type).toBe("audio/wav");
   });
 
   it("throws when audio file exceeds 25 MB", async () => {
@@ -397,5 +428,39 @@ describe("VolcengineSttProvider", () => {
     await expect(
       provider.transcribe(Buffer.from("audio"), "wav"),
     ).rejects.toThrow("Volcengine query failed: HTTP 200");
+  });
+});
+
+// ─── convertAmrToWav ────────────────────────────────────────────────────────
+
+describe("convertAmrToWav", () => {
+  it("converts a valid AMR file to WAV with correct header", () => {
+    const amrData = readFileSync(join(__dirname, "vendor", "test-fixture.amr"));
+    const wav = convertAmrToWav(amrData);
+
+    // WAV header: "RIFF" at offset 0, "WAVE" at offset 8
+    expect(wav.subarray(0, 4).toString("ascii")).toBe("RIFF");
+    expect(wav.subarray(8, 12).toString("ascii")).toBe("WAVE");
+
+    // PCM format (1) at offset 20
+    expect(wav.readUInt16LE(20)).toBe(1);
+    // Mono (1 channel) at offset 22
+    expect(wav.readUInt16LE(22)).toBe(1);
+    // 8000 Hz sample rate at offset 24
+    expect(wav.readUInt32LE(24)).toBe(8000);
+    // 16 bits per sample at offset 34
+    expect(wav.readUInt16LE(34)).toBe(16);
+
+    // WAV should be significantly larger than AMR (uncompressed PCM)
+    expect(wav.length).toBeGreaterThan(amrData.length);
+  });
+
+  it("throws on invalid (non-AMR) data", () => {
+    const fakeData = Buffer.from("this is not AMR data");
+    expect(() => convertAmrToWav(fakeData)).toThrow("Failed to decode AMR audio");
+  });
+
+  it("throws on empty buffer", () => {
+    expect(() => convertAmrToWav(Buffer.alloc(0))).toThrow("Failed to decode AMR audio");
   });
 });

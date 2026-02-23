@@ -56,14 +56,14 @@ export function SttPage() {
     setSaved(false);
 
     try {
-      // Validate credentials
+      // Validate credentials (skip if keys are already saved in Keychain)
       if (enabled) {
-        if (provider === "groq" && !groqApiKey.trim()) {
+        if (provider === "groq" && !groqApiKey.trim() && !hasGroqKey) {
           setError(t("stt.groqApiKeyRequired"));
           setSaving(false);
           return;
         }
-        if (provider === "volcengine") {
+        if (provider === "volcengine" && !hasVolcengineKeys) {
           if (!volcengineAppKey.trim() || !volcengineAccessKey.trim()) {
             setError(t("stt.volcengineKeysRequired"));
             setSaving(false);
