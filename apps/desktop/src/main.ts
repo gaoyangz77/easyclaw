@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, shell, dialog, Notification, session } from "electron";
+import { app, BrowserWindow, Menu, Tray, shell, dialog } from "electron";
 import { createLogger, enableFileLogging } from "@easyclaw/logger";
 import {
   GatewayLauncher,
@@ -22,39 +22,35 @@ import {
 } from "@easyclaw/gateway";
 import type { OAuthFlowResult, AcquiredOAuthCredentials } from "@easyclaw/gateway";
 import type { GatewayState } from "@easyclaw/gateway";
-import { resolveModelConfig, ALL_PROVIDERS, LOCAL_PROVIDER_IDS, getDefaultModelForProvider, getProviderMeta, providerSecretKey, reconstructProxyUrl, parseProxyUrl } from "@easyclaw/core";
+import { resolveModelConfig, ALL_PROVIDERS, LOCAL_PROVIDER_IDS, getDefaultModelForProvider, getProviderMeta, providerSecretKey, parseProxyUrl } from "@easyclaw/core";
 import type { LLMProvider } from "@easyclaw/core";
 import { createStorage } from "@easyclaw/storage";
 import { createSecretStore } from "@easyclaw/secrets";
 import { ArtifactPipeline, syncSkillsForRule, cleanupSkillsForDeletedRule } from "@easyclaw/rules";
 import type { LLMConfig } from "@easyclaw/rules";
 import { ProxyRouter } from "@easyclaw/proxy-router";
-import type { ProxyRouterConfig } from "@easyclaw/proxy-router";
 import { RemoteTelemetryClient } from "@easyclaw/telemetry";
 import { getDeviceId } from "@easyclaw/device-id";
-import type { UpdateDownloadState } from "@easyclaw/updater";
-import { autoUpdater } from "electron-updater";
-import type { UpdateInfo, ProgressInfo } from "electron-updater";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { writeFileSync, mkdirSync, unlinkSync, existsSync, readFileSync, rmSync, symlinkSync, readlinkSync, readdirSync, lstatSync, copyFileSync } from "node:fs";
-import { execSync, spawn } from "node:child_process";
-import { get as httpGet } from "node:http";
+import { unlinkSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { createConnection } from "node:net";
 import { createHash } from "node:crypto";
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { createTrayIcon } from "./tray-icon.js";
 import { buildTrayMenu } from "./tray-menu.js";
 import { startPanelServer } from "./panel-server.js";
 import { stopCS } from "./customer-service-bridge.js";
 import { SttManager } from "./stt-manager.js";
+import { createCdpManager } from "./cdp-manager.js";
+import { PROXY_ROUTER_PORT, resolveProxyRouterConfigPath, detectSystemProxy, writeProxyRouterConfig, buildProxyEnv, writeProxySetupModule } from "./proxy-manager.js";
+import { createAutoUpdater } from "./auto-updater.js";
 
 const log = createLogger("desktop");
 
 const PANEL_PORT = 3210;
 const PANEL_URL = process.env.PANEL_DEV_URL || `http://127.0.0.1:${PANEL_PORT}`;
-const PROXY_ROUTER_PORT = 9999;
-
 // Resolve Volcengine STT CLI script path.
 // In packaged app: bundled into Resources/.
 // In dev: resolve relative to the bundled output (apps/desktop/dist/) → packages/gateway/dist/.
@@ -169,195 +165,6 @@ async function migrateOldProviderKeys(
       log.info(`Migrated ${provider} key to provider_keys table (id: ${id})`);
     }
   }
-}
-
-/**
- * Resolve path to the proxy router configuration file.
- */
-function resolveProxyRouterConfigPath(): string {
-  const stateDir = resolveOpenClawStateDir();
-  return join(stateDir, "proxy-router.json");
-}
-
-/**
- * Well-known domain to provider mapping for major LLM APIs.
- * Auto-generated from PROVIDERS baseUrl in packages/core/src/models.ts,
- * with manual overrides for domains not derivable from baseUrl.
- */
-const DOMAIN_TO_PROVIDER: Record<string, string> = (() => {
-  const map: Record<string, string> = {};
-  for (const p of ALL_PROVIDERS) {
-    const meta = getProviderMeta(p);
-    if (!meta) continue;
-    try {
-      const domain = new URL(meta.baseUrl).hostname;
-      if (!map[domain]) map[domain] = p; // first (root) provider wins for shared domains
-    } catch { /* skip invalid URLs */ }
-  }
-  // Amazon Bedrock regional endpoints (only us-east-1 is derived from baseUrl)
-  Object.assign(map, {
-    "bedrock-runtime.us-west-2.amazonaws.com": "amazon-bedrock",
-    "bedrock-runtime.eu-west-1.amazonaws.com": "amazon-bedrock",
-    "bedrock-runtime.eu-central-1.amazonaws.com": "amazon-bedrock",
-    "bedrock-runtime.ap-southeast-1.amazonaws.com": "amazon-bedrock",
-    "bedrock-runtime.ap-northeast-1.amazonaws.com": "amazon-bedrock",
-  });
-  // Google Gemini CLI OAuth (Cloud Code API) — not in baseUrl
-  map["cloudcode-pa.googleapis.com"] = "gemini";
-  map["oauth2.googleapis.com"] = "gemini";
-  return map;
-})();
-
-/**
- * Parse Electron's PAC-format proxy string into a URL.
- * Examples: "DIRECT" → null, "PROXY 127.0.0.1:1087" → "http://127.0.0.1:1087",
- * "SOCKS5 127.0.0.1:1080" → "socks5://127.0.0.1:1080"
- */
-function parsePacProxy(pac: string): string | null {
-  const trimmed = pac.trim();
-  if (!trimmed || trimmed === "DIRECT") return null;
-
-  // PAC can return multiple entries separated by ";", take the first non-DIRECT one
-  for (const entry of trimmed.split(";")) {
-    const part = entry.trim();
-    if (!part || part === "DIRECT") continue;
-
-    const match = part.match(/^(PROXY|SOCKS5?|SOCKS4|HTTPS)\s+(.+)$/i);
-    if (!match) continue;
-
-    const [, type, hostPort] = match;
-    const upper = type.toUpperCase();
-    if (upper === "PROXY" || upper === "HTTPS") {
-      return `http://${hostPort}`;
-    }
-    if (upper === "SOCKS5" || upper === "SOCKS") {
-      return `socks5://${hostPort}`;
-    }
-    if (upper === "SOCKS4") {
-      return `socks5://${hostPort}`; // Treat SOCKS4 as SOCKS5 (compatible for CONNECT)
-    }
-  }
-  return null;
-}
-
-/**
- * Detect system proxy using Electron's session.resolveProxy().
- * Works with PAC auto-config and global proxy modes on macOS and Windows.
- */
-async function detectSystemProxy(): Promise<string | null> {
-  try {
-    const pac = await session.defaultSession.resolveProxy("https://www.google.com");
-    log.debug(`resolveProxy returned: "${pac}"`);
-    const parsed = parsePacProxy(pac);
-    log.debug(`Parsed system proxy: ${parsed ?? "(none/DIRECT)"}`);
-    return parsed;
-  } catch (err) {
-    log.warn("Failed to detect system proxy:", err);
-    return null;
-  }
-}
-
-/**
- * Write proxy router configuration file.
- * Called whenever provider keys or proxies change.
- */
-async function writeProxyRouterConfig(
-  storage: import("@easyclaw/storage").Storage,
-  secretStore: import("@easyclaw/secrets").SecretStore,
-  systemProxy?: string | null,
-): Promise<void> {
-  const configPath = resolveProxyRouterConfigPath();
-  const config: ProxyRouterConfig = {
-    ts: Date.now(),
-    domainToProvider: DOMAIN_TO_PROVIDER,
-    activeKeys: {},
-    keyProxies: {},
-    systemProxy: systemProxy ?? null,
-  };
-
-  // For each provider, find active key and its proxy
-  for (const provider of ALL_PROVIDERS) {
-    const defaultKey = storage.providerKeys.getDefault(provider);
-    if (defaultKey) {
-      config.activeKeys[provider] = defaultKey.id;
-
-      // Reconstruct full proxy URL if configured
-      if (defaultKey.proxyBaseUrl) {
-        const credentials = await secretStore.get(`proxy-auth-${defaultKey.id}`);
-        const proxyUrl = credentials
-          ? reconstructProxyUrl(defaultKey.proxyBaseUrl, credentials)
-          : defaultKey.proxyBaseUrl;
-        config.keyProxies[defaultKey.id] = proxyUrl;
-      } else {
-        config.keyProxies[defaultKey.id] = null; // Direct connection
-      }
-    }
-  }
-
-  // Write config file
-  const dir = dirname(configPath);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(configPath, JSON.stringify(config, null, 2), "utf-8");
-  log.debug(`Proxy router config written: ${Object.keys(config.activeKeys).length} providers configured`);
-}
-
-/**
- * Build proxy environment variables pointing to local proxy router.
- * Returns fixed proxy URL (127.0.0.1:9999) regardless of configuration.
- * The router handles dynamic routing based on its config file.
- *
- * Chinese-domestic channel domains (Feishu, WeCom) are excluded via NO_PROXY
- * since they don't need GFW bypass. GFW-blocked channel domains (Telegram,
- * Discord, Slack, LINE) go through the proxy router so the system proxy can
- * route them out.
- */
-function buildProxyEnv(): Record<string, string> {
-  const localProxyUrl = `http://127.0.0.1:${PROXY_ROUTER_PORT}`;
-  const noProxy = [
-    "localhost",
-    "127.0.0.1",
-    // RFC 1918 private networks — LAN-deployed models (e.g. Ollama on another machine)
-    "10.0.0.0/8",
-    "172.16.0.0/12",
-    "192.168.0.0/16",
-    // Chinese-domestic channel APIs — no GFW bypass needed, connect directly
-    "open.feishu.cn",
-    "open.larksuite.com",
-    "qyapi.weixin.qq.com",
-  ].join(",");
-  return {
-    HTTP_PROXY: localProxyUrl,
-    HTTPS_PROXY: localProxyUrl,
-    http_proxy: localProxyUrl,
-    https_proxy: localProxyUrl,
-    NO_PROXY: noProxy,
-    no_proxy: noProxy,
-  };
-}
-
-/**
- * Write a CJS module that injects undici's EnvHttpProxyAgent as the global fetch dispatcher.
- * Node.js native fetch() does NOT respect HTTP_PROXY env vars by default, so this is needed
- * to make ALL fetch() calls (Telegram/Discord/Slack SDKs, etc.) go through the proxy router.
- *
- * The module is loaded via NODE_OPTIONS=--require before the gateway entry point.
- * It uses createRequire to resolve undici from the vendor's node_modules.
- */
-function writeProxySetupModule(stateDir: string, vendorDir: string): string {
-  const setupPath = join(stateDir, "proxy-setup.cjs");
-  const code = `\
-"use strict";
-const { createRequire } = require("node:module");
-const path = require("node:path");
-try {
-  const vendorDir = ${JSON.stringify(vendorDir)};
-  const vendorRequire = createRequire(path.join(vendorDir, "package.json"));
-  const { setGlobalDispatcher, EnvHttpProxyAgent } = vendorRequire("undici");
-  setGlobalDispatcher(new EnvHttpProxyAgent());
-} catch (_) {}
-`;
-  writeFileSync(setupPath, code, "utf-8");
-  return setupPath;
 }
 
 let mainWindow: BrowserWindow | null = null;
@@ -485,140 +292,10 @@ app.whenReady().then(async () => {
     log.info("Telemetry disabled (user preference)");
   }
 
-  // --- Auto-updater (electron-updater with blockmap differential downloads) ---
+  // --- Auto-updater state (updater instance created after tray) ---
   let currentState: GatewayState = "stopped";
-  let latestUpdateInfo: UpdateInfo | null = null;
-  let updateDownloadState: UpdateDownloadState = { status: "idle" };
-
-  // Configure update feed URL.
-  // UPDATE_FROM_STAGING=1 → use staging server for testing updates locally.
-  const useStaging = process.env.UPDATE_FROM_STAGING === "1";
-  const updateRegion = locale === "zh" ? "cn" : "us";
-  const updateFeedUrl = useStaging
-    ? "https://stg.easy-claw.com/releases"
-    : updateRegion === "cn"
-      ? "https://cn.easy-claw.com/releases"
-      : "https://www.easy-claw.com/releases";
-  if (useStaging) log.info("Using staging update feed: " + updateFeedUrl);
-  autoUpdater.setFeedURL({
-    provider: "generic",
-    url: updateFeedUrl,
-  });
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
-  autoUpdater.logger = log;
-
-  // Wire electron-updater events into our state machine
-  autoUpdater.on("update-available", (info: UpdateInfo) => {
-    latestUpdateInfo = info;
-    log.info(`Update available: v${info.version}`);
-    telemetryClient?.track("app.update_available", {
-      currentVersion: app.getVersion(),
-      latestVersion: info.version,
-    });
-    const isZh = systemLocale === "zh";
-    const notification = new Notification({
-      title: isZh ? "EasyClaw 有新版本" : "EasyClaw Update Available",
-      body: isZh
-        ? `新版本 v${info.version} 已发布，点击查看详情。`
-        : `A new version v${info.version} is available. Click to download.`,
-    });
-    notification.on("click", () => {
-      showMainWindow();
-    });
-    notification.show();
-    updateTray(currentState);
-  });
-
-  autoUpdater.on("update-not-available", () => {
-    log.info(`Already up to date (${app.getVersion()})`);
-  });
-
-  autoUpdater.on("download-progress", (progress: ProgressInfo) => {
-    updateDownloadState = {
-      status: "downloading",
-      percent: Math.round(progress.percent),
-      downloadedBytes: progress.transferred,
-      totalBytes: progress.total,
-    };
-    mainWindow?.setProgressBar(progress.percent / 100);
-  });
-
-  autoUpdater.on("update-downloaded", (info: UpdateInfo) => {
-    updateDownloadState = { status: "ready", filePath: "" };
-    mainWindow?.setProgressBar(-1);
-    log.info(`Update v${info.version} downloaded and verified`);
-    telemetryClient?.track("app.update_downloaded", { version: info.version });
-  });
-
-  autoUpdater.on("error", (error: Error) => {
-    updateDownloadState = { status: "error", message: error.message };
-    mainWindow?.setProgressBar(-1);
-    log.error(`Auto-update error: ${error.message}`);
-  });
-
-  async function performUpdateCheck(): Promise<void> {
-    try {
-      // Don't assign result.updateInfo here — it always contains the server's
-      // latest version info even when it's older than the current version.
-      // Let the "update-available" event handler set latestUpdateInfo instead.
-      await autoUpdater.checkForUpdates();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      log.warn(`Update check failed: ${message}`);
-    }
-    updateTray(currentState);
-  }
-
-  // NOTE: performUpdateCheck() calls updateTray() which requires `tray` to be
-  // initialized. The fire-and-forget call is deferred to after tray creation
-  // (search for "Deferred: startup update check" below).
-
-  async function performUpdateDownload(): Promise<void> {
-    if (!latestUpdateInfo) {
-      throw new Error("No update available");
-    }
-    if (updateDownloadState.status === "downloading" || updateDownloadState.status === "verifying") {
-      log.info(`Update download already ${updateDownloadState.status}, ignoring duplicate request`);
-      return;
-    }
-    if (updateDownloadState.status === "ready") {
-      log.info("Update already downloaded, ignoring duplicate request");
-      return;
-    }
-
-    updateDownloadState = { status: "downloading", percent: 0, downloadedBytes: 0, totalBytes: 0 };
-    mainWindow?.setProgressBar(0);
-
-    try {
-      await autoUpdater.downloadUpdate();
-    } catch (err) {
-      // The error event handler will set the error state
-      log.error("Update download failed:", err);
-    }
-  }
-
-  async function performUpdateInstall(): Promise<void> {
-    if (updateDownloadState.status !== "ready") {
-      throw new Error("No downloaded update ready to install");
-    }
-
-    updateDownloadState = { status: "installing" };
-
-    telemetryClient?.track("app.update_installing", {
-      version: latestUpdateInfo?.version,
-    });
-
-    // Kill the gateway and remove its lock file *before* quitting so the
-    // installer (NSIS on Windows) and the newly installed version don't
-    // encounter a stale process or lock.  The before-quit handler also calls
-    // launcher.stop(), but quitAndInstall() may not await async cleanup fully.
-    try { await launcher.stop(); } catch {}
-    cleanupGatewayLock(configPath);
-
-    isQuitting = true; // prevent close-to-tray
-    autoUpdater.quitAndInstall(false, true);
-  }
+  // updater is initialized after tray creation (search for "createAutoUpdater" below)
+  let updater: ReturnType<typeof createAutoUpdater>;
 
   // Detect system proxy and write proxy router config BEFORE starting the router.
   // This ensures the router has a valid config (with systemProxy) from the very first request,
@@ -925,271 +602,7 @@ app.whenReady().then(async () => {
     await launcher.start();
   }
 
-  /** Probe whether a CDP endpoint is accessible on the given port. */
-  function probeCdp(port: number): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-      const req = httpGet(`http://127.0.0.1:${port}/json/version`, (res) => {
-        res.resume();
-        resolve(res.statusCode === 200);
-      });
-      req.on("error", () => resolve(false));
-      req.setTimeout(1500, () => { req.destroy(); resolve(false); });
-    });
-  }
-
-  /** Check if a TCP port is in use (by anything, not necessarily CDP). */
-  function isPortInUse(port: number): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-      const sock = createConnection({ port, host: "127.0.0.1" });
-      sock.once("connect", () => { sock.destroy(); resolve(true); });
-      sock.once("error", () => resolve(false));
-    });
-  }
-
-  /**
-   * Ensure Chrome is running with --remote-debugging-port for CDP browser mode.
-   *
-   * 1. Try the last-known port from storage (default 9222).
-   *    If CDP responds → reuse, no restart.
-   * 2. If not → kill Chrome, find a free port starting from last-known,
-   *    relaunch Chrome, save the actual port to storage.
-   */
-  /**
-   * Resolve the Chrome/Edge/Chromium user data directory for reading Local State.
-   * Returns null if not found.
-   */
-  function resolveChromeUserDataDir(chromePath: string): string | null {
-    const home = homedir();
-    if (process.platform === "darwin") {
-      if (chromePath.includes("Microsoft Edge")) return join(home, "Library", "Application Support", "Microsoft Edge");
-      if (chromePath.includes("Chromium")) return join(home, "Library", "Application Support", "Chromium");
-      return join(home, "Library", "Application Support", "Google", "Chrome");
-    }
-    if (process.platform === "win32") {
-      const localAppData = process.env.LOCALAPPDATA ?? join(home, "AppData", "Local");
-      if (chromePath.toLowerCase().includes("edge")) return join(localAppData, "Microsoft", "Edge", "User Data");
-      return join(localAppData, "Google", "Chrome", "User Data");
-    }
-    // Linux
-    if (chromePath.includes("chromium")) return join(home, ".config", "chromium");
-    return join(home, ".config", "google-chrome");
-  }
-
-  /**
-   * Read the last-used Chrome profile directory name from Local State.
-   * Returns "Default" as fallback.
-   */
-  function readChromeLastUsedProfile(userDataDir: string): string {
-    try {
-      const localStatePath = join(userDataDir, "Local State");
-      if (!existsSync(localStatePath)) return "Default";
-      const data = JSON.parse(readFileSync(localStatePath, "utf-8"));
-      const lastUsed = data?.profile?.last_used;
-      if (typeof lastUsed === "string" && lastUsed.trim()) return lastUsed.trim();
-    } catch {
-      // Ignore parse errors
-    }
-    return "Default";
-  }
-
-  /**
-   * Create a wrapper user-data-dir that symlinks the user's Chrome profile.
-   * Chrome refuses --remote-debugging-port on its default data directory,
-   * so we create a separate directory with symlinks to the real profile.
-   * On Windows, directory symlinks use junctions (no admin required).
-   */
-  function prepareCdpUserDataDir(realUserDataDir: string, profileDir: string): string {
-    const cdpDataDir = join(homedir(), ".easyclaw", "chrome-cdp");
-    const realProfilePath = join(realUserDataDir, profileDir);
-    const cdpProfilePath = join(cdpDataDir, profileDir);
-
-    // Check if the junction already exists and points to the correct target.
-    // If so, reuse the entire wrapper dir to preserve session state, caches,
-    // and any files Chrome created at the root level (e.g. updated Local State,
-    // login tokens, CertificateRevocation, etc.).
-    let junctionOk = false;
-    try {
-      const st = lstatSync(cdpProfilePath);
-      if (st.isSymbolicLink()) {
-        const target = readlinkSync(cdpProfilePath);
-        // On Windows, junctions may have \\?\ prefix — normalize for comparison.
-        const normalizedTarget = target.replace(/^\\\\\?\\/, "");
-        junctionOk = normalizedTarget === realProfilePath;
-      }
-    } catch {
-      // Junction doesn't exist or can't be read — will recreate.
-    }
-
-    if (junctionOk) {
-      log.info("Reusing existing CDP wrapper dir (junction still valid)");
-      return cdpDataDir;
-    }
-
-    // Junction missing or points to wrong profile — rebuild wrapper dir.
-    log.info(`Rebuilding CDP wrapper dir for profile ${profileDir}`);
-    if (existsSync(cdpDataDir)) {
-      // Remove any existing junctions before recursive delete (extra safety).
-      try {
-        for (const entry of readdirSync(cdpDataDir)) {
-          const entryPath = join(cdpDataDir, entry);
-          try {
-            if (lstatSync(entryPath).isSymbolicLink()) unlinkSync(entryPath);
-          } catch {}
-        }
-      } catch {}
-      rmSync(cdpDataDir, { recursive: true, force: true });
-    }
-    mkdirSync(cdpDataDir, { recursive: true });
-
-    // Create junction/symlink to the real profile directory.
-    if (existsSync(realProfilePath)) {
-      const linkType = process.platform === "win32" ? "junction" : "dir";
-      symlinkSync(realProfilePath, cdpProfilePath, linkType);
-      log.info(`Created ${linkType}: ${cdpProfilePath} -> ${realProfilePath}`);
-    } else {
-      log.warn(`Real profile path does not exist: ${realProfilePath}`);
-    }
-
-    // Copy Local State only on first creation.  Chrome reads/writes it;
-    // don't symlink to avoid corrupting the original.
-    const localStateSrc = join(realUserDataDir, "Local State");
-    if (existsSync(localStateSrc)) {
-      copyFileSync(localStateSrc, join(cdpDataDir, "Local State"));
-    }
-
-    return cdpDataDir;
-  }
-
-  async function ensureCdpChrome(): Promise<void> {
-    const preferredPort = parseInt(storage.settings.get("browser-cdp-port") || "9222", 10);
-
-    // 1. Probe preferred port — if CDP already accessible, reuse.
-    if (await probeCdp(preferredPort)) {
-      log.info(`CDP already reachable on port ${preferredPort}`);
-      return;
-    }
-
-    // 2. Find Chrome executable (platform-specific).
-    let chromePath: string | null = null;
-    if (process.platform === "darwin") {
-      const candidates = [
-        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-        "/Applications/Chromium.app/Contents/MacOS/Chromium",
-        "/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge",
-      ];
-      chromePath = candidates.find((p) => existsSync(p)) ?? null;
-    } else if (process.platform === "win32") {
-      const localAppData = process.env.LOCALAPPDATA ?? "";
-      const programFiles = process.env["ProgramFiles"] ?? "C:\\Program Files";
-      const programFilesX86 = process.env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)";
-      const candidates = [
-        join(localAppData, "Google", "Chrome", "Application", "chrome.exe"),
-        join(programFiles, "Google", "Chrome", "Application", "chrome.exe"),
-        join(programFilesX86, "Google", "Chrome", "Application", "chrome.exe"),
-        join(localAppData, "Microsoft", "Edge", "Application", "msedge.exe"),
-        join(programFiles, "Microsoft", "Edge", "Application", "msedge.exe"),
-      ];
-      chromePath = candidates.find((p) => existsSync(p)) ?? null;
-    } else {
-      // Linux
-      const candidates = ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/usr/bin/chromium", "/usr/bin/chromium-browser"];
-      chromePath = candidates.find((p) => existsSync(p)) ?? null;
-      if (!chromePath) {
-        try { chromePath = execSync("which google-chrome", { encoding: "utf-8" }).trim() || null; } catch {}
-      }
-    }
-
-    if (!chromePath) {
-      log.warn("Could not find Chrome executable for CDP mode");
-      return;
-    }
-    log.info(`Found Chrome at ${chromePath}`);
-
-    // 3. Read user's last-used Chrome profile BEFORE killing Chrome.
-    const userDataDir = resolveChromeUserDataDir(chromePath);
-    const profileDir = userDataDir ? readChromeLastUsedProfile(userDataDir) : "Default";
-    log.info(`Chrome profile directory: ${profileDir} (from ${userDataDir ?? "fallback"})`);
-
-    // 4. Kill existing Chrome processes so we can relaunch with debug port.
-    const killChrome = () => {
-      try {
-        if (process.platform === "win32") {
-          const exeName = chromePath!.toLowerCase().includes("edge") ? "msedge.exe" : "chrome.exe";
-          execSync(`taskkill /f /im ${exeName} 2>nul & exit /b 0`, { stdio: "ignore", shell: "cmd.exe" });
-        } else {
-          const name = chromePath!.includes("Chromium") ? "Chromium" :
-                       chromePath!.includes("Edge") ? "Microsoft Edge" : "Google Chrome";
-          // Use killall (~10ms) instead of pkill which can take 20-50s on macOS
-          // due to slow proc_info kernel calls when many processes are running.
-          execSync(`killall -9 '${name}' 2>/dev/null || true`, { stdio: "ignore" });
-        }
-      } catch { /* ignore */ }
-    };
-    killChrome();
-    // Wait for process cleanup — Chrome with many tabs needs more time
-    await new Promise((r) => setTimeout(r, 3000));
-
-    if (!userDataDir) {
-      log.warn("Could not resolve Chrome user data directory for CDP mode");
-      return;
-    }
-
-    // 5. Find a free port starting from preferredPort.
-    let actualPort = preferredPort;
-    for (let p = preferredPort; p < preferredPort + 100; p++) {
-      if (!(await isPortInUse(p))) {
-        actualPort = p;
-        break;
-      }
-    }
-
-    // 6. Create wrapper user-data-dir with symlinks/junctions to the user's
-    //    profile.  Chrome (145+) refuses --remote-debugging-port on its default
-    //    data directory on both macOS and Windows.  The wrapper uses a different
-    //    path but links to the real profile so cookies, extensions, and logins
-    //    are preserved.
-    const cdpDataDir = prepareCdpUserDataDir(userDataDir, profileDir);
-
-    // 7. Launch Chrome with --remote-debugging-port and the wrapper data dir.
-    const chromeArgs = [
-      `--remote-debugging-port=${actualPort}`,
-      `--user-data-dir=${cdpDataDir}`,
-      `--profile-directory=${profileDir}`,
-    ];
-    log.info(`Launching Chrome: ${chromePath} ${chromeArgs.join(" ")}`);
-    const child = spawn(chromePath!, chromeArgs, { detached: true, stdio: "ignore" });
-    child.unref();
-
-    // 8. Wait for CDP port to become accessible (poll with timeout).
-    const deadline = Date.now() + 15_000;
-    while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 500));
-      if (await probeCdp(actualPort)) {
-        log.info(`Chrome CDP ready on port ${actualPort} (profile: ${profileDir})`);
-        storage.settings.set("browser-cdp-port", String(actualPort));
-        writeGatewayConfig(buildFullGatewayConfig());
-        return;
-      }
-    }
-    log.warn(`Chrome CDP not reachable on port ${actualPort} after 15s`);
-  }
-
-  /**
-   * Called when browser mode settings change.
-   * Regenerates gateway config, manages Chrome for CDP mode, and hot-reloads.
-   */
-  async function handleBrowserChange(): Promise<void> {
-    log.info("Browser settings changed, regenerating config");
-    writeGatewayConfig(buildFullGatewayConfig());
-
-    const mode = storage.settings.get("browser-mode") || "standalone";
-    if (mode === "cdp") {
-      await ensureCdpChrome();
-    }
-
-    // Browser config is hot-reloadable — SIGUSR1 suffices, no full restart.
-    await launcher.reload();
-  }
+  const cdpManager = createCdpManager({ storage, launcher, writeGatewayConfig, buildFullGatewayConfig });
 
   function buildLocalProviderOverrides(): Record<string, { baseUrl: string; models: Array<{ id: string; name: string }> }> {
     const overrides: Record<string, { baseUrl: string; models: Array<{ id: string; name: string }> }> = {};
@@ -1292,20 +705,21 @@ app.whenReady().then(async () => {
         },
         onCheckForUpdates: async () => {
           try {
-            await performUpdateCheck();
+            await updater.check();
             const isZh = systemLocale === "zh";
-            if (latestUpdateInfo) {
+            const updateInfo = updater.getLatestInfo();
+            if (updateInfo) {
               const { response } = await dialog.showMessageBox({
                 type: "info",
                 title: isZh ? "发现新版本" : "Update Available",
                 message: isZh
-                  ? `新版本 v${latestUpdateInfo.version} 已发布，当前版本为 v${app.getVersion()}。`
-                  : `A new version v${latestUpdateInfo.version} is available. You are currently on v${app.getVersion()}.`,
+                  ? `新版本 v${updateInfo.version} 已发布，当前版本为 v${app.getVersion()}。`
+                  : `A new version v${updateInfo.version} is available. You are currently on v${app.getVersion()}.`,
                 buttons: isZh ? ["下载", "稍后"] : ["Download", "Later"],
               });
               if (response === 0) {
                 showMainWindow();
-                performUpdateDownload().catch((e) => log.error("Update download failed:", e));
+                updater.download().catch((e: unknown) => log.error("Update download failed:", e));
               }
             } else {
               dialog.showMessageBox({
@@ -1331,12 +745,12 @@ app.whenReady().then(async () => {
         onQuit: () => {
           app.quit();
         },
-        updateInfo: latestUpdateInfo
+        updateInfo: updater.getLatestInfo()
           ? {
-              latestVersion: latestUpdateInfo.version,
+              latestVersion: updater.getLatestInfo()!.version,
               onDownload: () => {
                 showMainWindow();
-                performUpdateDownload().catch((e) => log.error("Update download failed:", e));
+                updater.download().catch((e: unknown) => log.error("Update download failed:", e));
               },
             }
           : undefined,
@@ -1360,16 +774,30 @@ app.whenReady().then(async () => {
     });
   }
 
+  // Initialize auto-updater (all deps available: locale, tray, launcher, etc.)
+  updater = createAutoUpdater({
+    locale,
+    systemLocale,
+    getMainWindow: () => mainWindow,
+    showMainWindow,
+    setIsQuitting: (v) => { isQuitting = v; },
+    updateTray: () => updateTray(currentState),
+    telemetryTrack: telemetryClient ? (event, meta) => telemetryClient!.track(event, meta) : undefined,
+    launcher,
+    configPath,
+    cleanupGatewayLock,
+  });
+
   updateTray("stopped");
 
   // Deferred: startup update check (must run after tray creation)
-  performUpdateCheck().catch((err) => {
+  updater.check().catch((err: unknown) => {
     log.warn("Startup update check failed:", err);
   });
 
   // Re-check every 4 hours
   const updateCheckTimer = setInterval(() => {
-    performUpdateCheck().catch((err) => {
+    updater.check().catch((err: unknown) => {
       log.warn("Periodic update check failed:", err);
     });
   }, 4 * 60 * 60 * 1000);
@@ -1530,21 +958,24 @@ app.whenReady().then(async () => {
     secretStore,
     deviceId,
     getRpcClient: () => rpcClient,
-    getUpdateResult: () => ({
-      updateAvailable: latestUpdateInfo != null,
-      currentVersion: app.getVersion(),
-      latestVersion: latestUpdateInfo?.version,
-      releaseNotes: typeof latestUpdateInfo?.releaseNotes === "string"
-        ? latestUpdateInfo.releaseNotes
-        : undefined,
-    }),
-    onUpdateDownload: () => performUpdateDownload(),
+    getUpdateResult: () => {
+      const info = updater.getLatestInfo();
+      return {
+        updateAvailable: info != null,
+        currentVersion: app.getVersion(),
+        latestVersion: info?.version,
+        releaseNotes: typeof info?.releaseNotes === "string"
+          ? info.releaseNotes
+          : undefined,
+      };
+    },
+    onUpdateDownload: () => updater.download(),
     onUpdateCancel: () => {
-      updateDownloadState = { status: "idle" };
+      updater.setDownloadState({ status: "idle" });
       mainWindow?.setProgressBar(-1);
     },
-    onUpdateInstall: () => performUpdateInstall(),
-    getUpdateDownloadState: () => updateDownloadState,
+    onUpdateInstall: () => updater.install(),
+    getUpdateDownloadState: () => updater.getDownloadState(),
     getGatewayInfo: () => {
       const config = readExistingConfig(configPath);
       const gw = config.gateway as Record<string, unknown> | undefined;
@@ -1597,7 +1028,7 @@ app.whenReady().then(async () => {
       });
     },
     onBrowserChange: () => {
-      handleBrowserChange().catch((err) => {
+      cdpManager.handleBrowserChange().catch((err: unknown) => {
         log.error("Failed to handle browser change:", err);
       });
     },
@@ -1744,7 +1175,7 @@ app.whenReady().then(async () => {
       // If Chrome is already listening on the CDP port, it is reused without restart.
       const savedBrowserMode = storage.settings.get("browser-mode");
       if (savedBrowserMode === "cdp") {
-        ensureCdpChrome().catch((err) => {
+        cdpManager.ensureCdpChrome().catch((err: unknown) => {
           log.warn("Failed to ensure CDP Chrome on startup:", err);
         });
       }

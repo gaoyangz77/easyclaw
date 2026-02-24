@@ -7,7 +7,7 @@ import { createLogger } from "@easyclaw/logger";
 import type { Storage } from "@easyclaw/storage";
 import type { SecretStore } from "@easyclaw/secrets";
 import type { ArtifactStatus, ArtifactType, LLMProvider } from "@easyclaw/core";
-import { getProviderMeta, getDefaultModelForProvider, providerSecretKey, parseProxyUrl, reconstructProxyUrl } from "@easyclaw/core";
+import { getDefaultModelForProvider, parseProxyUrl, reconstructProxyUrl } from "@easyclaw/core";
 import { readFullModelCatalog, resolveOpenClawConfigPath, readExistingConfig, resolveOpenClawStateDir, GatewayRpcClient, writeChannelAccount, removeChannelAccount, syncPermissions } from "@easyclaw/gateway";
 import { loadCostUsageSummary, discoverAllSessions, loadSessionCostSummary } from "../../../vendor/openclaw/src/infra/session-cost-usage.js";
 import type { CostUsageSummary, SessionCostSummary } from "../../../vendor/openclaw/src/infra/session-cost-usage.js";
@@ -22,6 +22,9 @@ import { UsageSnapshotEngine } from "./usage-snapshot-engine.js";
 import type { ModelUsageTotals } from "./usage-snapshot-engine.js";
 import { UsageQueryService } from "./usage-query-service.js";
 import { initCSBridge, startCS, stopCS, getCSStatus, updateCSConfig, restoreCS } from "./customer-service-bridge.js";
+import { validateProviderApiKey, syncActiveKey } from "./provider-validator.js";
+import { sendChannelMessage } from "./channel-senders.js";
+import { createWeComRelay } from "./wecom-relay.js";
 
 const log = createLogger("panel-server");
 
@@ -57,45 +60,6 @@ function invalidateSkillsSnapshot(): void {
   } catch (err) {
     log.warn("Failed to invalidate skills snapshot:", err);
   }
-}
-
-/** Audio formats natively supported by STT providers (Groq Whisper). */
-const STT_SUPPORTED_FORMATS = new Set(["flac", "mp3", "mp4", "mpeg", "mpga", "m4a", "ogg", "wav", "webm"]);
-
-/**
- * Convert audio to MP3 using ffmpeg (piped via stdin/stdout).
- * Throws if ffmpeg is unavailable — callers should surface the error.
- */
-function convertAudioToMp3(input: Buffer, inputFormat: string): Promise<{ data: Buffer; format: string }> {
-  return new Promise((resolve, reject) => {
-    const proc = execFile(
-      "ffmpeg",
-      ["-i", "pipe:0", "-f", inputFormat, "-f", "mp3", "-ac", "1", "-ar", "16000", "pipe:1"],
-      { encoding: "buffer", maxBuffer: 10 * 1024 * 1024, timeout: 15_000 },
-      (err, stdout) => {
-        if (err) {
-          const isNotFound = (err as NodeJS.ErrnoException).code === "ENOENT";
-          if (isNotFound) {
-            reject(new Error(
-              "ffmpeg not found. Voice messages in AMR format require ffmpeg for conversion.\n" +
-              "  macOS:   brew install ffmpeg\n" +
-              "  Windows: winget install ffmpeg   (or download from https://ffmpeg.org/download.html)\n" +
-              "  Linux:   sudo apt install ffmpeg",
-            ));
-            return;
-          }
-          reject(new Error(`ffmpeg conversion failed: ${err.message}`));
-          return;
-        }
-        if (!stdout || stdout.length === 0) {
-          reject(new Error("ffmpeg produced empty output"));
-          return;
-        }
-        resolve({ data: stdout as unknown as Buffer, format: "mp3" });
-      },
-    );
-    proc.stdin?.end(input);
-  });
 }
 
 /**
@@ -153,52 +117,6 @@ interface UsageFilter {
   provider?: string;
 }
 
-// WeCom relay state (in-memory, reset on app restart)
-let wecomRelayState: {
-  relayUrl: string;
-  authToken: string;
-  connected: boolean;
-  externalUserId?: string;
-  bindingToken?: string;
-  customerServiceUrl?: string;
-} | null = null;
-
-// Map lowercased external_user_id → original case.
-// OpenClaw lowercases session keys internally, so we need to recover
-// the original WeCom external_userid (which is case-sensitive) for replies.
-const wecomUserIdCaseMap = new Map<string, string>();
-
-// Map runId → externalUserId for routing agent replies back to WeCom users.
-const wecomRunIdMap = new Map<string, string>();
-
-// === WeCom Relay Persistent Connection ===
-// Maintains a long-lived WS to the relay server so that messages from
-// WeCom users are forwarded to the local AI agent and replies flow back.
-
-const WECOM_RECONNECT_MIN_MS = 1_000;
-const WECOM_RECONNECT_MAX_MS = 30_000;
-
-let wecomRelayWs: WebSocket | null = null;
-let wecomReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-let wecomReconnectDelay = WECOM_RECONNECT_MIN_MS;
-let wecomIntentionalClose = false;
-let wecomGatewayRpc: GatewayRpcClient | null = null;
-
-// STT manager reference for voice transcription (set during startPanelServer)
-let wecomSttManager: { transcribe(audio: Buffer, format: string): Promise<string | null>; isEnabled(): boolean } | null = null;
-
-// Storage reference for WeCom relay handlers (set during startPanelServer)
-let wecomStorageRef: Storage | null = null;
-
-// Cached connection params for reconnects
-let wecomConnParams: {
-  relayUrl: string;
-  authToken: string;
-  gatewayId: string;
-  gatewayWsUrl: string;
-  gatewayToken?: string;
-} | null = null;
-
 // === Chat Event SSE Bridge ===
 // Push inbound messages and tool events to the Chat Page via Server-Sent Events.
 // See ADR-022 for design rationale.
@@ -212,427 +130,6 @@ function pushChatSSE(event: string, data: unknown): void {
   }
 }
 
-/**
- * Start a persistent connection to the WeCom relay and a dedicated
- * gateway RPC client for forwarding messages to the AI agent.
- */
-function startWeComRelay(params: {
-  relayUrl: string;
-  authToken: string;
-  gatewayId: string;
-  gatewayWsUrl: string;
-  gatewayToken?: string;
-}): void {
-  stopWeComRelay();
-  wecomIntentionalClose = false;
-  wecomConnParams = params;
-
-  // Dedicated gateway RPC client with onEvent to capture AI replies
-  wecomGatewayRpc = new GatewayRpcClient({
-    url: params.gatewayWsUrl,
-    token: params.gatewayToken,
-    deviceIdentityPath: join(resolveOpenClawStateDir(), "identity", "device.json"),
-    onEvent: (evt) => {
-      if (evt.event === "chat") {
-        handleWeComChatEvent(evt.payload).catch((err) => log.error("WeCom: chat event handler error:", err));
-      }
-      // Forward tool events to Chat Page via SSE (see ADR-022)
-      if (evt.event === "agent") {
-        const p = evt.payload as Record<string, unknown> | undefined;
-        if (p?.stream === "tool") {
-          const data = p.data as Record<string, unknown> | undefined;
-          pushChatSSE("tool", {
-            runId: p.runId,
-            phase: data?.phase,
-            toolName: data?.name,
-          });
-        }
-      }
-    },
-  });
-  wecomGatewayRpc.start().catch((err) => {
-    log.error("WeCom: gateway RPC start failed:", err);
-  });
-
-  // Persistent WS to relay
-  doConnectWeComRelay();
-}
-
-/** Tear down all WeCom relay resources. */
-function stopWeComRelay(): void {
-  wecomIntentionalClose = true;
-  if (wecomReconnectTimer) {
-    clearTimeout(wecomReconnectTimer);
-    wecomReconnectTimer = null;
-  }
-  if (wecomRelayWs) {
-    wecomRelayWs.close();
-    wecomRelayWs = null;
-  }
-  if (wecomGatewayRpc) {
-    wecomGatewayRpc.stop();
-    wecomGatewayRpc = null;
-  }
-}
-
-function doConnectWeComRelay(): void {
-  if (!wecomConnParams) return;
-  const { relayUrl, authToken, gatewayId } = wecomConnParams;
-
-  const ws = new WebSocket(relayUrl);
-  wecomRelayWs = ws;
-
-  ws.on("open", () => {
-    log.info("WeCom relay: connected, sending hello");
-    wecomReconnectDelay = WECOM_RECONNECT_MIN_MS;
-    ws.send(JSON.stringify({
-      type: "hello",
-      gateway_id: gatewayId,
-      auth_token: authToken,
-    }));
-  });
-
-  ws.on("message", (data: Buffer) => {
-    try {
-      const frame = JSON.parse(data.toString("utf-8"));
-
-      if (frame.type === "ack" && frame.id === "hello") {
-        log.info("WeCom relay: authenticated — persistent connection active");
-        if (wecomRelayState) wecomRelayState.connected = true;
-        return;
-      }
-
-      if (frame.type === "binding_resolved") {
-        log.info(`WeCom relay: binding resolved for ${frame.external_user_id}`);
-        if (wecomRelayState) {
-          wecomRelayState.externalUserId = frame.external_user_id;
-        }
-        wecomStorageRef?.settings.set("wecom-external-user-id", frame.external_user_id);
-        return;
-      }
-
-      if (frame.type === "binding_cleared") {
-        log.info("WeCom relay: binding cleared (no active binding for this gateway)");
-        if (wecomRelayState) {
-          wecomRelayState.externalUserId = undefined;
-        }
-        wecomStorageRef?.settings.delete("wecom-external-user-id");
-        return;
-      }
-
-      if (frame.type === "inbound") {
-        handleWeComInbound(frame);
-        return;
-      }
-
-      if (frame.type === "error") {
-        log.error(`WeCom relay error: ${frame.message}`);
-        return;
-      }
-    } catch (err) {
-      log.error("WeCom relay: parse error:", err);
-    }
-  });
-
-  ws.on("close", () => {
-    log.info("WeCom relay: disconnected");
-    wecomRelayWs = null;
-    if (wecomRelayState && !wecomIntentionalClose) {
-      wecomRelayState.connected = false;
-    }
-    if (!wecomIntentionalClose) {
-      scheduleWeComReconnect();
-    }
-  });
-
-  ws.on("error", (err: Error) => {
-    log.error(`WeCom relay: WS error: ${err.message}`);
-  });
-
-  ws.on("ping", (data: Buffer) => {
-    ws.pong(data);
-  });
-}
-
-function scheduleWeComReconnect(): void {
-  if (wecomReconnectTimer) clearTimeout(wecomReconnectTimer);
-  log.info(`WeCom relay: reconnecting in ${wecomReconnectDelay}ms...`);
-  wecomReconnectTimer = setTimeout(() => {
-    wecomReconnectTimer = null;
-    wecomReconnectDelay = Math.min(wecomReconnectDelay * 2, WECOM_RECONNECT_MAX_MS);
-    doConnectWeComRelay();
-  }, wecomReconnectDelay);
-}
-
-/** Forward an inbound WeCom message to the local AI agent via gateway RPC. */
-async function handleWeComInbound(frame: {
-  id: string;
-  external_user_id: string;
-  msg_type: string;
-  content: string;
-  timestamp: number;
-  media_data?: string;
-  media_mime?: string;
-}): Promise<void> {
-  if (!wecomGatewayRpc || !wecomGatewayRpc.isConnected()) {
-    log.warn("WeCom: gateway RPC not connected, cannot forward message");
-    return;
-  }
-
-  wecomUserIdCaseMap.set(frame.external_user_id.toLowerCase(), frame.external_user_id);
-  log.info(`WeCom: forwarding ${frame.msg_type} from ${frame.external_user_id} to agent`);
-
-  let message = frame.content;
-  let attachments: Array<{ type: string; mimeType: string; content: string }> | undefined;
-
-  // Transcribe voice messages using the STT manager
-  if (frame.msg_type === "voice" && frame.media_data) {
-    if (wecomSttManager?.isEnabled()) {
-      try {
-        let audioBuffer: Buffer = Buffer.from(frame.media_data, "base64");
-        // WeCom voice is AMR format; extract format hint from MIME or default to "amr"
-        let format = frame.media_mime?.split("/").pop()?.split(";")[0] ?? "amr";
-
-        // Convert unsupported formats (e.g. AMR) to MP3 via ffmpeg
-        if (!STT_SUPPORTED_FORMATS.has(format.toLowerCase())) {
-          log.info(`WeCom: converting ${format} → mp3 via ffmpeg`);
-          const converted = await convertAudioToMp3(audioBuffer, format);
-          audioBuffer = converted.data;
-          format = converted.format;
-        }
-
-        log.info(`WeCom: transcribing voice (${audioBuffer.length} bytes, format=${format})`);
-        const transcribed = await wecomSttManager.transcribe(audioBuffer, format);
-        if (transcribed) {
-          message = `[语音消息] ${transcribed}`;
-          log.info(`WeCom: voice transcribed: ${transcribed.substring(0, 80)}...`);
-        } else {
-          message = "[语音消息 - 转写失败]";
-          log.warn("WeCom: voice transcription returned null");
-        }
-      } catch (err) {
-        log.error("WeCom: voice transcription error:", err);
-        const errMsg = err instanceof Error ? err.message : String(err);
-        message = `[语音消息 - 转写失败] ${errMsg}`;
-      }
-    } else {
-      log.warn("WeCom: STT not enabled, cannot transcribe voice message");
-      message = "[语音消息 - 语音转文字服务未启用]";
-    }
-  }
-
-  // Pass image data as attachments so the agent can see the image.
-  // Also save to disk so the agent can reference the file path later (e.g. to send it back).
-  if (frame.msg_type === "image" && frame.media_data && frame.media_mime) {
-    const extMap: Record<string, string> = {
-      "image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif",
-      "image/webp": ".webp", "image/bmp": ".bmp",
-    };
-    const ext = extMap[frame.media_mime] ?? ".jpg";
-    const mediaDir = join(homedir(), ".easyclaw", "openclaw", "media", "inbound");
-    const fileName = `wecom-${Date.now()}${ext}`;
-    const filePath = join(mediaDir, fileName);
-    try {
-      await fs.mkdir(mediaDir, { recursive: true });
-      await fs.writeFile(filePath, Buffer.from(frame.media_data, "base64"));
-      message = `用户发来了一张图片，请查看并回应。图片已保存至 ${filePath}`;
-      log.info(`WeCom: saved inbound image to ${filePath}`);
-    } catch (err) {
-      log.error(`WeCom: failed to save inbound image: ${err}`);
-      message = message || "[图片]";
-    }
-    attachments = [{
-      type: "image",
-      mimeType: frame.media_mime,
-      content: frame.media_data,
-    }];
-  }
-
-  try {
-    const result = await wecomGatewayRpc.request<{ runId?: string }>("agent", {
-      sessionKey: "agent:main:main",
-      channel: "wechat",
-      message,
-      attachments,
-      idempotencyKey: frame.id,
-    });
-    if (result?.runId) {
-      wecomRunIdMap.set(result.runId, frame.external_user_id);
-      pushChatSSE("inbound", {
-        runId: result.runId,
-        sessionKey: "agent:main:main",
-        channel: "wechat",
-        message,
-        timestamp: frame.timestamp,
-      });
-    }
-  } catch (err) {
-    log.error("WeCom: agent request failed:", err);
-  }
-}
-
-/** Handle a gateway 'chat' event — extract the AI reply and send it back to WeCom. */
-async function handleWeComChatEvent(payload: unknown): Promise<void> {
-  const p = payload as Record<string, unknown> | null;
-  if (!p) return;
-
-  const runId = p.runId as string | undefined;
-  if (!runId || !wecomRunIdMap.has(runId)) return;
-
-  const rawUserId = wecomRunIdMap.get(runId)!;
-  const externalUserId = wecomUserIdCaseMap.get(rawUserId.toLowerCase()) ?? rawUserId;
-
-  if (p.state === "error") {
-    wecomRunIdMap.delete(runId);
-    const errorMsg = (p.errorMessage as string) ?? "An error occurred";
-    log.warn(`WeCom: agent error for ${externalUserId}: ${errorMsg}`);
-    if (wecomRelayWs && wecomRelayWs.readyState === WebSocket.OPEN) {
-      wecomRelayWs.send(JSON.stringify({
-        type: "reply",
-        id: randomUUID(),
-        external_user_id: externalUserId,
-        content: `⚠ ${errorMsg}`,
-      }));
-    }
-    return;
-  }
-
-  if (p.state !== "final") return;
-
-  wecomRunIdMap.delete(runId);
-  const message = p.message as Record<string, unknown> | undefined;
-  const content = message?.content;
-
-  // Collect raw text from content blocks
-  const rawTexts: string[] = [];
-  if (Array.isArray(content)) {
-    for (const c of content) {
-      const block = c as Record<string, unknown>;
-      if (block.type === "text" && typeof block.text === "string") {
-        rawTexts.push(block.text as string);
-      }
-    }
-  }
-
-  // Parse MEDIA: directives from text (fallback path when agent outputs MEDIA: in text)
-  const MEDIA_RE = /\bMEDIA:\s*`?([^\n`]+)`?/gi;
-  const mediaFiles: string[] = [];
-  const cleanedTexts: string[] = [];
-
-  for (const raw of rawTexts) {
-    const lines = raw.split("\n");
-    const kept: string[] = [];
-    for (const line of lines) {
-      const match = MEDIA_RE.exec(line);
-      MEDIA_RE.lastIndex = 0;
-      if (match) {
-        const filePath = match[1].replace(/^[`"']+/, "").replace(/[`"']+$/, "").trim();
-        if (filePath.startsWith("/") && /\.\w{1,10}$/.test(filePath)) {
-          mediaFiles.push(filePath);
-          const cleaned = line.replace(MEDIA_RE, "").trim();
-          MEDIA_RE.lastIndex = 0;
-          if (cleaned) kept.push(cleaned);
-          continue;
-        }
-      }
-      kept.push(line);
-    }
-    const cleaned = kept.join("\n").trim();
-    if (cleaned) cleanedTexts.push(cleaned);
-  }
-
-  // Fetch pending images queued by the plugin's sendMedia (primary path).
-  // The plugin stores outbound images in memory; we retrieve them via a
-  // custom gateway RPC method: wecom_get_pending_images.
-  try {
-    const result = await wecomGatewayRpc?.request<{ images?: Array<{ to: string; mediaUrl: string; text: string }> }>(
-      "wecom_get_pending_images",
-    );
-    if (result?.images?.length) {
-      for (const img of result.images) {
-        if (img.mediaUrl) mediaFiles.push(img.mediaUrl);
-      }
-      log.info(`WeCom: retrieved ${result.images.length} pending image(s) from plugin`);
-    }
-  } catch (err) {
-    log.warn(`WeCom: failed to get pending images: ${err}`);
-  }
-
-  // Read media files from disk and prepare image payloads
-  const images: Array<{ data: string; mimeType: string; savedName?: string }> = [];
-  const outboundDir = join(homedir(), ".easyclaw", "openclaw", "media", "outbound");
-  for (const filePath of mediaFiles) {
-    try {
-      const data = await fs.readFile(filePath);
-      const ext = extname(filePath).toLowerCase();
-      const mimeMap: Record<string, string> = {
-        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-        ".png": "image/png", ".gif": "image/gif",
-        ".webp": "image/webp", ".bmp": "image/bmp",
-      };
-      // Save a copy to outbound dir so it's accessible via /api/media/
-      const savedName = `wecom-${Date.now()}-${randomUUID().slice(0, 8)}${ext || ".png"}`;
-      try {
-        await fs.mkdir(outboundDir, { recursive: true });
-        await fs.writeFile(join(outboundDir, savedName), data);
-      } catch (saveErr) {
-        log.warn(`WeCom: failed to save outbound image copy: ${saveErr}`);
-      }
-      images.push({
-        data: data.toString("base64"),
-        mimeType: mimeMap[ext] ?? "image/png",
-        savedName,
-      });
-    } catch (err) {
-      log.error(`WeCom: failed to read media file ${filePath}: ${err}`);
-    }
-  }
-
-  if (wecomRelayWs && wecomRelayWs.readyState === WebSocket.OPEN) {
-    // Send text reply (with MEDIA: directives and NO_REPLY stripped)
-    const replyText = cleanedTexts.join("\n\n").replace(/\bNO_REPLY\b/g, "").trim();
-    if (replyText) {
-      wecomRelayWs.send(JSON.stringify({
-        type: "reply",
-        id: randomUUID(),
-        external_user_id: externalUserId,
-        content: replyText,
-      }));
-      log.info(`WeCom: reply sent to ${externalUserId} (${replyText.length} chars)`);
-    }
-
-    // Send image replies
-    for (const img of images) {
-      wecomRelayWs.send(JSON.stringify({
-        type: "image_reply",
-        id: randomUUID(),
-        external_user_id: externalUserId,
-        image_data: img.data,
-        image_mime: img.mimeType,
-      }));
-      log.info(`WeCom: image reply sent to ${externalUserId} (${img.mimeType})`);
-    }
-  } else {
-    log.warn(`WeCom: relay WS not open, cannot send reply to ${externalUserId}`);
-  }
-
-  // Inject image references into session transcript so ChatPage can display them.
-  // Uses chat.inject to write a markdown image reference that ChatPage renders.
-  const imageRefs = images
-    .filter((img) => img.savedName)
-    .map((img) => `![📷](/api/media/outbound/${img.savedName})`);
-  if (imageRefs.length > 0 && wecomGatewayRpc) {
-    try {
-      await wecomGatewayRpc.request("chat.inject", {
-        sessionKey: "agent:main:main",
-        message: imageRefs.join("\n"),
-      });
-      log.info(`WeCom: injected ${imageRefs.length} image ref(s) into chat transcript`);
-    } catch (err) {
-      log.warn(`WeCom: failed to inject image refs: ${err}`);
-    }
-  }
-}
 
 // Simple cache with TTL for usage data
 const usageCache = new Map<string, { data: UsageSummary; expiresAt: number }>();
@@ -835,208 +332,6 @@ const APPROVAL_MESSAGES = {
  * Read the first account config for a channel from the OpenClaw config.
  * Returns { accountId, config } or null.
  */
-function resolveFirstChannelAccount(channelId: string): { accountId: string; config: Record<string, unknown> } | null {
-  try {
-    const configPath = resolveOpenClawConfigPath();
-    const fullConfig = readExistingConfig(configPath);
-    const channels = (fullConfig.channels ?? {}) as Record<string, unknown>;
-    const channel = (channels[channelId] ?? {}) as Record<string, unknown>;
-    const accounts = (channel.accounts ?? {}) as Record<string, Record<string, unknown>>;
-    for (const [accountId, config] of Object.entries(accounts)) {
-      if (config && typeof config === "object") {
-        return { accountId, config };
-      }
-    }
-  } catch (err) {
-    log.error(`Failed to resolve ${channelId} account config:`, err);
-  }
-  return null;
-}
-
-// Telegram: POST https://api.telegram.org/bot{token}/sendMessage
-async function sendTelegramMessage(chatId: string, text: string): Promise<boolean> {
-  const account = resolveFirstChannelAccount("telegram");
-  const botToken = account?.config.botToken;
-  if (!botToken || typeof botToken !== "string") {
-    log.error("Telegram: no bot token found");
-    return false;
-  }
-  try {
-    const res = await proxiedFetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ chat_id: chatId, text }),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      log.error(`Telegram sendMessage failed: ${res.status} ${body.slice(0, 200)}`);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    log.error("Telegram sendMessage error:", err);
-    return false;
-  }
-}
-
-// Feishu: Get tenant_access_token, then POST to /im/v1/messages
-const feishuTokenCache: { token?: string; expiresAt?: number } = {};
-
-async function getFeishuTenantToken(appId: string, appSecret: string, domain: string): Promise<string | null> {
-  if (feishuTokenCache.token && feishuTokenCache.expiresAt && Date.now() < feishuTokenCache.expiresAt) {
-    return feishuTokenCache.token;
-  }
-  const host = domain === "lark" ? "open.larksuite.com" : "open.feishu.cn";
-  try {
-    const res = await fetch(`https://${host}/open-apis/auth/v3/tenant_access_token/internal`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ app_id: appId, app_secret: appSecret }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as { tenant_access_token?: string; expire?: number };
-    if (!data.tenant_access_token) return null;
-    feishuTokenCache.token = data.tenant_access_token;
-    feishuTokenCache.expiresAt = Date.now() + ((data.expire ?? 7200) - 60) * 1000;
-    return data.tenant_access_token;
-  } catch (err) {
-    log.error("Feishu tenant token error:", err);
-    return null;
-  }
-}
-
-async function sendFeishuMessage(chatId: string, text: string): Promise<boolean> {
-  const account = resolveFirstChannelAccount("feishu");
-  if (!account) return false;
-  const appId = account.config.appId as string;
-  const appSecret = account.config.appSecret as string;
-  const domain = (account.config.domain as string) ?? "feishu";
-  if (!appId || !appSecret) {
-    log.error("Feishu: missing appId or appSecret");
-    return false;
-  }
-  const token = await getFeishuTenantToken(appId, appSecret, domain);
-  if (!token) return false;
-  const host = domain === "lark" ? "open.larksuite.com" : "open.feishu.cn";
-  try {
-    const res = await fetch(`https://${host}/open-apis/im/v1/messages?receive_id_type=open_id`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        receive_id: chatId,
-        msg_type: "text",
-        content: JSON.stringify({ text }),
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      log.error(`Feishu sendMessage failed: ${res.status} ${body.slice(0, 200)}`);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    log.error("Feishu sendMessage error:", err);
-    return false;
-  }
-}
-
-// LINE: POST https://api.line.me/v2/bot/message/push
-async function sendLineMessage(chatId: string, text: string): Promise<boolean> {
-  const account = resolveFirstChannelAccount("line");
-  const token = account?.config.channelAccessToken;
-  if (!token || typeof token !== "string") {
-    log.error("LINE: no channel access token found");
-    return false;
-  }
-  try {
-    const res = await proxiedFetch("https://api.line.me/v2/bot/message/push", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        to: chatId,
-        messages: [{ type: "text", text }],
-      }),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      log.error(`LINE sendMessage failed: ${res.status} ${body.slice(0, 200)}`);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    log.error("LINE sendMessage error:", err);
-    return false;
-  }
-}
-
-// Mattermost: Create DM channel, then POST message
-async function sendMattermostMessage(userId: string, text: string): Promise<boolean> {
-  const account = resolveFirstChannelAccount("mattermost");
-  const botToken = account?.config.botToken as string | undefined;
-  const baseUrl = account?.config.baseUrl as string | undefined;
-  if (!botToken || !baseUrl) {
-    log.error("Mattermost: missing botToken or baseUrl");
-    return false;
-  }
-  const headers = {
-    "Content-Type": "application/json",
-    "Authorization": `Bearer ${botToken}`,
-  };
-  try {
-    // Get bot's own user ID
-    const meRes = await fetch(`${baseUrl}/api/v4/users/me`, { headers });
-    if (!meRes.ok) return false;
-    const me = await meRes.json() as { id: string };
-
-    // Create/get DM channel
-    const dmRes = await fetch(`${baseUrl}/api/v4/channels/direct`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify([me.id, userId]),
-    });
-    if (!dmRes.ok) return false;
-    const dm = await dmRes.json() as { id: string };
-
-    // Post message
-    const res = await fetch(`${baseUrl}/api/v4/posts`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({ channel_id: dm.id, message: text }),
-    });
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      log.error(`Mattermost sendMessage failed: ${res.status} ${body.slice(0, 200)}`);
-      return false;
-    }
-    return true;
-  } catch (err) {
-    log.error("Mattermost sendMessage error:", err);
-    return false;
-  }
-}
-
-/**
- * Send a message to a user on the given channel.
- * Returns true if successfully sent, false otherwise.
- */
-async function sendChannelMessage(channelId: string, userId: string, text: string): Promise<boolean> {
-  switch (channelId) {
-    case "telegram": return sendTelegramMessage(userId, text);
-    case "feishu": return sendFeishuMessage(userId, text);
-    case "line": return sendLineMessage(userId, text);
-    case "mattermost": return sendMattermostMessage(userId, text);
-    default:
-      log.info(`Channel ${channelId}: message sending not supported yet`);
-      return false;
-  }
-}
-
 /**
  * Watch pairing request files for ALL channels and send follow-up messages
  * when new pairing requests are created by OpenClaw.
@@ -1090,7 +385,7 @@ function startPairingNotifier(): { stop: () => void } {
           const message = PAIRING_MESSAGES[getSystemLocale()];
 
           log.info(`Sending pairing follow-up to ${channelId} user ${req.id}`);
-          sendChannelMessage(channelId, req.id, message);
+          sendChannelMessage(channelId, req.id, message, proxiedFetch);
         }
       }
     } catch (err) {
@@ -1225,195 +520,6 @@ function parseBody(req: IncomingMessage): Promise<unknown> {
 }
 
 /**
- * Validate an API key by making a lightweight call to the provider's API.
- * Returns { valid: true } or { valid: false, error: "..." }.
- */
-async function validateProviderApiKey(
-  provider: string,
-  apiKey: string,
-  proxyUrl?: string,
-): Promise<{ valid: boolean; error?: string }> {
-  const meta = getProviderMeta(provider as LLMProvider);
-  if (!meta) {
-    return { valid: false, error: "Unknown provider" };
-  }
-  const baseUrl = meta.baseUrl;
-
-  // OAuth-only providers (e.g. gemini) don't support API key validation
-  if (meta.oauth) {
-    return { valid: false, error: "This provider uses OAuth authentication and cannot be validated with an API key." };
-  }
-
-  // Amazon Bedrock uses AWS Sig v4 — skip validation
-  if (provider === "amazon-bedrock") {
-    return { valid: true };
-  }
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
-
-  // Priority: per-key proxy > proxy router (system proxy) > direct
-  // Per-key proxy is typically outside GFW and can reach the API directly.
-  // If no per-key proxy, fall back to proxy router which handles system proxy / direct.
-  const { ProxyAgent } = await import("undici");
-  const dispatcher: any = new ProxyAgent(proxyUrl || "http://127.0.0.1:9999");
-
-  try {
-    let res: Response;
-
-    if (provider === "anthropic" || provider === "claude") {
-      const isOAuthToken = apiKey.startsWith("sk-ant-oat01-");
-      log.info(`Validating Anthropic ${isOAuthToken ? "OAuth token" : "API key"}...`);
-
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        "anthropic-version": "2023-06-01",
-      };
-
-      if (isOAuthToken) {
-        headers["Authorization"] = `Bearer ${apiKey}`;
-        headers["anthropic-beta"] = "claude-code-20250219,oauth-2025-04-20";
-        headers["user-agent"] = "claude-cli/2.1.2 (external, cli)";
-        headers["x-app"] = "cli";
-        headers["anthropic-dangerous-direct-browser-access"] = "true";
-      } else {
-        headers["x-api-key"] = apiKey;
-      }
-
-      const body: Record<string, unknown> = {
-        model: "claude-3-5-haiku-20241022",
-        max_tokens: 1,
-        messages: [{ role: "user", content: "hi" }],
-      };
-
-      if (isOAuthToken) {
-        body.system = "You are Claude Code, Anthropic's official CLI for Claude.";
-      }
-
-      res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers,
-        body: JSON.stringify(body),
-        signal: controller.signal,
-        ...(dispatcher && { dispatcher }),
-      });
-    } else if (provider === "moonshot-coding") {
-      // Kimi Coding uses Anthropic Messages API — validate via POST /v1/messages
-      log.info(`Validating ${provider} API key via ${baseUrl}/v1/messages ...`);
-      res = await fetch(`${baseUrl}/v1/messages`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "kimi-for-coding",
-          max_tokens: 1,
-          messages: [{ role: "user", content: "hi" }],
-        }),
-        signal: controller.signal,
-        ...(dispatcher && { dispatcher }),
-      });
-    } else if (provider === "minimax" || provider === "minimax-cn" || provider === "minimax-coding") {
-      // MiniMax doesn't support GET /models — validate via a minimal chat completion
-      log.info(`Validating ${provider} API key via ${baseUrl}/chat/completions ...`);
-      res = await fetch(`${baseUrl}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: "MiniMax-M2",
-          messages: [{ role: "user", content: "hi" }],
-          max_tokens: 1,
-        }),
-        signal: controller.signal,
-        ...(dispatcher && { dispatcher }),
-      });
-    } else {
-      // OpenAI-compatible providers: GET /models
-      log.info(`Validating ${provider} API key via ${baseUrl}/models ...`);
-      res = await fetch(`${baseUrl}/models`, {
-        headers: { Authorization: `Bearer ${apiKey}` },
-        signal: controller.signal,
-        ...(dispatcher && { dispatcher }),
-      });
-    }
-
-    log.info(`Validation response: ${res.status} ${res.statusText}`);
-    if (res.status === 401 || res.status === 403) {
-      // Read response body to distinguish real auth errors from firewall blocks
-      const body = await res.text().catch(() => "");
-      log.info(`Validation response body: ${body.slice(0, 300)}`);
-
-      // Anthropic returns {"type":"error","error":{"type":"authentication_error",...}}
-      // OpenAI returns {"error":{"code":"invalid_api_key",...}}
-      // A firewall 403 will have completely different content (HTML block page, etc.)
-      const isRealAuthError =
-        body.includes("authentication_error") ||
-        body.includes("invalid_api_key") ||
-        body.includes("invalid_x-api-key") ||
-        body.includes("Incorrect API key") ||
-        body.includes('"unauthorized"');
-
-      if (isRealAuthError) {
-        return { valid: false, error: "Invalid API key" };
-      }
-
-      // 403 from firewall/proxy — not a key issue, likely network restriction
-      return { valid: false, error: `Provider returned ${res.status} — this may be a network issue (firewall/proxy). Response: ${body.slice(0, 200)}` };
-    }
-
-    // Any non-2xx response is suspicious — don't accept the key
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      log.info(`Validation non-2xx response: ${res.status} body: ${body.slice(0, 300)}`);
-      return { valid: false, error: `Provider returned ${res.status}: ${body.slice(0, 200)}` };
-    }
-
-    return { valid: true };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    log.error("API key validation failed:", msg);
-    if (msg.includes("abort")) {
-      return { valid: false, error: "Validation timed out — check your network connection" };
-    }
-    return { valid: false, error: `Network error: ${msg}` };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-/**
- * Sync the active key for a provider to the canonical secret store slot.
- * The gateway reads `{provider}-api-key` — this keeps it in sync with multi-key management.
- */
-async function syncActiveKey(
-  provider: string,
-  storage: Storage,
-  secretStore: SecretStore,
-): Promise<void> {
-  const activeKey = storage.providerKeys.getDefault(provider);
-  const canonicalKey = providerSecretKey(provider as LLMProvider);
-  if (activeKey) {
-    const keyValue = await secretStore.get(`provider-key-${activeKey.id}`);
-    if (keyValue) {
-      await secretStore.set(canonicalKey, keyValue);
-      log.info(`Synced active key for ${provider} (${activeKey.label}) to ${canonicalKey}`);
-    } else if (activeKey.authType === "local") {
-      // Local providers (e.g. Ollama) don't require an API key — use provider name as dummy
-      await secretStore.set(canonicalKey, provider);
-      log.info(`Synced dummy key for local provider ${provider} to ${canonicalKey}`);
-    }
-  } else {
-    await secretStore.delete(canonicalKey);
-    log.info(`No active key for ${provider}, removed ${canonicalKey}`);
-  }
-}
-
-/**
  * Create and start a local HTTP server that serves the panel SPA
  * and provides REST API endpoints backed by real storage.
  *
@@ -1424,11 +530,9 @@ export function startPanelServer(options: PanelServerOptions): Server {
   const distDir = resolve(options.panelDistDir);
   const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onBrowserChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, changelogPath, onUpdateDownload, onUpdateCancel, onUpdateInstall, getUpdateDownloadState } = options;
 
-  // Store references so module-level WeCom handlers can access them
-  wecomStorageRef = storage;
-  if (sttManager) {
-    wecomSttManager = sttManager;
-  }
+  // Create WeCom relay instance
+  const wecomRelay = createWeComRelay({ pushChatSSE });
+  wecomRelay.initRefs({ storage, sttMgr: sttManager ?? undefined });
 
   // Initialize the customer service bridge
   initCSBridge({ storage, secretStore, getGatewayInfo, deviceId });
@@ -1608,7 +712,7 @@ export function startPanelServer(options: PanelServerOptions): Server {
       }
 
       try {
-        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onBrowserChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, snapshotEngine, queryService);
+        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onBrowserChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, snapshotEngine, queryService, wecomRelay);
       } catch (err) {
         log.error("API error:", err);
         sendJson(res, 500, { error: "Internal server error" });
@@ -1633,14 +737,14 @@ export function startPanelServer(options: PanelServerOptions): Server {
       if (!savedAuthToken) return;
       const gwId = deviceId ?? randomUUID();
       const savedExternalUserId = storage.settings.get("wecom-external-user-id") as string | undefined;
-      wecomRelayState = {
+      wecomRelay.setState({
         relayUrl: savedRelayUrl,
         authToken: savedAuthToken,
         connected: false,
         externalUserId: savedExternalUserId,
-      };
+      });
       const gwInfo = getGatewayInfo?.();
-      startWeComRelay({
+      wecomRelay.start({
         relayUrl: savedRelayUrl,
         authToken: savedAuthToken,
         gatewayId: gwId,
@@ -1709,6 +813,7 @@ async function handleApiRoute(
   getGatewayInfo?: () => { wsUrl: string; token?: string },
   snapshotEngine?: UsageSnapshotEngine,
   queryService?: UsageQueryService,
+  wecomRelay?: ReturnType<typeof createWeComRelay>,
 ): Promise<void> {
   // --- Status ---
   if (pathname === "/api/status" && req.method === "GET") {
@@ -2772,7 +1877,7 @@ async function handleApiRoute(
       // Send approval confirmation to the user via their channel
       const locale = (body.locale === "zh" ? "zh" : "en") as "zh" | "en";
       const confirmMsg = APPROVAL_MESSAGES[locale];
-      sendChannelMessage(body.channelId, request.id, confirmMsg).then(ok => {
+      sendChannelMessage(body.channelId, request.id, confirmMsg, proxiedFetch).then(ok => {
         if (ok) log.info(`Sent approval confirmation to ${body.channelId} user ${request.id}`);
       });
     } catch (err) {
@@ -2841,17 +1946,19 @@ async function handleApiRoute(
   }
 
   if (pathname === "/api/channels/wecom/unbind" && req.method === "DELETE") {
-    if (!wecomRelayState) {
+    if (!wecomRelay!.getState()) {
       sendJson(res, 200, { ok: true }); // nothing to unbind
       return;
     }
 
     // Send unbind_all frame via the persistent WS if connected
-    if (wecomRelayWs && wecomRelayWs.readyState === WebSocket.OPEN && wecomConnParams) {
+    const unbindWs = wecomRelay!.getWs();
+    const unbindParams = wecomRelay!.getConnParams();
+    if (unbindWs && unbindWs.readyState === WebSocket.OPEN && unbindParams) {
       try {
-        wecomRelayWs.send(JSON.stringify({
+        unbindWs.send(JSON.stringify({
           type: "unbind_all",
-          gateway_id: wecomConnParams.gatewayId,
+          gateway_id: unbindParams.gatewayId,
         }));
         // Wait for relay to process the frame before closing
         await new Promise(r => setTimeout(r, 1000));
@@ -2861,8 +1968,8 @@ async function handleApiRoute(
     }
 
     // Tear down persistent connection
-    stopWeComRelay();
-    wecomRelayState = null;
+    wecomRelay!.stop();
+    wecomRelay!.setState(null);
 
     // Clear persisted credentials
     storage.settings.delete("wecom-relay-url");
@@ -3261,14 +2368,15 @@ async function handleApiRoute(
 
   // --- WeCom Channel ---
   if (pathname === "/api/channels/wecom/binding-status" && req.method === "GET") {
-    if (!wecomRelayState) {
+    const wState = wecomRelay!.getState();
+    if (!wState) {
       sendJson(res, 200, { status: null });
       return;
     }
     // Compute status from clean state: connected (bool) + externalUserId (binding)
-    const relayConnected = wecomRelayWs?.readyState === WebSocket.OPEN;
-    const gatewayConnected = wecomGatewayRpc?.isConnected() ?? false;
-    const { externalUserId, connected } = wecomRelayState;
+    const relayConnected = wecomRelay!.getWs()?.readyState === WebSocket.OPEN;
+    const gatewayConnected = wecomRelay!.getGatewayRpc()?.isConnected() ?? false;
+    const { externalUserId, connected } = wState;
     // status derivation:
     //   "bound"   = user has been bound (binding persists across reconnects)
     //   "active"  = relay connected, no user bound yet
@@ -3283,11 +2391,11 @@ async function handleApiRoute(
           : "pending";
     sendJson(res, 200, {
       status,
-      relayUrl: wecomRelayState.relayUrl,
+      relayUrl: wState.relayUrl,
       externalUserId: externalUserId ?? null,
       connected: connected || relayConnected,
-      bindingToken: wecomRelayState.bindingToken ?? null,
-      customerServiceUrl: wecomRelayState.customerServiceUrl ?? null,
+      bindingToken: wState.bindingToken ?? null,
+      customerServiceUrl: wState.customerServiceUrl ?? null,
       relayConnected,
       gatewayConnected,
     });
@@ -3350,13 +2458,13 @@ async function handleApiRoute(
         });
       });
 
-      wecomRelayState = {
+      wecomRelay!.setState({
         relayUrl,
         authToken,
         connected: false,
         bindingToken: result.token,
         customerServiceUrl: result.customerServiceUrl,
-      };
+      });
 
       // Persist credentials so the connection survives app restarts
       storage.settings.set("wecom-relay-url", relayUrl);
@@ -3364,7 +2472,7 @@ async function handleApiRoute(
 
       // Start persistent relay connection for message forwarding
       const gwInfo = getGatewayInfo?.();
-      startWeComRelay({
+      wecomRelay!.start({
         relayUrl,
         authToken,
         gatewayId: gwId,
