@@ -461,6 +461,8 @@ export interface PanelServerOptions {
   onPermissionsChange?: () => void;
   /** Callback fired when browser mode settings change. */
   onBrowserChange?: () => void;
+  /** Callback fired when auto-launch setting changes. Applies OS login item. */
+  onAutoLaunchChange?: (enabled: boolean) => void;
   /** Callback fired when a channel account is created or updated. */
   onChannelConfigured?: (channelId: string) => void;
   /** Callback to initiate an OAuth flow for a provider (e.g. gemini). */
@@ -528,7 +530,7 @@ function parseBody(req: IncomingMessage): Promise<unknown> {
 export function startPanelServer(options: PanelServerOptions): Server {
   const port = options.port ?? 3210;
   const distDir = resolve(options.panelDistDir);
-  const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onBrowserChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, changelogPath, onUpdateDownload, onUpdateCancel, onUpdateInstall, getUpdateDownloadState } = options;
+  const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onBrowserChange, onAutoLaunchChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, changelogPath, onUpdateDownload, onUpdateCancel, onUpdateInstall, getUpdateDownloadState } = options;
 
   // Create WeCom relay instance
   const wecomRelay = createWeComRelay({ pushChatSSE });
@@ -712,7 +714,7 @@ export function startPanelServer(options: PanelServerOptions): Server {
       }
 
       try {
-        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onBrowserChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, snapshotEngine, queryService, wecomRelay);
+        await handleApiRoute(req, res, url, pathname, storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onBrowserChange, onAutoLaunchChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, snapshotEngine, queryService, wecomRelay);
       } catch (err) {
         log.error("API error:", err);
         sendJson(res, 500, { error: "Internal server error" });
@@ -795,6 +797,7 @@ async function handleApiRoute(
   onSttChange?: () => void,
   onPermissionsChange?: () => void,
   onBrowserChange?: () => void,
+  onAutoLaunchChange?: (enabled: boolean) => void,
   onChannelConfigured?: (channelId: string) => void,
   onOAuthFlow?: (provider: string) => Promise<{ providerKeyId: string; email?: string; provider: string }>,
   onOAuthAcquire?: (provider: string) => Promise<{ email?: string; tokenPreview: string; manualMode?: boolean; authUrl?: string }>,
@@ -962,6 +965,25 @@ async function handleApiRoute(
       return;
     }
     storage.settings.set("telemetry_enabled", body.enabled ? "true" : "false");
+    sendJson(res, 200, { ok: true });
+    return;
+  }
+
+  // --- Auto-Launch Settings ---
+  if (pathname === "/api/settings/auto-launch" && req.method === "GET") {
+    const enabled = storage.settings.get("auto_launch_enabled") === "true";
+    sendJson(res, 200, { enabled });
+    return;
+  }
+
+  if (pathname === "/api/settings/auto-launch" && req.method === "PUT") {
+    const body = (await parseBody(req)) as { enabled?: boolean };
+    if (typeof body.enabled !== "boolean") {
+      sendJson(res, 400, { error: "Missing required field: enabled (boolean)" });
+      return;
+    }
+    storage.settings.set("auto_launch_enabled", body.enabled ? "true" : "false");
+    onAutoLaunchChange?.(body.enabled);
     sendJson(res, 200, { ok: true });
     return;
   }

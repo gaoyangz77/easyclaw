@@ -717,6 +717,12 @@ export default {
       cdpConfirmOk: "切换到 CDP",
       failedToSave: "保存浏览器设置失败：",
     },
+    autoLaunch: {
+      title: "启动",
+      toggle: "登录时自动启动 EasyClaw",
+      hint: "登录电脑时自动启动 EasyClaw。",
+      failedToSave: "保存启动设置失败：",
+    },
     telemetry: {
       title: "遥测与隐私",
       description: "通过分享匿名使用统计数据帮助我们改进爪爪。我们重视您的隐私。",

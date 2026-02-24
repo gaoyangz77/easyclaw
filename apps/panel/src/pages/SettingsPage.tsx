@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { fetchTelemetrySetting, updateTelemetrySetting, trackEvent, fetchAgentSettings, updateAgentSettings, fetchChatShowAgentEvents, updateChatShowAgentEvents, fetchChatPreserveToolEvents, updateChatPreserveToolEvents, fetchBrowserMode, updateBrowserMode } from "../api.js";
+import { fetchTelemetrySetting, updateTelemetrySetting, trackEvent, fetchAgentSettings, updateAgentSettings, fetchChatShowAgentEvents, updateChatShowAgentEvents, fetchChatPreserveToolEvents, updateChatPreserveToolEvents, fetchBrowserMode, updateBrowserMode, fetchAutoLaunchSetting, updateAutoLaunchSetting } from "../api.js";
 import { Select } from "../components/Select.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
 
@@ -37,6 +37,7 @@ export function SettingsPage() {
   const [dmScope, setDmScope] = useState("main");
   const [showAgentEvents, setShowAgentEvents] = useState(false);
   const [preserveToolEvents, setPreserveToolEvents] = useState(false);
+  const [autoLaunchEnabled, setAutoLaunchEnabled] = useState(false);
   const [browserMode, setBrowserMode] = useState<"standalone" | "cdp">("standalone");
   const [cdpConfirmOpen, setCdpConfirmOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -50,18 +51,20 @@ export function SettingsPage() {
   async function loadSettings() {
     try {
       setLoading(true);
-      const [enabled, agentSettings, chatEvents, toolEvents, curBrowserMode] = await Promise.all([
+      const [enabled, agentSettings, chatEvents, toolEvents, curBrowserMode, autoLaunch] = await Promise.all([
         fetchTelemetrySetting(),
         fetchAgentSettings(),
         fetchChatShowAgentEvents(),
         fetchChatPreserveToolEvents(),
         fetchBrowserMode(),
+        fetchAutoLaunchSetting(),
       ]);
       setTelemetryEnabled(enabled);
       setDmScope(agentSettings.dmScope);
       setShowAgentEvents(chatEvents);
       setPreserveToolEvents(toolEvents);
       setBrowserMode(curBrowserMode);
+      setAutoLaunchEnabled(autoLaunch);
       setError(null);
     } catch (err) {
       setError(t("settings.agent.failedToLoad") + String(err));
@@ -127,6 +130,21 @@ export function SettingsPage() {
     } catch (err) {
       setError(t("settings.telemetry.failedToSave") + String(err));
       setTelemetryEnabled(!enabled);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleToggleAutoLaunch(enabled: boolean) {
+    const previous = autoLaunchEnabled;
+    setAutoLaunchEnabled(enabled);
+    try {
+      setSaving(true);
+      setError(null);
+      await updateAutoLaunchSetting(enabled);
+    } catch (err) {
+      setError(t("settings.autoLaunch.failedToSave") + String(err));
+      setAutoLaunchEnabled(previous);
     } finally {
       setSaving(false);
     }
@@ -238,6 +256,21 @@ export function SettingsPage() {
           </div>
           <div className="form-hint">
             {t("settings.chat.preserveToolEventsHint")}
+          </div>
+        </div>
+      </div>
+
+      {/* Auto-Launch Section */}
+      <div className="section-card">
+        <h3>{t("settings.autoLaunch.title")}</h3>
+
+        <div className="settings-toggle-card">
+          <div className="settings-toggle-label">
+            <span>{t("settings.autoLaunch.toggle")}</span>
+            <ToggleSwitch checked={autoLaunchEnabled} onChange={handleToggleAutoLaunch} disabled={saving} />
+          </div>
+          <div className="form-hint">
+            {t("settings.autoLaunch.hint")}
           </div>
         </div>
       </div>

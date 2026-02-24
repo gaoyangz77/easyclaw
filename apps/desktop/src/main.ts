@@ -133,6 +133,20 @@ function cleanupGatewayLock(gatewayConfigPath: string): void {
 }
 
 /**
+ * Apply auto-launch (login item) setting to the OS.
+ * Uses Electron's built-in API which handles macOS (Login Items),
+ * Windows (Registry), and Linux (~/.config/autostart/).
+ */
+function applyAutoLaunch(enabled: boolean): void {
+  try {
+    app.setLoginItemSettings({ openAtLogin: enabled });
+    log.info(`Auto-launch ${enabled ? "enabled" : "disabled"}`);
+  } catch (err) {
+    log.error("Failed to set login item settings:", err);
+  }
+}
+
+/**
  * Migrate old-style `{provider}-api-key` secrets to the new provider_keys table.
  * Only runs if the provider_keys table is empty (first upgrade).
  */
@@ -262,6 +276,10 @@ app.whenReady().then(async () => {
   // Initialize storage and secrets
   const storage = createStorage();
   const secretStore = createSecretStore();
+
+  // Apply auto-launch (login item) setting from DB to OS
+  const autoLaunchEnabled = storage.settings.get("auto_launch_enabled") === "true";
+  applyAutoLaunch(autoLaunchEnabled);
 
   // Initialize telemetry client (opt-out: enabled by default, user can disable via consent dialog or Settings)
   // In dev mode, telemetry is OFF unless DEV_TELEMETRY=1 is set (avoids polluting production data)
@@ -1031,6 +1049,9 @@ app.whenReady().then(async () => {
       cdpManager.handleBrowserChange().catch((err: unknown) => {
         log.error("Failed to handle browser change:", err);
       });
+    },
+    onAutoLaunchChange: (enabled: boolean) => {
+      applyAutoLaunch(enabled);
     },
     onOAuthAcquire: async (provider: string): Promise<{ email?: string; tokenPreview: string; manualMode?: boolean; authUrl?: string }> => {
       const proxyRouterUrl = `http://127.0.0.1:${PROXY_ROUTER_PORT}`;

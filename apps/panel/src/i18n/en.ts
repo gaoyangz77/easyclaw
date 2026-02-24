@@ -717,6 +717,12 @@ export default {
       cdpConfirmOk: "Switch to CDP",
       failedToSave: "Failed to save browser settings: ",
     },
+    autoLaunch: {
+      title: "Startup",
+      toggle: "Start EasyClaw on login",
+      hint: "Automatically launch EasyClaw when you log in to your computer.",
+      failedToSave: "Failed to save startup setting: ",
+    },
     telemetry: {
       title: "Telemetry & Privacy",
       description: "Help us improve EasyClaw by sharing anonymous usage statistics. Your privacy is important to us.",

@@ -566,6 +566,20 @@ export async function updateTelemetrySetting(enabled: boolean): Promise<void> {
   });
 }
 
+// --- Auto-Launch Settings ---
+
+export async function fetchAutoLaunchSetting(): Promise<boolean> {
+  const data = await fetchJson<{ enabled: boolean }>("/settings/auto-launch");
+  return data.enabled;
+}
+
+export async function updateAutoLaunchSetting(enabled: boolean): Promise<void> {
+  await fetchJson("/settings/auto-launch", {
+    method: "PUT",
+    body: JSON.stringify({ enabled }),
+  });
+}
+
 // --- Chat Settings ---
 
 export async function fetchChatShowAgentEvents(): Promise<boolean> {
