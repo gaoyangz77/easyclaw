@@ -40,11 +40,13 @@ async function ensurePortFree(port: number): Promise<void> {
       try { execSync("taskkill /F /IM openclaw-gateway.exe 2>nul || exit 0", { stdio: "ignore", shell: "cmd.exe" }); } catch {}
     } catch {}
   } else {
-    // Kill by port
+    // Kill by port (lsof is fast — ~100ms on macOS)
     try { execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null || true`, { stdio: "ignore" }); } catch {}
-    // Kill orphaned gateway processes by name (covers processes that
-    // haven't bound the port yet or have already released it)
-    try { execSync("pkill -9 -f 'openclaw.*gateway' 2>/dev/null || true", { stdio: "ignore" }); } catch {}
+    // Kill orphaned gateway processes by exact binary name.
+    // NOTE: We use `killall` (~10ms) instead of `pkill -f` because pkill's
+    // full-command-line scan (`-f`) can take 20-50 seconds on macOS due to
+    // slow proc_info kernel calls when many processes are running.
+    try { execSync("killall -9 openclaw-gateway 2>/dev/null || true", { stdio: "ignore" }); } catch {}
   }
 
   // Wait until the port is actually free (up to 5s)
@@ -229,11 +231,10 @@ export const test = base.extend<ElectronFixtures>({
           model: "doubao-seed-1-6-flash-250828",
           apiKey,
         });
-        // On Windows, provider seeding triggers multiple gateway restarts
-        // (config + model change), each requiring a full stop+start since
-        // SIGUSR1 is not supported. Wait for all restart cycles to settle
-        // before reloading — otherwise the reload triggers yet another restart.
-        await window.waitForTimeout(10000);
+        // Provider seeding triggers gateway restarts (config + model change).
+        // On Windows each restart is a full stop+start (no SIGUSR1) — needs
+        // longer to settle. On macOS/Linux SIGUSR1 graceful reload is fast.
+        await window.waitForTimeout(process.platform === "win32" ? 10000 : 2000);
         // Reload to trigger onboarding re-check so the app transitions to
         // the main page now that a provider is configured.
         await window.reload();

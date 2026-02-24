@@ -24,8 +24,10 @@ export default function globalSetup() {
   // cwd is apps/desktop/ when running via pnpm run test:e2e:*
   loadEnvFile(resolve("e2e", ".env"));
   if (process.platform === "darwin") {
+    // Use killall (~10ms) instead of pkill which can take 20-50s on macOS
+    // due to slow proc_info kernel calls when many processes are running.
     try {
-      execSync("pkill -x EasyClaw 2>/dev/null || true", { stdio: "ignore" });
+      execSync("killall -9 EasyClaw 2>/dev/null || true", { stdio: "ignore" });
     } catch {}
   }
   if (process.platform === "win32") {

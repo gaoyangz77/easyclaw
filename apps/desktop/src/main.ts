@@ -778,7 +778,9 @@ app.whenReady().then(async () => {
         try { execSync("taskkill /f /im openclaw-gateway.exe 2>nul & taskkill /f /im openclaw.exe 2>nul & exit /b 0", { stdio: "ignore", shell: "cmd.exe" }); } catch {}
       } else {
         execSync(`lsof -ti :${DEFAULT_GATEWAY_PORT} | xargs kill -9 2>/dev/null || true`, { stdio: "ignore" });
-        execSync("pkill -x 'openclaw-gateway' || true; pkill -x 'openclaw' || true", { stdio: "ignore" });
+        // Use killall (~10ms) instead of pkill which can take 20-50s on macOS
+        // due to slow proc_info kernel calls when many processes are running.
+        execSync("killall -9 openclaw-gateway 2>/dev/null || true; killall -9 openclaw 2>/dev/null || true", { stdio: "ignore" });
       }
       log.info("Cleaned up existing openclaw processes");
     } catch (err) {
@@ -1117,7 +1119,9 @@ app.whenReady().then(async () => {
         } else {
           const name = chromePath!.includes("Chromium") ? "Chromium" :
                        chromePath!.includes("Edge") ? "Microsoft Edge" : "Google Chrome";
-          execSync(`pkill -x '${name}' 2>/dev/null || true`, { stdio: "ignore" });
+          // Use killall (~10ms) instead of pkill which can take 20-50s on macOS
+          // due to slow proc_info kernel calls when many processes are running.
+          execSync(`killall -9 '${name}' 2>/dev/null || true`, { stdio: "ignore" });
         }
       } catch { /* ignore */ }
     };
