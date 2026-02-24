@@ -177,7 +177,7 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
         label: "Google Gemini (Subscription)",
         baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
         subscriptionUrl: "https://gemini.google/subscriptions/",
-        apiKeyUrl: "https://gemini.google/subscriptions/",
+        apiKeyUrl: "https://aistudio.google.com/app/apikey",
         envVar: "GOOGLE_GEMINI_CLI_API_KEY",
         oauth: true,
         catalogProvider: "google-gemini-cli",
@@ -284,7 +284,7 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
         label: "Zhipu Coding Plan (GLM)",
         baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
         subscriptionUrl: "https://www.bigmodel.cn/glm-coding?ic=QWUW9KBBBL",
-        apiKeyUrl: "https://www.bigmodel.cn/glm-coding?ic=QWUW9KBBBL",
+        apiKeyUrl: "https://www.bigmodel.cn/usercenter/proj-mgmt/apikeys",
         envVar: "ZHIPU_CODING_API_KEY",
         extraModels: [
           {

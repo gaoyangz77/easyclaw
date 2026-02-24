@@ -499,6 +499,16 @@ export function ProviderSetupForm({
               >
                 {t("providers.getSubscription")} &rarr;
               </a>
+              {getProviderMeta(provider as LLMProvider)?.apiKeyUrl &&
+               getProviderMeta(provider as LLMProvider)?.apiKeyUrl !== getProviderMeta(provider as LLMProvider)?.subscriptionUrl && (
+              <a
+                href={getProviderMeta(provider as LLMProvider)?.apiKeyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t("providers.getApiKey")} &rarr;
+              </a>
+              )}
             </div>
             )}
 
@@ -670,6 +680,16 @@ export function ProviderSetupForm({
               >
                 {t("providers.getSubscription")} &rarr;
               </a>
+              {getProviderMeta(provider as LLMProvider)?.apiKeyUrl &&
+               getProviderMeta(provider as LLMProvider)?.apiKeyUrl !== getProviderMeta(provider as LLMProvider)?.subscriptionUrl && (
+              <a
+                href={getProviderMeta(provider as LLMProvider)?.apiKeyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t("providers.getApiKey")} &rarr;
+              </a>
+              )}
             </div>
             )
           ) : (
