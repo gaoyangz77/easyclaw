@@ -344,7 +344,7 @@ test.describe("Chat Agent Events & Settings", () => {
   // Settings page section ordering
   // ──────────────────────────────────────────────────────────────────
 
-  test("Settings page sections are in correct order: Agent → Browser → Chat → Telemetry", async ({ window }) => {
+  test("Settings page sections are in correct order: Agent → Chat → Startup → Telemetry", async ({ window }) => {
     await dismissModals(window);
 
     const settingsBtn = window.locator(".nav-btn", { hasText: "Settings" });
@@ -355,7 +355,7 @@ test.describe("Chat Agent Events & Settings", () => {
     const sectionCards = window.locator(".section-card:visible");
     await expect(sectionCards.first()).toBeVisible({ timeout: 10_000 });
     const count = await sectionCards.count();
-    expect(count).toBeGreaterThanOrEqual(3);
+    expect(count).toBeGreaterThanOrEqual(4);
 
     // First section: Agent Settings (includes browser mode)
     const firstSection = sectionCards.nth(0);
@@ -365,9 +365,13 @@ test.describe("Chat Agent Events & Settings", () => {
     const secondSection = sectionCards.nth(1);
     await expect(secondSection).toContainText(/Chat Settings|聊天设置/);
 
-    // Third section: Telemetry & Privacy
+    // Third section: Startup (Auto-Launch)
     const thirdSection = sectionCards.nth(2);
-    await expect(thirdSection).toContainText(/Telemetry|遥测/);
+    await expect(thirdSection).toContainText(/Startup|启动/);
+
+    // Fourth section: Telemetry & Privacy
+    const fourthSection = sectionCards.nth(3);
+    await expect(fourthSection).toContainText(/Telemetry|遥测/);
   });
 
   // ──────────────────────────────────────────────────────────────────

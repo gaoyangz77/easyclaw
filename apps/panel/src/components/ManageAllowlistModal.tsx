@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Modal } from "./Modal.js";
 import { ConfirmDialog } from "./ConfirmDialog.js";
-import { fetchPairingRequests, fetchAllowlist, approvePairing, removeFromAllowlist, type PairingRequest } from "../api.js";
+import { fetchPairingRequests, fetchAllowlist, approvePairing, removeFromAllowlist, type PairingRequest } from "../api/index.js";
 
 export interface ManageAllowlistModalProps {
   isOpen: boolean;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { fetchRules, createRule, updateRule, deleteRule, trackEvent, type Rule } from "../api.js";
+import { fetchRules, createRule, updateRule, deleteRule, trackEvent, type Rule } from "../api/index.js";
 
 const EXAMPLE_RULE_KEYS = [
   "onboarding.exampleRule1",

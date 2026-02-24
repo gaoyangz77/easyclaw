@@ -97,12 +97,29 @@ test.describe("LLM Providers", () => {
     await form.locator(".custom-select-trigger").click();
     await window.locator(".custom-select-option", { hasText: /GLM-4\.7-Flash/i }).click();
 
-    // Enter API key and save
+    // Enter API key and save.
+    // External API validation can be slow — retry if it times out.
     await form.locator("input[type='password']").fill(zhipuKey!);
-    await form.locator(".form-actions .btn.btn-primary").click();
+    const saveBtn = form.locator(".form-actions .btn.btn-primary");
+    const errorAlert = form.locator(".error-alert");
 
-    // Wait for validation + save, then verify both keys appear
-    await expect(keyCards).toHaveCount(2, { timeout: 30_000 });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await saveBtn.click();
+      // Wait for either success (2 key cards) or error alert
+      const result = await Promise.race([
+        keyCards.nth(1).waitFor({ state: "visible", timeout: 30_000 }).then(() => "ok" as const),
+        errorAlert.waitFor({ state: "visible", timeout: 30_000 }).then(() => "error" as const),
+      ]).catch(() => "timeout" as const);
+      if (result === "ok") break;
+      // Validation timed out or failed transiently — retry
+      if (attempt < 2) {
+        // Clear error and re-enter key to retry
+        await form.locator("input[type='password']").fill(zhipuKey!);
+      }
+    }
+
+    // Verify both keys appear
+    await expect(keyCards).toHaveCount(2, { timeout: 10_000 });
 
     const volcengineCard = window.locator(".key-card", { hasText: /Volcengine/i });
     const zhipuCard = window.locator(".key-card", { hasText: /Zhipu/i });

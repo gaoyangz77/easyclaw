@@ -1,5 +1,5 @@
-import { updateProviderKey, activateProviderKey, updateSettings, fetchActiveKeyUsage, fetchModelCatalog } from "../api.js";
-import type { ActiveKeyInfo, CatalogModelEntry } from "../api.js";
+import { updateProviderKey, activateProviderKey, updateSettings, fetchActiveKeyUsage, fetchModelCatalog } from "../api/index.js";
+import type { ActiveKeyInfo, CatalogModelEntry } from "../api/index.js";
 
 /** Fired after any model or provider change. */
 const CONFIG_CHANGED_EVENT = "config-changed";

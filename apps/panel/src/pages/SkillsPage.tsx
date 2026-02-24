@@ -8,8 +8,8 @@ import {
   deleteSkill,
   openSkillsFolder,
   trackEvent,
-} from "../api.js";
-import type { MarketSkill, InstalledSkill, MarketResponse } from "../api.js";
+} from "../api/index.js";
+import type { MarketSkill, InstalledSkill, MarketResponse } from "../api/index.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
 
 const PAGE_SIZE = 12;

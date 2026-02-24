@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { fetchModelCatalog } from "../api.js";
-import type { CatalogModelEntry } from "../api.js";
+import { fetchModelCatalog } from "../api/index.js";
+import type { CatalogModelEntry } from "../api/index.js";
 import { Select } from "./Select.js";
 
 export function ModelSelect({

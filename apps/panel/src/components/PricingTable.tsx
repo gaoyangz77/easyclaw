@@ -1,7 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { getProviderMeta } from "@easyclaw/core";
 import type { LLMProvider } from "@easyclaw/core";
-import type { ProviderPricing, ProviderSubscription, Plan } from "../api.js";
+import type { ProviderPricing, ProviderSubscription, Plan } from "../api/index.js";
 
 /** Find a subscription by ID across all provider documents. */
 function findSubscription(

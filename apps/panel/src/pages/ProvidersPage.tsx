@@ -10,9 +10,9 @@ import {
   updateProviderKey,
   activateProviderKey,
   deleteProviderKey,
-} from "../api.js";
+} from "../api/index.js";
 import { configManager } from "../lib/config-manager.js";
-import type { ProviderKeyEntry } from "../api.js";
+import type { ProviderKeyEntry } from "../api/index.js";
 import { ModelSelect } from "../components/ModelSelect.js";
 import { ProviderSetupForm } from "../components/ProviderSetupForm.js";
 

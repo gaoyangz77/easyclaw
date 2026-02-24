@@ -8,7 +8,7 @@ import {
   fetchSettings,
   updateSettings,
   type Permissions,
-} from "../api.js";
+} from "../api/index.js";
 
 type PermLevel = "read" | "readwrite";
 

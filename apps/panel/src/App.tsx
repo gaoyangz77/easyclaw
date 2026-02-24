@@ -15,8 +15,8 @@ import { AppsPage } from "./pages/AppsPage.js";
 import { OnboardingPage } from "./pages/OnboardingPage.js";
 import { WhatsNewModal } from "./components/WhatsNewModal.js";
 import { TelemetryConsentModal } from "./components/TelemetryConsentModal.js";
-import { fetchSettings, fetchChangelog, trackEvent } from "./api.js";
-import type { ChangelogEntry } from "./api.js";
+import { fetchSettings, fetchChangelog, trackEvent } from "./api/index.js";
+import type { ChangelogEntry } from "./api/index.js";
 
 const PAGES: Record<string, () => ReactNode> = {
   "/": () => null, // ChatPage is always rendered directly (not via PAGES) to keep its WS alive

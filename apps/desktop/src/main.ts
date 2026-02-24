@@ -13,7 +13,6 @@ import {
   syncBackOAuthCredentials,
   clearAllAuthProfiles,
   DEFAULT_GATEWAY_PORT,
-  buildExtraProviderConfigs,
   acquireGeminiOAuthToken,
   saveGeminiOAuthCredentials,
   validateGeminiAccessToken,
@@ -22,22 +21,17 @@ import {
 } from "@easyclaw/gateway";
 import type { OAuthFlowResult, AcquiredOAuthCredentials } from "@easyclaw/gateway";
 import type { GatewayState } from "@easyclaw/gateway";
-import { resolveModelConfig, ALL_PROVIDERS, LOCAL_PROVIDER_IDS, getDefaultModelForProvider, getProviderMeta, providerSecretKey, parseProxyUrl } from "@easyclaw/core";
-import type { LLMProvider } from "@easyclaw/core";
+import { parseProxyUrl } from "@easyclaw/core";
 import { createStorage } from "@easyclaw/storage";
 import { createSecretStore } from "@easyclaw/secrets";
 import { ArtifactPipeline, syncSkillsForRule, cleanupSkillsForDeletedRule } from "@easyclaw/rules";
 import type { LLMConfig } from "@easyclaw/rules";
 import { ProxyRouter } from "@easyclaw/proxy-router";
-import { RemoteTelemetryClient } from "@easyclaw/telemetry";
 import { getDeviceId } from "@easyclaw/device-id";
 import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { unlinkSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { createConnection } from "node:net";
-import { createHash } from "node:crypto";
-import { tmpdir } from "node:os";
 import { createTrayIcon } from "./tray-icon.js";
 import { buildTrayMenu } from "./tray-menu.js";
 import { startPanelServer } from "./panel-server.js";
@@ -46,6 +40,9 @@ import { SttManager } from "./stt-manager.js";
 import { createCdpManager } from "./cdp-manager.js";
 import { PROXY_ROUTER_PORT, resolveProxyRouterConfigPath, detectSystemProxy, writeProxyRouterConfig, buildProxyEnv, writeProxySetupModule } from "./proxy-manager.js";
 import { createAutoUpdater } from "./auto-updater.js";
+import { resetDevicePairing, cleanupGatewayLock, applyAutoLaunch, migrateOldProviderKeys } from "./startup-utils.js";
+import { initTelemetry } from "./telemetry-init.js";
+import { createGatewayConfigBuilder } from "./gateway-config-builder.js";
 
 const log = createLogger("desktop");
 
@@ -57,129 +54,6 @@ const PANEL_URL = process.env.PANEL_DEV_URL || `http://127.0.0.1:${PANEL_PORT}`;
 const sttCliPath = app.isPackaged
   ? join(process.resourcesPath, "volcengine-stt-cli.mjs")
   : resolve(dirname(fileURLToPath(import.meta.url)), "../../../packages/gateway/dist/volcengine-stt-cli.mjs");
-
-/**
- * Remove stale device-pairing data so the node-host re-pairs with full operator
- * scopes on next gateway start.  Only runs once (tracks a settings flag).
- *
- * The node-host re-pairs automatically on every gateway start (local connection
- * = auto-approved), so this is safe and ensures scopes stay in sync if the
- * upstream scope list ever changes.
- */
-function resetDevicePairing(stateDir: string): void {
-  const pairedPath = join(stateDir, "devices", "paired.json");
-  const pendingPath = join(stateDir, "devices", "pending.json");
-
-  for (const p of [pairedPath, pendingPath]) {
-    if (existsSync(p)) {
-      unlinkSync(p);
-      log.info(`Cleared device pairing data: ${p}`);
-    }
-  }
-}
-
-/**
- * Remove a stale gateway lock file and kill its owning process.
- *
- * The vendor gateway uses an exclusive lock file in the OS temp directory
- * (`{tmpdir}/openclaw[-{uid}]/gateway.{hash}.lock`) to prevent duplicate
- * instances.  When the desktop app is force-killed the detached gateway child
- * can survive, leaving a live PID in the lock.  This helper resolves the lock
- * path (mirroring vendor/openclaw/src/infra/gateway-lock.ts), kills the owner
- * if still alive, and removes the file so the next gateway start succeeds.
- *
- * Safe to call at any point — silently does nothing if no lock exists.
- */
-function cleanupGatewayLock(gatewayConfigPath: string): void {
-  try {
-    const lockHash = createHash("sha1").update(gatewayConfigPath).digest("hex").slice(0, 8);
-    const uid = typeof process.getuid === "function" ? process.getuid() : undefined;
-    const lockDir = join(tmpdir(), uid != null ? `openclaw-${uid}` : "openclaw");
-    const lockPath = join(lockDir, `gateway.${lockHash}.lock`);
-
-    if (!existsSync(lockPath)) return;
-
-    const raw = readFileSync(lockPath, "utf-8");
-    const lockData = JSON.parse(raw) as { pid?: number };
-    const ownerPid = lockData?.pid;
-    if (typeof ownerPid !== "number" || ownerPid <= 0 || ownerPid === process.pid) return;
-
-    // Check if the lock owner is still alive
-    let alive = false;
-    try { process.kill(ownerPid, 0); alive = true; } catch {}
-
-    if (alive) {
-      log.info(`Stale gateway lock found (PID ${ownerPid}), killing process`);
-      try {
-        if (process.platform === "win32") {
-          execSync(`taskkill /T /F /PID ${ownerPid}`, { stdio: "ignore", shell: "cmd.exe" });
-        } else {
-          process.kill(ownerPid, "SIGKILL");
-        }
-      } catch (killErr) {
-        log.warn(`Failed to kill stale gateway PID ${ownerPid}:`, killErr);
-      }
-    } else {
-      log.info(`Stale gateway lock found (PID ${ownerPid} is dead), removing lock file`);
-    }
-
-    rmSync(lockPath, { force: true });
-    log.info("Cleaned up stale gateway lock");
-  } catch (lockErr) {
-    // Lock file doesn't exist, can't be read, or isn't valid JSON — that's fine,
-    // the gateway will create a new one on startup.
-    log.debug("Gateway lock cleanup skipped:", lockErr);
-  }
-}
-
-/**
- * Apply auto-launch (login item) setting to the OS.
- * Uses Electron's built-in API which handles macOS (Login Items),
- * Windows (Registry), and Linux (~/.config/autostart/).
- */
-function applyAutoLaunch(enabled: boolean): void {
-  try {
-    app.setLoginItemSettings({ openAtLogin: enabled });
-    log.info(`Auto-launch ${enabled ? "enabled" : "disabled"}`);
-  } catch (err) {
-    log.error("Failed to set login item settings:", err);
-  }
-}
-
-/**
- * Migrate old-style `{provider}-api-key` secrets to the new provider_keys table.
- * Only runs if the provider_keys table is empty (first upgrade).
- */
-async function migrateOldProviderKeys(
-  storage: import("@easyclaw/storage").Storage,
-  secretStore: import("@easyclaw/secrets").SecretStore,
-): Promise<void> {
-  const existing = storage.providerKeys.getAll();
-  if (existing.length > 0) return; // already migrated
-
-  const activeProvider = storage.settings.get("llm-provider");
-
-  for (const provider of ALL_PROVIDERS) {
-    const secretKey = providerSecretKey(provider);
-    const keyValue = await secretStore.get(secretKey);
-    if (keyValue && keyValue !== "") {
-      const id = crypto.randomUUID();
-      const model = getDefaultModelForProvider(provider)?.modelId ?? "";
-      storage.providerKeys.create({
-        id,
-        provider,
-        label: "Default",
-        model,
-        isDefault: true,
-        createdAt: "",
-        updatedAt: "",
-      });
-      // Store under new key format for consistency
-      await secretStore.set(`provider-key-${id}`, keyValue);
-      log.info(`Migrated ${provider} key to provider_keys table (id: ${id})`);
-    }
-  }
-}
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
@@ -281,34 +155,9 @@ app.whenReady().then(async () => {
   const autoLaunchEnabled = storage.settings.get("auto_launch_enabled") === "true";
   applyAutoLaunch(autoLaunchEnabled);
 
-  // Initialize telemetry client (opt-out: enabled by default, user can disable via consent dialog or Settings)
-  // In dev mode, telemetry is OFF unless DEV_TELEMETRY=1 is set (avoids polluting production data)
-  const telemetryEnabled = !app.isPackaged
-    ? process.env.DEV_TELEMETRY === "1"
-    : storage.settings.get("telemetry_enabled") !== "false";
+  // Initialize telemetry client and heartbeat timer
   const locale = app.getLocale().startsWith("zh") ? "zh" : "en";
-  const telemetryEndpoint = process.env.TELEMETRY_ENDPOINT
-    || (locale === "zh" ? "https://t-cn.easy-claw.com/" : "https://t.easy-claw.com/");
-  let telemetryClient: RemoteTelemetryClient | null = null;
-
-  if (telemetryEnabled) {
-    try {
-      telemetryClient = new RemoteTelemetryClient({
-        endpoint: telemetryEndpoint,
-        enabled: true,
-        version: app.getVersion(),
-        platform: process.platform,
-        locale,
-        deviceId,
-      });
-      log.info("Telemetry client initialized (user opted in)");
-    } catch (error) {
-      // Fire-and-forget: don't crash if telemetry fails to initialize
-      log.error("Failed to initialize telemetry client:", error);
-    }
-  } else {
-    log.info("Telemetry disabled (user preference)");
-  }
+  const { client: telemetryClient, heartbeatTimer } = initTelemetry(storage, deviceId, locale);
 
   // --- Auto-updater state (updater instance created after tray) ---
   let currentState: GatewayState = "stopped";
@@ -339,18 +188,6 @@ app.whenReady().then(async () => {
     log.error("Failed to start proxy router:", err);
   });
 
-  // Track app.started event (version + platform are already top-level fields on every event)
-  telemetryClient?.track("app.started");
-
-  // Track heartbeat every 5 minutes
-  const heartbeatTimer = telemetryClient
-    ? setInterval(() => {
-        telemetryClient?.track("app.heartbeat", {
-          uptimeMs: telemetryClient.getUptime(),
-        });
-      }, 5 * 60 * 1000)
-    : null;
-
   // Migrate old-style provider secrets to provider_keys table
   migrateOldProviderKeys(storage, secretStore).catch((err) => {
     log.error("Failed to migrate old provider keys:", err);
@@ -375,71 +212,10 @@ app.whenReady().then(async () => {
   // PKCE verifier for pending manual OAuth flow (between start and manual-complete steps)
   let pendingManualOAuthVerifier: string | null = null;
 
-  // Check if there's an active Gemini OAuth key — if so, enable the plugin
-  // and route Google models through the "google-gemini-cli" provider (Bearer auth).
-  function isGeminiOAuthActive(): boolean {
-    return storage.providerKeys.getAll()
-      .some((k) => k.provider === "gemini" && k.authType === "oauth" && k.isDefault);
-  }
-  // Resolve model for OAuth: when Gemini OAuth is active, route to "google-gemini-cli"
-  // (Cloud Code Assist API with Bearer auth) instead of "google" (Generative AI API
-  // with x-goog-api-key header which rejects OAuth tokens).
-  function resolveGeminiOAuthModel(provider: string, modelId: string): { provider: string; modelId: string } {
-    if (!isGeminiOAuthActive() || provider !== "gemini") {
-      return { provider, modelId };
-    }
-    return { provider: "google-gemini-cli", modelId };
-  }
-  /**
-   * Build a complete WriteGatewayConfigOptions from all current settings.
-   * Centralises config assembly so every call site (startup, STT change,
-   * provider change, browser change, OAuth save) produces a consistent config.
-   */
-  function buildFullGatewayConfig(): Parameters<typeof writeGatewayConfig>[0] {
-    const curProvider = storage.settings.get("llm-provider") as LLMProvider | undefined;
-    const curRegion = storage.settings.get("region") ?? (locale === "zh" ? "cn" : "us");
-    let curModelId: string | undefined;
-    if (curProvider) {
-      const activeKey = storage.providerKeys.getDefault(curProvider);
-      if (activeKey?.model) curModelId = activeKey.model;
-    }
-    const curModel = resolveModelConfig({
-      region: curRegion,
-      userProvider: curProvider,
-      userModelId: curModelId,
-    });
-
-    const curSttEnabled = storage.settings.get("stt.enabled") === "true";
-    const curSttProvider = (storage.settings.get("stt.provider") || "groq") as "groq" | "volcengine";
-
-    const curBrowserMode = (storage.settings.get("browser-mode") || "standalone") as "standalone" | "cdp";
-    const curBrowserCdpPort = parseInt(storage.settings.get("browser-cdp-port") || "9222", 10);
-
-    return {
-      configPath,
-      gatewayPort: DEFAULT_GATEWAY_PORT,
-      enableChatCompletions: true,
-      commandsRestart: true,
-      enableFilePermissions: true,
-      extensionsDir,
-      enableGeminiCliAuth: isGeminiOAuthActive(),
-      skipBootstrap: false,
-      filePermissionsPluginPath,
-      defaultModel: resolveGeminiOAuthModel(curModel.provider, curModel.modelId),
-      stt: {
-        enabled: curSttEnabled,
-        provider: curSttProvider,
-        nodeBin: process.execPath,
-        sttCliPath,
-      },
-      extraProviders: buildExtraProviderConfigs(),
-      localProviderOverrides: buildLocalProviderOverrides(),
-      browserMode: curBrowserMode,
-      browserCdpPort: curBrowserCdpPort,  // auto-managed, saved by ensureCdpChrome()
-      agentWorkspace: join(stateDir, "workspace"),
-      extraSkillDirs: [join(stateDir, "skills")],
-    };
-  }
+  // Build gateway config helpers (closures bound to current settings)
+  const { buildFullGatewayConfig } = createGatewayConfigBuilder({
+    storage, locale, configPath, stateDir, extensionsDir, sttCliPath, filePermissionsPluginPath,
+  });
 
   writeGatewayConfig(buildFullGatewayConfig());
 
@@ -621,29 +397,6 @@ app.whenReady().then(async () => {
   }
 
   const cdpManager = createCdpManager({ storage, launcher, writeGatewayConfig, buildFullGatewayConfig });
-
-  function buildLocalProviderOverrides(): Record<string, { baseUrl: string; models: Array<{ id: string; name: string }> }> {
-    const overrides: Record<string, { baseUrl: string; models: Array<{ id: string; name: string }> }> = {};
-    for (const localProvider of LOCAL_PROVIDER_IDS) {
-      const activeKey = storage.providerKeys.getDefault(localProvider);
-      if (!activeKey) continue;
-      const meta = getProviderMeta(localProvider);
-      let baseUrl = activeKey.baseUrl || meta?.baseUrl || "http://localhost:11434/v1";
-      // Ollama's OpenAI-compatible endpoint lives under /v1; users typically
-      // enter just the server URL (e.g. http://localhost:11434), so normalise.
-      if (!baseUrl.match(/\/v\d\/?$/)) {
-        baseUrl = baseUrl.replace(/\/+$/, "") + "/v1";
-      }
-      const modelId = activeKey.model;
-      if (modelId) {
-        overrides[localProvider] = {
-          baseUrl,
-          models: [{ id: modelId, name: modelId }],
-        };
-      }
-    }
-    return overrides;
-  }
 
   /**
    * Called when provider settings change (API key added/removed, default changed, proxy changed).

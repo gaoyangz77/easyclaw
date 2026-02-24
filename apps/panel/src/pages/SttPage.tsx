@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { fetchSettings, updateSettings } from "../api.js";
+import { fetchSettings, updateSettings } from "../api/index.js";
 import type { SttProvider } from "@easyclaw/core";
 import { Select } from "../components/Select.js";
 

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import QRCode from "qrcode";
 import { Modal } from "./Modal.js";
-import { bindWeComAccount, fetchWeComBindingStatus } from "../api.js";
+import { bindWeComAccount, fetchWeComBindingStatus } from "../api/index.js";
 
 interface WeComBindingModalProps {
   isOpen: boolean;

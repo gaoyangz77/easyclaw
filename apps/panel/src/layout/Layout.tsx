@@ -7,8 +7,8 @@ import {
   cancelUpdateDownload,
   fetchUpdateDownloadStatus,
   triggerUpdateInstall,
-} from "../api.js";
-import type { UpdateInfo, UpdateDownloadStatus } from "../api.js";
+} from "../api/index.js";
+import type { UpdateInfo, UpdateDownloadStatus } from "../api/index.js";
 import { ThemeToggle } from "../components/ThemeToggle.js";
 import { LangToggle } from "../components/LangToggle.js";
 

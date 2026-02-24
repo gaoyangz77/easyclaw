@@ -11,7 +11,7 @@ import {
   deleteWeComConfig,
   type CustomerServiceStatus,
   type WeComConfigInput,
-} from "../api.js";
+} from "../api/index.js";
 
 /** Map raw backend error messages to i18n keys for user-friendly display. */
 function translateBackendError(rawMessage: string, t: (key: string) => string): string {

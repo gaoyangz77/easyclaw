@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { CNY_USD } from "@easyclaw/core";
-import { fetchUsage, type UsageSummary } from "../api.js";
+import { fetchUsage, type UsageSummary } from "../api/index.js";
 
 type TimeRange = "7d" | "30d" | "all";
 

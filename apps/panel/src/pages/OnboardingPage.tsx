@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { trackEvent } from "../api.js";
+import { trackEvent } from "../api/index.js";
 import { ProviderSetupForm } from "../components/ProviderSetupForm.js";
 import { ThemeToggle } from "../components/ThemeToggle.js";
 import { LangToggle } from "../components/LangToggle.js";

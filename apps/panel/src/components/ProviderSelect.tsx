@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { ALL_PROVIDERS, SUBSCRIPTION_PROVIDER_IDS, getProviderMeta } from "@easyclaw/core";
 import type { LLMProvider } from "@easyclaw/core";
-import { fetchModelCatalog } from "../api.js";
+import { fetchModelCatalog } from "../api/index.js";
 
 /** Providers with extraModels are always shown (statically defined, not catalog-dependent). */
 const EXTRA_MODEL_PROVIDERS = new Set(

@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Modal } from "./Modal.js";
-import { updateTelemetrySetting, trackEvent } from "../api.js";
+import { updateTelemetrySetting, trackEvent } from "../api/index.js";
 
 export function TelemetryConsentModal({
   isOpen,

@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Modal } from "./Modal.js";
-import type { ChangelogEntry } from "../api.js";
+import type { ChangelogEntry } from "../api/index.js";
 
 export function WhatsNewModal({
   isOpen,
