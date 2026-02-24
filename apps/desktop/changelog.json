@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.5.5",
+    "date": "2026-02-25",
+    "en": [
+      "Added nonce challenge-response to gateway connect handshake for improved security",
+      "Added \"Get API key\" link in subscription tab for easier onboarding",
+      "Split E2E smoke tests into per-page test files for better maintainability"
+    ],
+    "zh": [
+      "网关连接握手新增 nonce 挑战-响应机制，提升安全性",
+      "订阅标签页新增"获取 API Key"链接，方便用户快速获取",
+      "E2E 测试拆分为按页面组织的独立文件，提升可维护性"
+    ]
+  },
+  {
     "version": "1.5.4",
     "date": "2026-02-25",
     "en": [
