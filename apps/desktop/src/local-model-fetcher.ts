@@ -1,3 +1,4 @@
+import { formatError } from "@easyclaw/core";
 import { createLogger } from "@easyclaw/logger";
 import { request } from "node:http";
 import { request as requestHttps } from "node:https";
@@ -82,6 +83,6 @@ export async function checkHealth(
     const data = JSON.parse(body) as { version?: string };
     return { ok: true, version: data.version };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    return { ok: false, error: formatError(err) };
   }
 }

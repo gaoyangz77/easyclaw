@@ -1,3 +1,4 @@
+import { formatError } from "@easyclaw/core";
 import { createLogger } from "@easyclaw/logger";
 import { app, Notification } from "electron";
 import type { BrowserWindow } from "electron";
@@ -98,7 +99,7 @@ export function createAutoUpdater(deps: AutoUpdaterDeps) {
     try {
       await autoUpdater.checkForUpdates();
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatError(err);
       log.warn(`Update check failed: ${message}`);
     }
     deps.updateTray();

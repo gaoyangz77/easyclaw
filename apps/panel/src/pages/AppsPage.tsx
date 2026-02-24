@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { formatError } from "@easyclaw/core";
 import {
   fetchCSStatus,
   startCS,
@@ -161,8 +162,7 @@ export function AppsPage() {
       }, 1500);
     } catch (err) {
       setWecomConfigStatus("error");
-      const raw = err instanceof Error ? err.message : String(err);
-      setWecomConfigError(translateBackendError(raw, t));
+      setWecomConfigError(translateBackendError(formatError(err), t));
     }
   }
 
@@ -186,8 +186,7 @@ export function AppsPage() {
       }, 1500);
     } catch (err) {
       setWecomConfigStatus("error");
-      const raw = err instanceof Error ? err.message : String(err);
-      setWecomConfigError(translateBackendError(raw, t));
+      setWecomConfigError(translateBackendError(formatError(err), t));
     }
   }
 
@@ -234,7 +233,7 @@ export function AppsPage() {
       }, 1500);
     } catch (err) {
       setSaveStatus("error");
-      setSaveError(err instanceof Error ? err.message : String(err));
+      setSaveError(formatError(err));
     }
   }
 

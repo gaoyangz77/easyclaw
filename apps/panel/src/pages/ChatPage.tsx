@@ -4,6 +4,7 @@ import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 // Gateway attachment limit is 5 MB (image-only for webchat)
 const MAX_IMAGE_ATTACHMENT_BYTES = 5 * 1000 * 1000;
 import { fetchGatewayInfo, fetchProviderKeys, trackEvent, fetchChatShowAgentEvents, fetchChatPreserveToolEvents } from "../api/index.js";
+import { formatError } from "@easyclaw/core";
 import { configManager } from "../lib/config-manager.js";
 import { Select } from "../components/Select.js";
 import { GatewayChatClient } from "../lib/gateway-client.js";
@@ -610,7 +611,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
     clientRef.current.request("chat.send", params).catch((err) => {
       // RPC-level failure — clear runId so UI doesn't get stuck in streaming mode
-      const raw = (err as Error).message || t("chat.sendError");
+      const raw = formatError(err) || t("chat.sendError");
       const errText = localizeError(raw, t);
       setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${errText}`, timestamp: Date.now() }]);
       setStreaming(null);
@@ -641,7 +642,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     configManager.switchModel(activeModel.keyId, newModel)
       .then(() => setActiveModel((prev) => prev ? { ...prev, model: newModel } : null))
       .catch((err) => {
-        const errText = (err as Error).message || t("chat.unknownError");
+        const errText = formatError(err) || t("chat.unknownError");
         setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${errText}`, timestamp: Date.now() }]);
       });
   }
@@ -668,7 +669,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       trackerRef.current.reset();
       lastAgentStreamRef.current = null;
     }).catch((err) => {
-      const errText = (err as Error).message || t("chat.unknownError");
+      const errText = formatError(err) || t("chat.unknownError");
       setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${errText}`, timestamp: Date.now() }]);
     });
   }

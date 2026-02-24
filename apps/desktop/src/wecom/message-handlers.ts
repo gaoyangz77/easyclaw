@@ -1,12 +1,13 @@
+import { formatError, IMAGE_MIME_TO_EXT, IMAGE_EXT_TO_MIME } from "@easyclaw/core";
 import { createLogger } from "@easyclaw/logger";
 import type { GatewayRpcClient } from "@easyclaw/gateway";
 import type { Storage } from "@easyclaw/storage";
 import { randomUUID } from "node:crypto";
 import { join, extname } from "node:path";
-import { homedir } from "node:os";
 import { promises as fs } from "node:fs";
 import WebSocket from "ws";
 import { STT_SUPPORTED_FORMATS, convertAudioToMp3 } from "./audio-converter.js";
+import { resolveMediaDir } from "../media-paths.js";
 import type { SttManager, WeComConnParams } from "./wecom-types.js";
 
 const log = createLogger("wecom-relay");
@@ -71,8 +72,7 @@ export async function handleInbound(
         }
       } catch (err) {
         log.error("WeCom: voice transcription error:", err);
-        const errMsg = err instanceof Error ? err.message : String(err);
-        message = `[语音消息 - 转写失败] ${errMsg}`;
+        message = `[语音消息 - 转写失败] ${formatError(err)}`;
       }
     } else {
       log.warn("WeCom: STT not enabled, cannot transcribe voice message");
@@ -82,12 +82,8 @@ export async function handleInbound(
 
   // Pass image data as attachments so the agent can see the image.
   if (frame.msg_type === "image" && frame.media_data && frame.media_mime) {
-    const extMap: Record<string, string> = {
-      "image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif",
-      "image/webp": ".webp", "image/bmp": ".bmp",
-    };
-    const ext = extMap[frame.media_mime] ?? ".jpg";
-    const mediaDir = join(homedir(), ".easyclaw", "openclaw", "media", "inbound");
+    const ext = IMAGE_MIME_TO_EXT[frame.media_mime] ?? ".jpg";
+    const mediaDir = resolveMediaDir("inbound");
     const fileName = `wecom-${Date.now()}${ext}`;
     const filePath = join(mediaDir, fileName);
     try {
@@ -218,16 +214,11 @@ export async function handleChatEvent(
 
   // Read media files from disk and prepare image payloads
   const images: Array<{ data: string; mimeType: string; savedName?: string }> = [];
-  const outboundDir = join(homedir(), ".easyclaw", "openclaw", "media", "outbound");
+  const outboundDir = resolveMediaDir("outbound");
   for (const filePath of mediaFiles) {
     try {
       const data = await fs.readFile(filePath);
       const ext = extname(filePath).toLowerCase();
-      const mimeMap: Record<string, string> = {
-        ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-        ".png": "image/png", ".gif": "image/gif",
-        ".webp": "image/webp", ".bmp": "image/bmp",
-      };
       const savedName = `wecom-${Date.now()}-${randomUUID().slice(0, 8)}${ext || ".png"}`;
       try {
         await fs.mkdir(outboundDir, { recursive: true });
@@ -237,7 +228,7 @@ export async function handleChatEvent(
       }
       images.push({
         data: data.toString("base64"),
-        mimeType: mimeMap[ext] ?? "image/png",
+        mimeType: IMAGE_EXT_TO_MIME[ext] ?? "image/png",
         savedName,
       });
     } catch (err) {

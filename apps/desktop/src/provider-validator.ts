@@ -1,5 +1,5 @@
 import { createLogger } from "@easyclaw/logger";
-import { getProviderMeta, getDefaultModelForProvider, providerSecretKey } from "@easyclaw/core";
+import { getProviderMeta, getDefaultModelForProvider, providerSecretKey, formatError } from "@easyclaw/core";
 import type { LLMProvider } from "@easyclaw/core";
 import type { Storage } from "@easyclaw/storage";
 import type { SecretStore } from "@easyclaw/secrets";
@@ -166,7 +166,7 @@ export async function validateProviderApiKey(
 
     return { valid: true };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = formatError(err);
     log.error("API key validation failed:", msg);
     if (msg.includes("abort")) {
       return { valid: false, error: "Validation timed out — check your network connection" };

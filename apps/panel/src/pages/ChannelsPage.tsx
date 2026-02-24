@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { deleteChannelAccount, unbindWeComAccount, fetchChannelStatus, type ChannelAccountSnapshot } from "../api/index.js";
+import { deleteChannelAccount, unbindWeComAccount, type ChannelAccountSnapshot } from "../api/index.js";
+import { pollGatewayReady } from "../lib/poll-gateway.js";
 import { AddChannelAccountModal } from "../components/AddChannelAccountModal.js";
 import { ManageAllowlistModal } from "../components/ManageAllowlistModal.js";
 import { WeComBindingModal } from "../components/WeComBindingModal.js";
@@ -121,20 +122,7 @@ export function ChannelsPage() {
         setWecomStatus(null);
       } else {
         await deleteChannelAccount(channelId, accountId);
-
-        // Initial delay — give gateway time to receive SIGUSR1 and start reloading
-        await new Promise(r => setTimeout(r, 800));
-
-        // Poll until gateway responds with fresh data
-        for (let i = 0; i < 15; i++) {
-          try {
-            await fetchChannelStatus(true);
-            loadChannelStatus();
-            break;
-          } catch {
-            await new Promise(r => setTimeout(r, 400));
-          }
-        }
+        await pollGatewayReady(() => loadChannelStatus());
       }
     } catch (err) {
       setDeleteError(`${t("channels.failedToDelete")} ${String(err)}`);
@@ -149,19 +137,7 @@ export function ChannelsPage() {
   }
 
   async function handleModalSuccess(): Promise<void> {
-    // Initial delay — give gateway time to receive SIGUSR1 and start reloading
-    await new Promise(r => setTimeout(r, 800));
-
-    // Poll until gateway responds with fresh data
-    for (let i = 0; i < 15; i++) {
-      try {
-        await fetchChannelStatus(true);
-        loadChannelStatus();
-        return;
-      } catch {
-        await new Promise(r => setTimeout(r, 400));
-      }
-    }
+    await pollGatewayReady(() => loadChannelStatus());
   }
 
   function handleManageAllowlist(channelId: string) {

@@ -21,7 +21,7 @@ import {
 } from "@easyclaw/gateway";
 import type { OAuthFlowResult, AcquiredOAuthCredentials } from "@easyclaw/gateway";
 import type { GatewayState } from "@easyclaw/gateway";
-import { parseProxyUrl } from "@easyclaw/core";
+import { parseProxyUrl, formatError } from "@easyclaw/core";
 import { createStorage } from "@easyclaw/storage";
 import { createSecretStore } from "@easyclaw/secrets";
 import { ArtifactPipeline, syncSkillsForRule, cleanupSkillsForDeletedRule } from "@easyclaw/rules";
@@ -851,7 +851,7 @@ app.whenReady().then(async () => {
         log.info(`OAuth acquired for ${provider}, email=${acquired.email ?? "(none)"}`);
         return { email: acquired.email, tokenPreview: acquired.tokenPreview };
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
+        const msg = formatError(err);
         if (msg.includes("Port 8085") || msg.includes("EADDRINUSE")) {
           log.warn("OAuth callback server failed, falling back to manual mode");
           const manual = await startManualOAuthFlow({

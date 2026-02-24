@@ -8,6 +8,7 @@ import {
   fetchUpdateDownloadStatus,
   triggerUpdateInstall,
 } from "../api/index.js";
+import { formatError } from "@easyclaw/core";
 import type { UpdateInfo, UpdateDownloadStatus } from "../api/index.js";
 import { ThemeToggle } from "../components/ThemeToggle.js";
 import { LangToggle } from "../components/LangToggle.js";
@@ -254,7 +255,7 @@ export function Layout({
     startUpdateDownload().catch((err) => {
       setDownloadStatus({
         status: "error",
-        message: err instanceof Error ? err.message : String(err),
+        message: formatError(err),
       });
     });
   }
@@ -269,7 +270,7 @@ export function Layout({
     triggerUpdateInstall().catch((err) => {
       setDownloadStatus({
         status: "error",
-        message: err instanceof Error ? err.message : String(err),
+        message: formatError(err),
       });
     });
   }

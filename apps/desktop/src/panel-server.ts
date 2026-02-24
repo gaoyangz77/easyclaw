@@ -3,13 +3,14 @@ import type { ServerResponse, Server } from "node:http";
 import { readFileSync, existsSync, statSync, watch } from "node:fs";
 import { join, extname, resolve, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
+import { formatError, IMAGE_EXT_TO_MIME } from "@easyclaw/core";
 import { createLogger } from "@easyclaw/logger";
 import type { Storage } from "@easyclaw/storage";
 import type { SecretStore } from "@easyclaw/secrets";
 import { resolveOpenClawConfigPath, readExistingConfig, resolveOpenClawStateDir, GatewayRpcClient } from "@easyclaw/gateway";
 import { discoverAllSessions, loadSessionCostSummary } from "../../../vendor/openclaw/src/infra/session-cost-usage.js";
 import { promises as fs } from "node:fs";
-import { homedir } from "node:os";
+import { resolveMediaBase } from "./media-paths.js";
 import { UsageSnapshotEngine } from "./usage-snapshot-engine.js";
 import type { ModelUsageTotals } from "./usage-snapshot-engine.js";
 import { UsageQueryService } from "./usage-query-service.js";
@@ -334,7 +335,7 @@ export function startPanelServer(options: PanelServerOptions): Server {
 
     // Serve media files from ~/.easyclaw/openclaw/media/
     if (pathname.startsWith("/api/media/") && req.method === "GET") {
-      const mediaBase = join(homedir(), ".easyclaw", "openclaw", "media");
+      const mediaBase = resolveMediaBase();
       const relPath = decodeURIComponent(pathname.replace("/api/media/", ""));
       const absPath = resolve(mediaBase, relPath);
       if (!absPath.startsWith(mediaBase + "/")) {
@@ -345,13 +346,8 @@ export function startPanelServer(options: PanelServerOptions): Server {
       try {
         const data = readFileSync(absPath);
         const ext = extname(absPath).toLowerCase();
-        const mimeMap: Record<string, string> = {
-          ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-          ".png": "image/png", ".gif": "image/gif",
-          ".webp": "image/webp", ".bmp": "image/bmp",
-        };
         res.writeHead(200, {
-          "Content-Type": mimeMap[ext] ?? "application/octet-stream",
+          "Content-Type": IMAGE_EXT_TO_MIME[ext] ?? "application/octet-stream",
           "Cache-Control": "private, max-age=86400",
         });
         res.end(data);
@@ -405,7 +401,7 @@ export function startPanelServer(options: PanelServerOptions): Server {
         onUpdateInstall()
           .then(() => sendJson(res, 200, { ok: true }))
           .catch((err: unknown) => {
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = formatError(err);
             sendJson(res, 500, { error: msg });
           });
         return;

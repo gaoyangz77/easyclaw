@@ -73,3 +73,5 @@ export {
   isValidProxyUrl,
 } from "./proxy-utils.js";
 
+export { formatError, IMAGE_EXT_TO_MIME, IMAGE_MIME_TO_EXT } from "./error-utils.js";
+

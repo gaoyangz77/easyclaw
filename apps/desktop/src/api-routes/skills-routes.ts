@@ -2,6 +2,7 @@ import { join } from "node:path";
 import { promises as fs } from "node:fs";
 import { execFile } from "node:child_process";
 import AdmZip from "adm-zip";
+import { formatError } from "@easyclaw/core";
 import { createLogger } from "@easyclaw/logger";
 import { initCSBridge, startCS, stopCS, getCSStatus, updateCSConfig } from "../customer-service-bridge.js";
 import type { RouteHandler } from "./api-context.js";
@@ -44,7 +45,7 @@ export const handleSkillsRoutes: RouteHandler = async (req, res, url, pathname, 
       const json = (await gqlRes.json()) as { data?: { skills?: unknown } };
       sendJson(res, 200, json.data?.skills ?? { skills: [], total: 0, page: 1, pageSize: 20 });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       sendJson(res, 502, { error: msg });
     }
     return true;
@@ -105,7 +106,7 @@ export const handleSkillsRoutes: RouteHandler = async (req, res, url, pathname, 
       }
       sendJson(res, 200, { skills });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       sendJson(res, 500, { error: msg });
     }
     return true;
@@ -153,7 +154,7 @@ export const handleSkillsRoutes: RouteHandler = async (req, res, url, pathname, 
       invalidateSkillsSnapshot();
       sendJson(res, 200, { ok: true });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       sendJson(res, 200, { ok: false, error: msg });
     }
     return true;
@@ -175,7 +176,7 @@ export const handleSkillsRoutes: RouteHandler = async (req, res, url, pathname, 
       invalidateSkillsSnapshot();
       sendJson(res, 200, { ok: true });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       sendJson(res, 500, { error: msg });
     }
     return true;
@@ -216,7 +217,7 @@ export const handleSkillsRoutes: RouteHandler = async (req, res, url, pathname, 
       });
       sendJson(res, 200, { ok: true });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       sendJson(res, 500, { error: msg });
     }
     return true;
@@ -237,7 +238,7 @@ export const handleSkillsRoutes: RouteHandler = async (req, res, url, pathname, 
       updateCSConfig(body);
       sendJson(res, 200, { ok: true });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       sendJson(res, 500, { error: msg });
     }
     return true;

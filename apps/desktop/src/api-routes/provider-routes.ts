@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { LLMProvider } from "@easyclaw/core";
-import { getDefaultModelForProvider, parseProxyUrl, reconstructProxyUrl } from "@easyclaw/core";
+import { getDefaultModelForProvider, parseProxyUrl, reconstructProxyUrl, formatError } from "@easyclaw/core";
 import { readFullModelCatalog } from "@easyclaw/gateway";
 import { createLogger } from "@easyclaw/logger";
 import { validateProviderApiKey, syncActiveKey } from "../provider-validator.js";
@@ -74,7 +74,7 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
           await secretStore.set(`proxy-auth-${id}`, proxyConfig.credentials);
         }
       } catch (error) {
-        sendJson(res, 400, { error: `Invalid proxy URL: ${error instanceof Error ? error.message : String(error)}` });
+        sendJson(res, 400, { error: `Invalid proxy URL: ${formatError(error)}` });
         return true;
       }
     }
@@ -178,7 +178,7 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
                 await secretStore.delete(`proxy-auth-${id}`);
               }
             } catch (error) {
-              sendJson(res, 400, { error: `Invalid proxy URL: ${error instanceof Error ? error.message : String(error)}` });
+              sendJson(res, 400, { error: `Invalid proxy URL: ${formatError(error)}` });
               return true;
             }
           }
@@ -297,7 +297,7 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
       } catch (err) {
         log.error("OAuth acquire failed:", err);
         const detail = err instanceof Error ? (err as Error & { detail?: string }).detail : undefined;
-        sendJson(res, 500, { error: err instanceof Error ? err.message : String(err), detail });
+        sendJson(res, 500, { error: formatError(err), detail });
       }
       return true;
     }
@@ -311,7 +311,7 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
     } catch (err) {
       log.error("OAuth flow failed:", err);
       const detail = err instanceof Error ? (err as Error & { detail?: string }).detail : undefined;
-      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err), detail });
+      sendJson(res, 500, { error: formatError(err), detail });
     }
     return true;
   }
@@ -335,7 +335,7 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
       sendJson(res, 200, { ok: true, ...result });
     } catch (err) {
       log.error("OAuth save failed:", err);
-      const message = err instanceof Error ? err.message : String(err);
+      const message = formatError(err);
       const detail = err instanceof Error ? (err as Error & { detail?: string }).detail : undefined;
       const status = message.includes("Invalid") || message.includes("expired") || message.includes("validation") ? 422 : 500;
       sendJson(res, status, { error: message, detail });
@@ -359,7 +359,7 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
     } catch (err) {
       log.error("OAuth manual complete failed:", err);
       const detail = err instanceof Error ? (err as Error & { detail?: string }).detail : undefined;
-      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err), detail });
+      sendJson(res, 500, { error: formatError(err), detail });
     }
     return true;
   }

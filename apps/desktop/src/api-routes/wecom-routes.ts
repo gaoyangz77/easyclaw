@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { formatError } from "@easyclaw/core";
 import { createLogger } from "@easyclaw/logger";
 import WebSocket from "ws";
 import type { RouteHandler } from "./api-context.js";
@@ -65,7 +66,7 @@ export const handleWecomRoutes: RouteHandler = async (req, res, _url, pathname, 
       storage.settings.set("wecom-cloud-corp-id", corpId);
       sendJson(res, 200, json.data?.saveWeComConfig ?? { wecom: null });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       sendJson(res, 502, { error: msg });
     }
     return true;
@@ -116,7 +117,7 @@ export const handleWecomRoutes: RouteHandler = async (req, res, _url, pathname, 
       storage.settings.delete("wecom-cloud-corp-id");
       sendJson(res, 200, json.data?.deleteWeComConfig ?? { wecom: null });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = formatError(err);
       sendJson(res, 502, { error: msg });
     }
     return true;
@@ -242,7 +243,7 @@ export const handleWecomRoutes: RouteHandler = async (req, res, _url, pathname, 
       });
     } catch (err) {
       log.error("WeCom bind failed:", err);
-      sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+      sendJson(res, 500, { error: formatError(err) });
     }
     return true;
   }
