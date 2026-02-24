@@ -32,6 +32,8 @@ import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 import { createConnection } from "node:net";
+import { existsSync, unlinkSync } from "node:fs";
+import { homedir } from "node:os";
 import { createTrayIcon } from "./tray-icon.js";
 import { buildTrayMenu } from "./tray-menu.js";
 import { startPanelServer } from "./panel-server.js";
@@ -58,6 +60,36 @@ const sttCliPath = app.isPackaged
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 let lastSystemProxy: string | null = null;
+
+// If the NSIS installer is still running (from a previous quitAndInstall),
+// show a message and exit immediately to avoid conflicting with the installer.
+// The marker file is written by auto-updater.ts before calling quitAndInstall().
+// We only run the (slow) wmic check when the marker file exists, so normal
+// startup has zero overhead (~1ms existsSync).
+const UPDATE_MARKER = join(homedir(), ".easyclaw", "update-installing");
+if (process.platform === "win32" && existsSync(UPDATE_MARKER)) {
+  let installerRunning = false;
+  try {
+    const out = execSync(
+      String.raw`wmic process where "name like 'EasyClaw.Setup%'" get ProcessId 2>nul`,
+      { encoding: "utf-8", timeout: 5000, shell: "cmd.exe" },
+    );
+    installerRunning = /\d+/.test(out);
+  } catch {}
+
+  if (installerRunning) {
+    dialog.showMessageBoxSync({
+      type: "info",
+      title: "EasyClaw",
+      message: "EasyClaw 正在更新中，安装完成后将自动启动。",
+      buttons: ["OK"],
+    });
+    app.exit(0);
+  } else {
+    // Installer finished — clean up the stale marker file
+    try { unlinkSync(UPDATE_MARKER); } catch {}
+  }
+}
 
 // Ensure only one instance of the desktop app runs at a time.
 // If the lock is held by a stale process (unclean shutdown), kill it and relaunch.

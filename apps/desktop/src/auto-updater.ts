@@ -4,6 +4,9 @@ import type { BrowserWindow } from "electron";
 import { autoUpdater } from "electron-updater";
 import type { UpdateInfo, ProgressInfo } from "electron-updater";
 import type { UpdateDownloadState } from "@easyclaw/updater";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
 const log = createLogger("auto-updater");
 
@@ -142,6 +145,29 @@ export function createAutoUpdater(deps: AutoUpdaterDeps) {
     // launcher.stop(), but quitAndInstall() may not await async cleanup fully.
     try { await deps.launcher.stop(); } catch {}
     deps.cleanupGatewayLock(deps.configPath);
+
+    // Write a marker file so that if the user manually opens the app while
+    // the NSIS installer is still running, the new instance can detect it
+    // and exit gracefully instead of conflicting with the installer.
+    // Windows-only: macOS/Linux updates don't use a separate installer process.
+    if (process.platform === "win32") {
+      try {
+        const markerDir = join(homedir(), ".easyclaw");
+        mkdirSync(markerDir, { recursive: true });
+        writeFileSync(join(markerDir, "update-installing"), "", { flag: "w" });
+      } catch {}
+    }
+
+    // Show a system notification before quitting so the user knows the
+    // installer is running (the NSIS UI can take 10-30s to appear on Windows
+    // due to process cleanup in customInit / customCheckAppRunning hooks).
+    const isZh = deps.systemLocale === "zh";
+    new Notification({
+      title: isZh ? "EasyClaw 正在更新" : "EasyClaw Updating",
+      body: isZh
+        ? "安装程序正在运行，完成后将自动启动。请勿手动打开应用。"
+        : "The installer is running. The app will restart automatically.",
+    }).show();
 
     deps.setIsQuitting(true); // prevent close-to-tray
     autoUpdater.quitAndInstall(false, true);
