@@ -38,7 +38,8 @@ unset ELECTRON_RUN_AS_NODE
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # ---- Tee all output to a log file ----
-exec {ORIG_STDOUT}>&1 {ORIG_STDERR}>&2
+# Use fixed fd numbers (7/8) for bash 3.2 compat (no {varname} syntax).
+exec 7>&1 8>&2
 mkdir -p "$REPO_ROOT/tmp"
 exec > >(tee "$REPO_ROOT/tmp/test-results.log") 2>&1
 echo "=== test-local.sh started at $(date -u +%Y-%m-%dT%H:%M:%SZ) ==="
@@ -216,8 +217,8 @@ print_summary() {
 cleanup() {
   print_summary
   # Close the tee pipe and restore original fds so tee can flush before exit.
-  exec 1>&${ORIG_STDOUT} 2>&${ORIG_STDERR}
-  exec {ORIG_STDOUT}>&- {ORIG_STDERR}>&-
+  exec 1>&7 2>&8
+  exec 7>&- 8>&-
   sleep 0.2
   rm -rf "${SUMMARY_TMPDIR:-}"
 }
