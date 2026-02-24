@@ -2,6 +2,8 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback, useReducer }
 import { useTranslation } from "react-i18next";
 import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
 import { stripReasoningTagsFromText } from "@openclaw/reasoning-tags";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 // Gateway attachment limit is 5 MB (image-only for webchat)
 const MAX_IMAGE_ATTACHMENT_BYTES = 5 * 1000 * 1000;
 import { fetchGatewayInfo, fetchProviderKeys, trackEvent, fetchChatShowAgentEvents, fetchChatPreserveToolEvents } from "../api.js";
@@ -81,59 +83,47 @@ function formatTimestamp(ts: number, locale: string): string {
   return `${days[d.getDay()]} ${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-/**
- * Basic text formatter: code blocks, inline code, and line breaks.
- * No external dependencies.
- */
-function formatMessage(text: string): React.ReactNode[] {
-  const parts: React.ReactNode[] = [];
-  // Split on fenced code blocks: ```...```
-  const segments = text.split(/(```[\s\S]*?```)/g);
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    if (seg.startsWith("```") && seg.endsWith("```")) {
-      // Code block — strip the fences
-      const inner = seg.slice(3, -3);
-      // Optional language hint on first line
-      const nlIdx = inner.indexOf("\n");
-      const code = nlIdx >= 0 ? inner.slice(nlIdx + 1) : inner;
-      parts.push(<pre key={i}><code>{code}</code></pre>);
-    } else {
-      // Inline formatting: `code`, markdown images, and newlines
-      const inlineParts = seg.split(/(`[^`]+`)/g);
-      for (let j = 0; j < inlineParts.length; j++) {
-        const ip = inlineParts[j];
-        if (ip.startsWith("`") && ip.endsWith("`")) {
-          parts.push(<code key={`${i}-${j}`}>{ip.slice(1, -1)}</code>);
-        } else {
-          // Split on markdown images: ![alt](url)
-          const imgParts = ip.split(/(!\[[^\]]*\]\([^)]+\))/g);
-          for (let m = 0; m < imgParts.length; m++) {
-            const mp = imgParts[m];
-            const imgMatch = mp.match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
-            if (imgMatch) {
-              parts.push(
-                <img
-                  key={`${i}-${j}-img${m}`}
-                  src={imgMatch[2]}
-                  alt={imgMatch[1]}
-                  className="chat-bubble-img"
-                />,
-              );
-            } else {
-              // Convert newlines to <br>
-              const lines = mp.split("\n");
-              for (let k = 0; k < lines.length; k++) {
-                if (k > 0) parts.push(<br key={`${i}-${j}-${m}-br${k}`} />);
-                if (lines[k]) parts.push(lines[k]);
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-  return parts;
+/** Module-level constants to avoid re-creation on every render. */
+const mdRemarkPlugins = [remarkGfm];
+const mdComponents = {
+  img: ({ alt, src }: { alt?: string; src?: string }) => (
+    <img src={src} alt={alt ?? ""} className="chat-bubble-img" />
+  ),
+  a: ({ href, children }: { href?: string; children?: React.ReactNode }) => (
+    <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>
+  ),
+};
+
+function MarkdownMessage({ text }: { text: string }) {
+  return (
+    <ReactMarkdown remarkPlugins={mdRemarkPlugins} components={mdComponents}>
+      {text}
+    </ReactMarkdown>
+  );
+}
+
+function CopyButton({ text }: { text: string }) {
+  const { t } = useTranslation();
+  const [copied, setCopied] = useState(false);
+  const handleCopy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }, [text]);
+  return (
+    <button
+      className={`chat-bubble-copy${copied ? " chat-bubble-copy-done" : ""}`}
+      onClick={handleCopy}
+      data-tooltip={copied ? t("common.copied") : t("common.copy")}
+    >
+      {copied ? (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+      ) : (
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+      )}
+    </button>
+  );
 }
 
 /**
@@ -1104,7 +1094,8 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
                   ))}
                 </div>
               )}
-              {cleaned && formatMessage(cleaned)}
+              {cleaned && (msg.role === "assistant" ? <MarkdownMessage text={cleaned} /> : cleaned)}
+              {msg.role === "assistant" && cleaned && <CopyButton text={cleaned} />}
             </div>
             </div>
             );
@@ -1141,7 +1132,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
                 ) : null;
               })()}
               <div className="chat-bubble chat-bubble-assistant chat-streaming-cursor">
-                {formatMessage(cleanMessageText(streaming))}
+                <MarkdownMessage text={cleanMessageText(streaming)} />
               </div>
             </>
           )}
