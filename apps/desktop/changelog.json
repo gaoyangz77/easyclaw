@@ -1,5 +1,27 @@
 [
   {
+    "version": "1.5.4",
+    "date": "2026-02-25",
+    "en": [
+      "Added inline model switcher in chat status bar",
+      "Added new providers: NVIDIA, Qwen Coding, ModelScope",
+      "Refactored main process into 6 smaller modules for better maintainability",
+      "Merged browser settings into agent section with improved card spacing",
+      "Fixed macOS 20-50s stalls by replacing pkill with killall",
+      "Fixed CDP browser wrapper to reuse directory across restarts, preserving login state",
+      "Upgraded vendored OpenClaw to v2026.2.22"
+    ],
+    "zh": [
+      "新增聊天状态栏内联模型切换器",
+      "新增供应商：NVIDIA、Qwen Coding、ModelScope",
+      "主进程重构为 6 个独立模块，提升可维护性",
+      "浏览器设置合并到 Agent 区域，优化卡片间距",
+      "修复 macOS 下 pkill 导致的 20-50 秒卡顿",
+      "修复 CDP 浏览器包装目录在重启后丢失登录状态的问题",
+      "升级内置 OpenClaw 至 v2026.2.22"
+    ]
+  },
+  {
     "version": "1.5.3",
     "date": "2026-02-22",
     "en": [
