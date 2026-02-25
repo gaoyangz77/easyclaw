@@ -1,0 +1,10 @@
+{
+  "id": "easyclaw-tools",
+  "name": "EasyClaw Tools",
+  "description": "Provides EasyClaw-specific tools and overrides OpenClaw CLI references",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {}
+  }
+}
