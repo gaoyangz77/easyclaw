@@ -8,7 +8,7 @@ electron-builder.yml.
 
 | Extension | Type | Description |
 |-----------|------|-------------|
-| `easyclaw-tools` | Hook + Tool | Prepends EasyClaw runtime context + `easyclaw` tool |
+| `easyclaw-tools` | Hook + Tool | Runtime context injection + `easyclaw`/`providers` tools (ownerOnly) |
 | `easyclaw-policy` | Hook | Injects compiled policies and guard directives into system prompt |
 | `file-permissions` | Hook | Validates file operations against permission policies |
 | `search-browser-fallback` | Hook (single-file) | Falls back to browser search when `web_search` fails |
