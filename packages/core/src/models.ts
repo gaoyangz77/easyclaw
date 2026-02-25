@@ -671,6 +671,13 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
     url: "https://build.nvidia.com",
     apiKeyUrl: "https://build.nvidia.com/settings/api-keys",
     envVar: "NVIDIA_API_KEY",
+    extraModels: [
+      { provider: "nvidia", modelId: "meta/llama-3.3-70b-instruct", displayName: "Llama 3.3 70B Instruct" },
+      { provider: "nvidia", modelId: "meta/llama-3.1-405b-instruct", displayName: "Llama 3.1 405B Instruct" },
+      { provider: "nvidia", modelId: "meta/llama-3.1-8b-instruct", displayName: "Llama 3.1 8B Instruct" },
+      { provider: "nvidia", modelId: "deepseek-ai/deepseek-v3.2", displayName: "DeepSeek V3.2" },
+      { provider: "nvidia", modelId: "nvidia/llama-3.1-nemotron-ultra-253b-v1", displayName: "Nemotron Ultra 253B" },
+    ],
     subscriptionPlans: [
       {
         id: "nvidia-nim",
