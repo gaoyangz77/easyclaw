@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.5.9",
+    "date": "2026-02-26",
+    "en": [
+      "Fix Windows update blocker using version-based detection",
+      "Fix startup crash on Windows in certain conditions",
+      "UI polish and visual refinements across all pages"
+    ],
+    "zh": [
+      "修复 Windows 更新阻断机制，改用版本号检测",
+      "修复特定条件下 Windows 启动崩溃",
+      "全面优化界面视觉细节"
+    ]
+  },
+  {
     "version": "1.5.8",
     "date": "2026-02-26",
     "en": [
