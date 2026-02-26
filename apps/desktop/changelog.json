@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.5.8",
+    "date": "2026-02-26",
+    "en": [
+      "Custom LLM provider support — add any OpenAI-compatible API",
+      "Migrate CN API and telemetry to new domain (zhuazhuaai.cn)",
+      "Fix CN auto-update feed URL"
+    ],
+    "zh": [
+      "支持自定义 LLM 服务商 — 可添加任意 OpenAI 兼容 API",
+      "国内 API 和遥测迁移至新域名 (zhuazhuaai.cn)",
+      "修复国内版自动更新地址"
+    ]
+  },
+  {
     "version": "1.5.7",
     "date": "2026-02-28",
     "en": [
