@@ -1,6 +1,6 @@
 {
   "name": "@easyclaw/desktop",
-  "version": "1.5.10",
+  "version": "1.5.9",
   "private": true,
   "main": "dist/main.cjs",
   "author": "EasyClaw",

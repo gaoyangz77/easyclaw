@@ -1,15 +1,5 @@
 [
   {
-    "version": "1.5.10",
-    "date": "2026-02-26",
-    "en": [
-      "Fix dropdown menu positioning issue on certain pages"
-    ],
-    "zh": [
-      "修复部分页面下拉菜单位置异常"
-    ]
-  },
-  {
     "version": "1.5.9",
     "date": "2026-02-26",
     "en": [
