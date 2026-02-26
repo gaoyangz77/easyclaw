@@ -76,7 +76,7 @@ export function LocalModelForm({
           onClick={() => setShowAdvanced(!showAdvanced)}
           className="advanced-toggle"
         >
-          <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>&#9654;</span>
+          <span className={`advanced-chevron${showAdvanced ? " advanced-chevron-open" : ""}`}>&#9654;</span>
           {t("providers.advancedSettings")}
         </button>
         {showAdvanced && (

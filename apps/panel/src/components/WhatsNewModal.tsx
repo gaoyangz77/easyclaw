@@ -47,7 +47,7 @@ export function WhatsNewModal({
           </ul>
         </>
       )}
-      <div style={{ marginTop: 20, textAlign: "right" }}>
+      <div className="mt-lg text-right">
         <button
           className="btn btn-primary"
           onClick={handleClose}

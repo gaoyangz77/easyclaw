@@ -36,7 +36,7 @@ export function ApiKeyForm({
       )}
 
       <div className="form-row mb-sm">
-        <div style={{ flex: 4 }}>
+        <div className="form-col-4">
           <div className="form-label text-secondary">{t("providers.keyLabel")}</div>
           <input
             type="text"
@@ -46,7 +46,7 @@ export function ApiKeyForm({
             className="input-full"
           />
         </div>
-        <div style={{ flex: 6 }}>
+        <div className="form-col-6">
           <div className="form-label text-secondary">{t("providers.modelLabel")}</div>
           <ModelSelect
             provider={provider}
@@ -111,7 +111,7 @@ export function ApiKeyForm({
           onClick={() => setShowAdvanced(!showAdvanced)}
           className="advanced-toggle"
         >
-          <span style={{ transform: showAdvanced ? "rotate(90deg)" : "none", transition: "transform 0.2s" }}>&#9654;</span>
+          <span className={`advanced-chevron${showAdvanced ? " advanced-chevron-open" : ""}`}>&#9654;</span>
           {t("providers.advancedSettings")}
         </button>
         {showAdvanced && (

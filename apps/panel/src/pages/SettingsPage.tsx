@@ -184,7 +184,8 @@ export function SettingsPage() {
   }
 
   return (
-    <div>
+    <div className="page-enter">
+
       <h1>{t("settings.title")}</h1>
       <p className="page-description">{t("settings.description")}</p>
 

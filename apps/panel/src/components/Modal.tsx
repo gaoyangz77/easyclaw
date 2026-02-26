@@ -19,7 +19,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidth = 600, hideCl
     >
       <div
         className="modal-content"
-        style={{ maxWidth }}
+        style={{ maxWidth: `${maxWidth}px` }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">

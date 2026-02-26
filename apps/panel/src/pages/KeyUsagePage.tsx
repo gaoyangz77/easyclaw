@@ -164,7 +164,7 @@ export function KeyUsagePage() {
   const hasTodayData = todayRows.length > 0 || activeKey;
 
   return (
-    <div>
+    <div className="page-enter">
       <div className="page-header">
         <h1>{t("keyUsage.title")}</h1>
         <div className="page-header-actions">
@@ -182,7 +182,7 @@ export function KeyUsagePage() {
         <div className="error-alert">{t(error.key)}{error.detail ?? ""}</div>
       )}
 
-      {loading && <p className="text-muted">{t("keyUsage.loadingData")}</p>}
+      {loading && <div className="loading-state"><span className="spinner" /> {t("keyUsage.loadingData")}</div>}
 
       {/* Today's Usage Table */}
       {!loading && !error && hasTodayData && (
@@ -223,7 +223,8 @@ export function KeyUsagePage() {
 
       {!loading && !error && !hasData && !hasTodayData && (
         <div className="empty-state">
-          <p>{t("keyUsage.noData")}</p>
+          <div className="empty-state-icon">📊</div>
+          <div className="empty-state-title">{t("keyUsage.noData")}</div>
         </div>
       )}
 

@@ -130,15 +130,7 @@ export function App() {
 
   if (showOnboarding === null) {
     return (
-      <div
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#888",
-        }}
-      >
+      <div className="app-loading">
         {t("common.loading")}
       </div>
     );
@@ -153,11 +145,11 @@ export function App() {
     <Layout currentPath={currentPath} onNavigate={navigate} agentName={agentName}>
       {/* Keep ChatPage always mounted so its WebSocket connection and pending
           message state survive navigation to other pages (e.g. ProvidersPage). */}
-      <div style={{ display: currentPath === "/" ? "contents" : "none" }}>
+      <div className={currentPath === "/" ? "contents-toggle" : "hidden-toggle"}>
         <ChatPage onAgentNameChange={setAgentName} />
       </div>
       {/* Keep ChannelsPage mounted to avoid re-fetching channel status on every visit. */}
-      <div style={{ display: currentPath === "/channels" ? "contents" : "none" }}>
+      <div className={currentPath === "/channels" ? "contents-toggle" : "hidden-toggle"}>
         <ChannelsPage />
       </div>
       {OtherPage && <OtherPage />}

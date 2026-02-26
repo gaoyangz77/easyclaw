@@ -190,7 +190,7 @@ export function SkillsPage() {
   }, [confirmDelete, installedSkills]);
 
   return (
-    <div>
+    <div className="page-enter">
       <h1>{t("skills.title")}</h1>
       <p>{t("skills.description")}</p>
 

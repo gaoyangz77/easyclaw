@@ -45,7 +45,7 @@ export function PricingTable({
 
       {loading && (
         <div className="pricing-status">
-          <span className="spinner" style={{ marginRight: 6 }} />
+          <span className="spinner spinner-inline" />
           {t("common.loading")}
         </div>
       )}
@@ -57,8 +57,7 @@ export function PricingTable({
             href={getProviderMeta(provider as LLMProvider)?.url}
             target="_blank"
             rel="noopener noreferrer"
-            className="pricing-link"
-            style={{ marginTop: 6, display: "inline-block" }}
+            className="pricing-link mt-sm"
           >
             {t("providers.pricingViewFull")} &rarr;
           </a>
@@ -154,7 +153,7 @@ export function SubscriptionPricingTable({
 
       {loading && (
         <div className="pricing-status">
-          <span className="spinner" style={{ marginRight: 6 }} />
+          <span className="spinner spinner-inline" />
           {t("common.loading")}
         </div>
       )}
@@ -167,8 +166,7 @@ export function SubscriptionPricingTable({
               href={getProviderMeta(provider as LLMProvider)?.subscriptionUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="pricing-link"
-              style={{ marginTop: 6, display: "inline-block" }}
+              className="pricing-link mt-sm"
             >
               {t("providers.pricingViewFull")} &rarr;
             </a>

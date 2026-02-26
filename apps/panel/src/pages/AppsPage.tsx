@@ -253,7 +253,7 @@ export function AppsPage() {
   const boundCustomers = status?.platforms?.find((p) => p.platform === "wecom")?.boundCustomers ?? 0;
 
   return (
-    <div>
+    <div className="page-enter">
       <h1>{t("customerService.title")}</h1>
 
       <div className="section-card cs-card">

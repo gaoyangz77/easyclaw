@@ -8,15 +8,13 @@ import { LangToggle } from "../components/LangToggle.js";
 function StepDot({ step, currentStep }: { step: number; currentStep: number }) {
   const isActive = step === currentStep;
   const isCompleted = step < currentStep;
-  const highlight = isCompleted || isActive;
+  const dotClass = isCompleted
+    ? "onboarding-step-dot onboarding-step-dot-done"
+    : isActive
+      ? "onboarding-step-dot onboarding-step-dot-active"
+      : "onboarding-step-dot onboarding-step-dot-inactive";
   return (
-    <div
-      className="onboarding-step-dot"
-      style={{
-        backgroundColor: highlight ? "var(--color-primary)" : "var(--color-border)",
-        color: highlight ? "#fff" : "var(--color-text-muted)",
-      }}
-    >
+    <div className={dotClass}>
       {isCompleted ? "\u2713" : step + 1}
     </div>
   );
@@ -58,15 +56,13 @@ export function OnboardingPage({
       </div>
 
       <div
-        className="onboarding-card"
-        style={{ maxWidth: currentStep === 0 ? 960 : 560 }}
+        className={`onboarding-card ${currentStep === 0 ? "onboarding-card-wide" : "onboarding-card-narrow"}`}
       >
         {/* Step indicator */}
         <div className="onboarding-steps">
           <StepDot step={0} currentStep={currentStep} />
           <div
-            className="onboarding-connector"
-            style={{ backgroundColor: currentStep > 0 ? "var(--color-primary)" : "var(--color-border)" }}
+            className={`onboarding-connector ${currentStep > 0 ? "onboarding-connector-active" : "onboarding-connector-inactive"}`}
           />
           <StepDot step={1} currentStep={currentStep} />
         </div>
@@ -104,7 +100,7 @@ export function OnboardingPage({
                   className="onboarding-section-item"
                 >
                   <strong>{s.name}</strong>
-                  <span className="text-secondary" style={{ marginLeft: 8 }}>
+                  <span className="text-secondary ml-sm">
                     — {s.desc}
                   </span>
                 </div>

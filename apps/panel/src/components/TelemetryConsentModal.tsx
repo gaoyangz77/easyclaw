@@ -34,7 +34,7 @@ export function TelemetryConsentModal({
         {t("settings.telemetry.consent.items")}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, alignItems: "center" }}>
+      <div className="flex-row-end">
         <button
           onClick={() => dismiss(false)}
           className="btn-ghost"
@@ -44,7 +44,6 @@ export function TelemetryConsentModal({
         <button
           onClick={() => dismiss(true)}
           className="btn btn-primary"
-          style={{ padding: "8px 24px", borderRadius: 6, fontSize: 14, fontWeight: 600 }}
         >
           {t("settings.telemetry.consent.agree")}
         </button>

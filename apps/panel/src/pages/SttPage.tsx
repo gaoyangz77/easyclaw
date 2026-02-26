@@ -130,7 +130,7 @@ export function SttPage() {
   }
 
   return (
-    <div>
+    <div className="page-enter">
       <h1>{t("stt.title")}</h1>
       <p>{t("stt.description")}</p>
 

@@ -1030,14 +1030,14 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
             accept="image/jpeg,image/png,image/gif,image/webp"
             multiple
             onChange={handleFileInputChange}
-            style={{ display: "none" }}
+            className="sr-input"
           />
           <input
             ref={filePathInputRef}
             type="file"
             multiple
             onChange={handleFilePathChange}
-            style={{ display: "none" }}
+            className="sr-input"
           />
           <button
             className="chat-attach-btn"

@@ -175,7 +175,7 @@ export function ProvidersPage() {
   }
 
   return (
-    <div>
+    <div className="page-enter">
       <h1>{t("providers.title")}</h1>
       <p>{t("providers.description")}</p>
 
@@ -197,7 +197,7 @@ export function ProvidersPage() {
             {t("providers.noKeys")}
           </div>
         ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+          <div className="flex-col-gap-1">
             {keys.map((k) => {
               const isActive = k.isDefault && k.provider === defaultProvider;
               const isExp = expandedKeyId === k.id;
@@ -211,7 +211,7 @@ export function ProvidersPage() {
                     {/* Left: provider info */}
                     <div className="key-info">
                       <div className="key-meta">
-                        <strong style={{ fontSize: 13 }}>
+                        <strong className="text-sm">
                           {k.authType === "custom" ? k.label : t(`providers.label_${k.provider}`)}
                         </strong>
                         <span className="badge badge-muted">
@@ -229,7 +229,7 @@ export function ProvidersPage() {
                           </span>
                         )}
                         {k.proxyUrl && (
-                          <span className="has-tooltip" data-tooltip={t("providers.proxyTooltip")} style={{ display: "inline-flex", alignItems: "center" }}>
+                          <span className="has-tooltip inline-flex-center" data-tooltip={t("providers.proxyTooltip")}>
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                               <rect x="3" y="11" width="18" height="11" rx="2" fill="#f5d060" stroke="#b8860b" strokeWidth="2" />
                               <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="#b8860b" strokeWidth="2" strokeLinecap="round" />
@@ -237,7 +237,7 @@ export function ProvidersPage() {
                           </span>
                         )}
                         {(k.authType === "local" || k.authType === "custom") && k.baseUrl && (
-                          <span className="text-secondary" style={{ fontSize: 12 }}>{k.baseUrl}</span>
+                          <span className="text-secondary text-sm">{k.baseUrl}</span>
                         )}
                         {savedId === k.id && (
                           <span className="badge-saved">{t("common.saved")}</span>
@@ -361,7 +361,7 @@ export function ProvidersPage() {
                             </button>
                           </div>
                           <small className="form-help-sm">{t("providers.apiKeyHelp")}</small>
-                          <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid var(--color-border)` }}>
+                          <div className="key-section-border">
                             <div className="form-label text-secondary">{t("providers.customEndpointLabel")}</div>
                             <div className="form-row">
                               <input
@@ -403,11 +403,11 @@ export function ProvidersPage() {
                           </div>
                           <small className="form-help-sm">{t("providers.apiKeyHelp")}</small>
                           {(k.provider === "anthropic" || k.provider === "claude") && (
-                            <div className="info-box info-box-yellow" style={{ marginTop: 6 }}>
+                            <div className="info-box info-box-yellow mt-sm">
                               {t("providers.anthropicTokenWarning")}
                             </div>
                           )}
-                          <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid var(--color-border)` }}>
+                          <div className="key-section-border">
                             <div className="form-label text-secondary">{t("providers.proxyLabel")}</div>
                             <div className="form-row">
                               <input

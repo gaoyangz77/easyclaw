@@ -124,7 +124,7 @@ export function RulesPage() {
   }
 
   return (
-    <div>
+    <div className="page-enter">
       <h1>{t("rules.title")}</h1>
       <p>{t("rules.description")}</p>
 
@@ -140,7 +140,7 @@ export function RulesPage() {
           <div className="rules-label-col text-muted text-sm">
             {t("onboarding.tryExample")}
           </div>
-          <div style={{ flex: 1 }} />
+          <div className="spacer" />
         </div>
         <div className="rules-examples-row">
           {/* Left: examples */}

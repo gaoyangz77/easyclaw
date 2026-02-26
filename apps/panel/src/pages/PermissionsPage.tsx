@@ -201,7 +201,7 @@ export function PermissionsPage() {
   }
 
   return (
-    <div>
+    <div className="page-enter">
       <h1>{t("permissions.title")}</h1>
       <p>{t("permissions.description")}</p>
 
@@ -223,11 +223,11 @@ export function PermissionsPage() {
         <div className="perm-full-access-row">
           <div>
             <strong>{t("permissions.fullAccessLabel")}</strong>
-            <p className="text-sm text-secondary" style={{ margin: "4px 0 0" }}>
+            <p className="text-sm text-secondary mb-0 mt-0">
               {t("permissions.fullAccessDescription")}
             </p>
           </div>
-          <label className="toggle-switch" style={{ marginLeft: 16 }}>
+          <label className="toggle-switch ml-md">
             <input
               type="checkbox"
               checked={fullAccess}
@@ -245,7 +245,7 @@ export function PermissionsPage() {
         </div>
       </div>
 
-      <div className="section-card" style={{ opacity: fullAccess ? 0.5 : 1, pointerEvents: fullAccess ? "none" : "auto" }}>
+      <div className={`section-card${fullAccess ? " section-disabled" : ""}`}>
         {/* Add path area */}
         <div className="perm-add-path-row">
           {selectedPath && (
@@ -290,7 +290,7 @@ export function PermissionsPage() {
             {workspacePath && (
               <tr className="perm-workspace-row">
                 <td>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div className="flex-row-center gap-sm">
                     <code className="perm-path-display">
                       {workspacePath}
                     </code>

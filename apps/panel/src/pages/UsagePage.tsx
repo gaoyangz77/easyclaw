@@ -77,12 +77,12 @@ export function UsagePage() {
   };
 
   return (
-    <div>
+    <div className="page-enter">
       <h1>{t("usage.title")}</h1>
       <p>{t("usage.description")}</p>
 
       {/* Time range filter and refresh button */}
-      <div className="form-row mb-lg" style={{ alignItems: "center", justifyContent: "space-between" }}>
+      <div className="form-row mb-lg flex-row-between">
         <div className="form-row">
           {(["7d", "30d", "all"] as TimeRange[]).map((range) => (
             <button
@@ -94,7 +94,7 @@ export function UsagePage() {
             </button>
           ))}
         </div>
-        <div className="form-row" style={{ alignItems: "center" }}>
+        <div className="form-row flex-row-center">
           <span className="text-sm text-muted">
             Last updated: {lastRefresh.toLocaleTimeString()}
           </span>
