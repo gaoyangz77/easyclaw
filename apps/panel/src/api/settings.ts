@@ -21,10 +21,11 @@ export async function validateApiKey(
   provider: string,
   apiKey: string,
   proxyUrl?: string,
+  model?: string,
 ): Promise<{ valid: boolean; error?: string }> {
   return fetchJson("/settings/validate-key", {
     method: "POST",
-    body: JSON.stringify({ provider, apiKey, proxyUrl }),
+    body: JSON.stringify({ provider, apiKey, proxyUrl, model }),
   });
 }
 

@@ -207,7 +207,7 @@ export function useProviderForm(onSave: (provider: string) => void) {
     setError(null);
     try {
       const proxy = proxyUrl.trim() || undefined;
-      const validation = await validateApiKey(provider, apiKey.trim(), proxy);
+      const validation = await validateApiKey(provider, apiKey.trim(), proxy, model || undefined);
       if (!validation.valid) {
         setError({ key: "providers.invalidKey", detail: validation.error });
         setValidating(false);
