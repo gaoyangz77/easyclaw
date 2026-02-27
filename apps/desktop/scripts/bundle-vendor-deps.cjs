@@ -339,7 +339,7 @@ function prebundleExtensions() {
 
   if (!fs.existsSync(extensionsDir)) {
     console.log("[bundle-vendor-deps] extensions/ not found, skipping.");
-    return;
+    return new Set();
   }
 
   const esbuild = loadEsbuild();
@@ -361,6 +361,7 @@ function prebundleExtensions() {
   let bundled = 0;
   let skipped = 0;
   const errors = [];
+  const allExtPkgs = new Set();
 
   for (const ext of extDirs) {
     const indexTs = path.join(ext.dir, "index.ts");
@@ -372,7 +373,7 @@ function prebundleExtensions() {
     const indexJs = path.join(ext.dir, "index.js");
 
     try {
-      esbuild.buildSync({
+      const result = esbuild.buildSync({
         entryPoints: [indexTs],
         outfile: indexJs,
         bundle: true,
@@ -380,6 +381,7 @@ function prebundleExtensions() {
         platform: "node",
         target: "node22",
         external: EXTERNAL_PACKAGES,
+        metafile: true,
         alias: {
           "openclaw/plugin-sdk": pluginSdkIndex,
           "openclaw/plugin-sdk/account-id": pluginSdkAccountId,
@@ -389,6 +391,19 @@ function prebundleExtensions() {
         },
         logLevel: "warning",
       });
+
+      // Collect external packages from metafile
+      if (result.metafile) {
+        for (const output of Object.values(result.metafile.outputs)) {
+          for (const imp of output.imports || []) {
+            if (imp.external) {
+              const parts = imp.path.split("/");
+              const pkgName = imp.path.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
+              allExtPkgs.add(pkgName);
+            }
+          }
+        }
+      }
 
       // Delete .ts source files (now inlined into index.js)
       deleteTsFiles(ext.dir);
@@ -420,6 +435,8 @@ function prebundleExtensions() {
     }
     process.exit(1);
   }
+
+  return allExtPkgs;
 }
 
 // ─── Phase 1: esbuild bundle ───
@@ -456,9 +473,9 @@ function bundleWithEsbuild() {
     `[bundle-vendor-deps] Bundle created: ${(bundleSize / 1024 / 1024).toFixed(1)}MB in ${elapsed}ms`,
   );
 
-  // Log which packages esbuild treated as external imports (for debugging)
+  // Collect which packages esbuild treated as external imports
+  const usedExternals = new Set();
   if (result.metafile) {
-    const usedExternals = new Set();
     for (const output of Object.values(result.metafile.outputs)) {
       for (const imp of output.imports || []) {
         if (imp.external) {
@@ -472,6 +489,8 @@ function bundleWithEsbuild() {
       `[bundle-vendor-deps] External packages referenced: ${[...usedExternals].sort().join(", ")}`,
     );
   }
+
+  return usedExternals;
 }
 
 // ─── Phase 2: Replace entry.js with the bundle ───
@@ -541,12 +560,13 @@ function deleteChunkFiles() {
 // Now that extensions are pre-bundled (all npm deps inlined), node_modules
 // only needs EXTERNAL_PACKAGES + their transitive dependencies.
 
+/** @returns {Set<string>} keepSet — packages that were found and preserved */
 function cleanupNodeModules() {
   console.log("[bundle-vendor-deps] Phase 4: Cleaning up node_modules...");
 
   if (!fs.existsSync(nmDir)) {
     console.log("[bundle-vendor-deps] node_modules not found, skipping.");
-    return;
+    return new Set();
   }
 
   const filesBefore = countFiles(nmDir);
@@ -653,6 +673,74 @@ function cleanupNodeModules() {
   console.log(
     `[bundle-vendor-deps] node_modules: ${filesBefore} → ${filesAfter} files ` +
       `(removed ${filesBefore - filesAfter})`,
+  );
+
+  return keepSet;
+}
+
+// ─── Phase 4.5: Static import verification ───
+// Uses esbuild metafile data (collected during Phase 0.5 and Phase 1) to
+// verify that every external package referenced by the bundles still exists
+// in node_modules after Phase 4 cleanup.  This is deterministic and
+// platform-independent — no gateway spawn needed.
+
+function verifyExternalImports(/** @type {Set<string>} */ allExternals, /** @type {Set<string>} */ keepSet) {
+  console.log("[bundle-vendor-deps] Phase 4.5: Verifying external imports...");
+
+  // Only verify packages that are BOTH:
+  //   1. Intentionally external (listed in EXTERNAL_PACKAGES)
+  //   2. Were actually installed (present in BFS keepSet from Phase 4)
+  //
+  // Packages in EXTERNAL_PACKAGES that were never installed (ffmpeg-static,
+  // authenticate-pam, esbuild, node-llama-cpp) are listed there so esbuild
+  // doesn't try to resolve them — but they're behind try/catch in vendor
+  // code and fail gracefully at runtime.
+  const matchesIntentional = (/** @type {string} */ name) => {
+    for (const pattern of EXTERNAL_PACKAGES) {
+      if (pattern === name) return true;
+      if (pattern.endsWith("/*") && name.startsWith(pattern.slice(0, -1))) return true;
+      if (pattern.endsWith("-*") && name.startsWith(pattern.slice(0, -1))) return true;
+    }
+    return false;
+  };
+
+  const missing = [];
+  let verifiedCount = 0;
+  let skippedNeverInstalled = 0;
+
+  for (const pkg of [...allExternals].sort()) {
+    if (isNodeBuiltin(pkg)) continue;
+    if (!matchesIntentional(pkg)) continue; // skip incidental externals
+    if (!keepSet.has(pkg)) {
+      // Package is in EXTERNAL_PACKAGES but was never installed — expected
+      skippedNeverInstalled++;
+      continue;
+    }
+    verifiedCount++;
+    const pkgDir = path.join(nmDir, pkg);
+    if (!fs.existsSync(pkgDir)) {
+      missing.push(pkg);
+    }
+  }
+
+  if (missing.length > 0) {
+    console.error(
+      `\n[bundle-vendor-deps] ✗ IMPORT VERIFICATION FAILED: ${missing.length} package(s) were in BFS keep-set but missing from node_modules.\n`,
+    );
+    for (const pkg of missing) {
+      console.error(`  ${pkg}`);
+    }
+    console.error(
+      `\n  These packages were installed and should have been preserved by Phase 4.\n` +
+        `\n  Fix: Check buildKeepSet() BFS logic or Phase 4 cleanup.\n`,
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    `[bundle-vendor-deps] All ${verifiedCount} installed external imports verified` +
+      (skippedNeverInstalled > 0 ? ` (${skippedNeverInstalled} optional/never-installed skipped)` : "") +
+      ".",
   );
 }
 
@@ -811,11 +899,14 @@ if (!fs.existsSync(nmDir)) {
 (async () => {
   const t0 = Date.now();
   await extractVendorModelCatalog();
-  prebundleExtensions();
-  bundleWithEsbuild();
+  const extExternals = prebundleExtensions();
+  const bundleExternals = bundleWithEsbuild();
   replaceEntryWithBundle();
   deleteChunkFiles();
-  cleanupNodeModules();
+  const keepSet = cleanupNodeModules();
+  // Merge all external packages from extensions + main bundle for verification
+  const allExternals = new Set([...extExternals, ...bundleExternals]);
+  verifyExternalImports(allExternals, keepSet);
   smokeTestGateway();
 
   // Write marker so re-runs are skipped (idempotency guard).
