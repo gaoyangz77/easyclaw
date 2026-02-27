@@ -5,17 +5,15 @@
 // Must run AFTER prune-vendor-deps.cjs (which removes devDeps) and
 // BEFORE electron-builder (which copies the results into the installer).
 //
-// This reduces file count for the installer:
+// This dramatically reduces file count for the installer:
+//   - extensions/: .ts → pre-bundled .js (inlines plugin-sdk + npm deps)
 //   - dist/: 758 chunk files → 3 files (bundle, babel.cjs, warning-filter)
-//   - node_modules/: kept intact (vendor .ts extensions loaded via jiti at
-//     runtime need the full dependency tree)
+//   - dist/plugin-sdk/: 1,575 chunk files → deleted (inlined into extensions)
+//   - node_modules/: ~56K files → ~1.5K files (native/external only)
 //
-// The dist/ reduction alone cuts ~755 files from the installer.  node_modules
-// is NOT pruned because bundled vendor extensions (device-pair, memory-core,
-// qwen-portal-auth, etc.) are TypeScript files loaded by jiti at runtime.
-// jiti transpiles them on the fly, and those .ts files transitively import
-// the entire vendor source tree + npm dependencies (@mariozechner/pi-ai,
-// @aws-sdk/*, etc.).  Removing any package breaks extension loading.
+// Extensions are pre-bundled BEFORE the main entry.js bundle so that they
+// become self-contained .js files.  This eliminates the runtime dependency
+// chain: extension.ts → jiti → plugin-sdk → 1,575 chunks → node_modules.
 
 const fs = require("fs");
 const path = require("path");
@@ -23,6 +21,7 @@ const path = require("path");
 const vendorDir = path.resolve(__dirname, "..", "..", "..", "vendor", "openclaw");
 const distDir = path.join(vendorDir, "dist");
 const nmDir = path.join(vendorDir, "node_modules");
+const extensionsDir = path.join(vendorDir, "extensions");
 
 const ENTRY_FILE = path.join(distDir, "entry.js");
 const BUNDLE_TEMP = path.join(distDir, "gateway-bundle.tmp.mjs");
@@ -30,6 +29,7 @@ const BUNDLE_TEMP = path.join(distDir, "gateway-bundle.tmp.mjs");
 // ─── External packages: cannot be bundled by esbuild ───
 // Native modules (.node binaries), complex dynamic loaders, and undici
 // (needed by proxy-setup.cjs via createRequire at runtime).
+// Used for BOTH the main entry.js bundle AND per-extension bundles.
 const EXTERNAL_PACKAGES = [
   // Native modules (contain .node or .dylib binaries)
   "sharp",
@@ -45,6 +45,8 @@ const EXTERNAL_PACKAGES = [
   "sqlite-vec-*",
   "better-sqlite3",
   "@snazzah/*",
+  "@lancedb/lancedb",
+  "@lancedb/lancedb-*",
 
   // Complex dynamic loading patterns (runtime fs access, .proto files, etc.)
   "protobufjs",
@@ -78,11 +80,21 @@ const VENDOR_MODELS_JSON = path.join(distDir, "vendor-models.json");
 // and auxiliary files need to survive Phase 3.
 const KEEP_DIST_FILES = new Set([
   "entry.js",
-  "babel.cjs",       // jiti runtime loader (see Phase 2 comment)
+  "babel.cjs", // jiti safety net (kept in case any .ts extension was missed)
   ".bundled",
   "vendor-models.json",
   "warning-filter.js",
   "warning-filter.mjs",
+]);
+
+// Subdirectories of dist/ to preserve.  plugin-sdk/ is intentionally absent:
+// its 1,575 chunk files are inlined into pre-bundled extensions by Phase 0.5.
+const KEEP_DIST_DIRS = new Set([
+  "bundled",
+  "canvas-host",
+  "cli",
+  "control-ui",
+  "export-html",
 ]);
 
 // ─── Helpers ───
@@ -103,6 +115,149 @@ function countFiles(dir) {
     }
   } catch {}
   return count;
+}
+
+/**
+ * Parse a .pnpm directory name to extract the package name.
+ * Examples:
+ *   "sharp@0.34.5"                    → "sharp"
+ *   "@img+sharp-darwin-arm64@0.34.5"  → "@img/sharp-darwin-arm64"
+ *   "undici@7.22.0"                   → "undici"
+ *   "pkg@1.0.0_peer+info"            → "pkg"
+ */
+function parsePnpmDirName(/** @type {string} */ dirName) {
+  if (dirName.startsWith("@")) {
+    const plusIdx = dirName.indexOf("+");
+    if (plusIdx === -1) return null;
+    const afterPlus = dirName.substring(plusIdx + 1);
+    const atIdx = afterPlus.indexOf("@");
+    if (atIdx === -1) return null;
+    const scope = dirName.substring(0, plusIdx);
+    const name = afterPlus.substring(0, atIdx);
+    return `${scope}/${name}`;
+  }
+  const atIdx = dirName.indexOf("@");
+  if (atIdx <= 0) return dirName;
+  return dirName.substring(0, atIdx);
+}
+
+const NODE_BUILTINS = new Set([
+  "assert", "async_hooks", "buffer", "child_process", "cluster", "console",
+  "constants", "crypto", "dgram", "diagnostics_channel", "dns", "domain",
+  "events", "fs", "http", "http2", "https", "inspector", "module", "net",
+  "os", "path", "perf_hooks", "process", "punycode", "querystring",
+  "readline", "repl", "stream", "string_decoder", "sys", "timers", "tls",
+  "trace_events", "tty", "url", "util", "v8", "vm", "wasi", "worker_threads",
+  "zlib",
+]);
+
+function isNodeBuiltin(/** @type {string} */ name) {
+  if (name.startsWith("node:")) return true;
+  return NODE_BUILTINS.has(name);
+}
+
+/** Resolve esbuild from apps/desktop devDependencies. */
+function loadEsbuild() {
+  try {
+    const desktopDir = path.resolve(__dirname, "..");
+    return require(require.resolve("esbuild", { paths: [desktopDir] }));
+  } catch {
+    console.error(
+      "[bundle-vendor-deps] esbuild not found. Ensure it is listed in " +
+        "apps/desktop/package.json devDependencies and `pnpm install` has been run.",
+    );
+    process.exit(1);
+  }
+}
+
+/**
+ * Delete all .ts files (not .d.ts) recursively in a directory.
+ * Used to clean up extension source files after pre-bundling.
+ */
+function deleteTsFiles(/** @type {string} */ dir) {
+  let count = 0;
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        count += deleteTsFiles(full);
+      } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) {
+        fs.unlinkSync(full);
+        count++;
+      }
+    }
+  } catch {}
+  return count;
+}
+
+/**
+ * Build a Set of package names that must be kept in node_modules.
+ * BFS from EXTERNAL_PACKAGES seeds, following dependencies transitively.
+ */
+function buildKeepSet() {
+  const keepSet = new Set();
+  const queue = [];
+
+  // Seed BFS with all EXTERNAL_PACKAGES (resolve wildcards against node_modules)
+  for (const pattern of EXTERNAL_PACKAGES) {
+    if (pattern.endsWith("/*")) {
+      // Scoped wildcard: @scope/* → find all @scope/X packages
+      const scope = pattern.slice(0, pattern.indexOf("/"));
+      const scopeDir = path.join(nmDir, scope);
+      try {
+        for (const entry of fs.readdirSync(scopeDir)) {
+          queue.push(`${scope}/${entry}`);
+        }
+      } catch {}
+    } else if (pattern.endsWith("-*")) {
+      // Suffix wildcard: pkg-* → find all pkg-X packages
+      const prefix = pattern.slice(0, -1);
+      const scope = prefix.startsWith("@") ? prefix.split("/")[0] : null;
+      if (scope) {
+        const scopeDir = path.join(nmDir, scope);
+        try {
+          for (const entry of fs.readdirSync(scopeDir)) {
+            if (`${scope}/${entry}`.startsWith(prefix)) {
+              queue.push(`${scope}/${entry}`);
+            }
+          }
+        } catch {}
+      } else {
+        try {
+          for (const entry of fs.readdirSync(nmDir)) {
+            if (entry.startsWith(prefix)) queue.push(entry);
+          }
+        } catch {}
+      }
+    } else {
+      queue.push(pattern);
+    }
+  }
+
+  // BFS: follow dependencies and optionalDependencies transitively
+  while (queue.length > 0) {
+    const pkgName = /** @type {string} */ (queue.shift());
+    if (keepSet.has(pkgName) || isNodeBuiltin(pkgName) || pkgName.startsWith("@types/")) continue;
+
+    const pkgJsonPath = path.join(nmDir, pkgName, "package.json");
+    if (!fs.existsSync(pkgJsonPath)) continue;
+
+    keepSet.add(pkgName);
+
+    try {
+      const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+      for (const depMap of [pkgJson.dependencies, pkgJson.optionalDependencies]) {
+        if (!depMap) continue;
+        for (const dep of Object.keys(depMap)) {
+          if (!keepSet.has(dep) && !isNodeBuiltin(dep) && !dep.startsWith("@types/")) {
+            queue.push(dep);
+          }
+        }
+      }
+    } catch {}
+  }
+
+  return keepSet;
 }
 
 
@@ -138,7 +293,6 @@ async function extractVendorModelCatalog() {
     return;
   }
 
-  // Extract only { id, name } per provider — same structure readVendorModelCatalog() returns
   const catalog = {};
   let totalModels = 0;
 
@@ -169,23 +323,111 @@ async function extractVendorModelCatalog() {
   );
 }
 
+// ─── Phase 0.5: Pre-bundle vendor extensions ───
+// Vendor extensions are .ts files loaded at runtime by jiti.  Without
+// pre-bundling, jiti needs babel.cjs to transpile them, and the transpiled
+// code imports plugin-sdk → 1,575 chunk files → all of node_modules.
+//
+// By pre-bundling each extension into a self-contained .js file:
+//   1. jiti loads .js directly (no babel transpilation needed)
+//   2. plugin-sdk code is inlined (no chunk files needed)
+//   3. npm dependencies are inlined (node_modules can be pruned)
+//   4. Only EXTERNAL_PACKAGES remain as runtime imports
+
+function prebundleExtensions() {
+  console.log("[bundle-vendor-deps] Phase 0.5: Pre-bundling vendor extensions...");
+
+  if (!fs.existsSync(extensionsDir)) {
+    console.log("[bundle-vendor-deps] extensions/ not found, skipping.");
+    return;
+  }
+
+  const esbuild = loadEsbuild();
+
+  // Resolve plugin-sdk alias paths (needed while dist/plugin-sdk/ still exists)
+  const pluginSdkIndex = path.join(distDir, "plugin-sdk", "index.js");
+  const pluginSdkAccountId = path.join(distDir, "plugin-sdk", "account-id.js");
+
+  // Find all extensions with openclaw.plugin.json
+  const extDirs = [];
+  for (const entry of fs.readdirSync(extensionsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const manifestPath = path.join(extensionsDir, entry.name, "openclaw.plugin.json");
+    if (fs.existsSync(manifestPath)) {
+      extDirs.push({ name: entry.name, dir: path.join(extensionsDir, entry.name) });
+    }
+  }
+
+  let bundled = 0;
+  let skipped = 0;
+  const errors = [];
+
+  for (const ext of extDirs) {
+    const indexTs = path.join(ext.dir, "index.ts");
+    if (!fs.existsSync(indexTs)) {
+      skipped++;
+      continue;
+    }
+
+    const indexJs = path.join(ext.dir, "index.js");
+
+    try {
+      esbuild.buildSync({
+        entryPoints: [indexTs],
+        outfile: indexJs,
+        bundle: true,
+        format: "esm",
+        platform: "node",
+        target: "node22",
+        external: EXTERNAL_PACKAGES,
+        alias: {
+          "openclaw/plugin-sdk": pluginSdkIndex,
+          "openclaw/plugin-sdk/account-id": pluginSdkAccountId,
+        },
+        banner: {
+          js: 'import { createRequire as __cr } from "module"; const require = __cr(import.meta.url);',
+        },
+        logLevel: "warning",
+      });
+
+      // Delete .ts source files (now inlined into index.js)
+      deleteTsFiles(ext.dir);
+
+      // Update package.json entry if it references .ts
+      const pkgJsonPath = path.join(ext.dir, "package.json");
+      if (fs.existsSync(pkgJsonPath)) {
+        const content = fs.readFileSync(pkgJsonPath, "utf-8");
+        if (content.includes("./index.ts")) {
+          fs.writeFileSync(pkgJsonPath, content.replace(/\.\/index\.ts/g, "./index.js"), "utf-8");
+        }
+      }
+
+      bundled++;
+    } catch (err) {
+      errors.push({ name: ext.name, error: /** @type {Error} */ (err).message });
+    }
+  }
+
+  console.log(
+    `[bundle-vendor-deps] Pre-bundled ${bundled} extensions` +
+      (skipped > 0 ? ` (${skipped} skipped — no index.ts)` : ""),
+  );
+
+  if (errors.length > 0) {
+    console.error(`\n[bundle-vendor-deps] ✗ ${errors.length} extension(s) failed to bundle:\n`);
+    for (const { name, error } of errors) {
+      console.error(`  ${name}: ${error.substring(0, 200)}\n`);
+    }
+    process.exit(1);
+  }
+}
+
 // ─── Phase 1: esbuild bundle ───
 
 function bundleWithEsbuild() {
   console.log("[bundle-vendor-deps] Phase 1: Bundling dist/entry.js with esbuild...");
 
-  let esbuild;
-  try {
-    // Resolve from apps/desktop (where esbuild is a devDep)
-    const desktopDir = path.resolve(__dirname, "..");
-    esbuild = require(require.resolve("esbuild", { paths: [desktopDir] }));
-  } catch {
-    console.error(
-      "[bundle-vendor-deps] esbuild not found. Ensure it is listed in " +
-        "apps/desktop/package.json devDependencies and `pnpm install` has been run.",
-    );
-    process.exit(1);
-  }
+  const esbuild = loadEsbuild();
 
   const t0 = Date.now();
   const result = esbuild.buildSync({
@@ -248,17 +490,20 @@ function replaceEntryWithBundle() {
   // jiti's lazyTransform() does:
   //   createRequire(import.meta.url)("../dist/babel.cjs")
   // which resolves relative to entry.js → dist/babel.cjs.
-  // esbuild inlined babel.cjs statically, but this dynamic createRequire
-  // bypasses the static bundle and needs the file on disk.
+  // After pre-bundling extensions to .js, babel is NOT needed for normal
+  // operation.  We copy it as a safety net in case a .ts extension is
+  // missed or a future vendor update adds one.
   const babelSrc = path.join(nmDir, "@mariozechner", "jiti", "dist", "babel.cjs");
   const babelDst = path.join(distDir, "babel.cjs");
   if (fs.existsSync(babelSrc)) {
     fs.copyFileSync(babelSrc, babelDst);
-    console.log("[bundle-vendor-deps] Copied babel.cjs to dist/ for jiti runtime loader");
+    console.log("[bundle-vendor-deps] Copied babel.cjs to dist/ (safety net for jiti)");
   }
 }
 
 // ─── Phase 3: Delete chunk files from dist/ ───
+// Also deletes dist/plugin-sdk/ (1,575 chunk files) since all its code
+// is now inlined into the pre-bundled extensions by Phase 0.5.
 
 function deleteChunkFiles() {
   console.log("[bundle-vendor-deps] Phase 3: Deleting chunk files from dist/...");
@@ -267,11 +512,18 @@ function deleteChunkFiles() {
   let deletedBytes = 0;
 
   for (const entry of fs.readdirSync(distDir, { withFileTypes: true })) {
-    // Keep subdirectories (bundled/, canvas-host/, cli/, etc.)
-    if (entry.isDirectory()) continue;
-    // Keep preserved files
+    if (entry.isDirectory()) {
+      // Delete directories NOT in the keep set (e.g. plugin-sdk/)
+      if (!KEEP_DIST_DIRS.has(entry.name)) {
+        const dirPath = path.join(distDir, entry.name);
+        const dirFiles = countFiles(dirPath);
+        fs.rmSync(dirPath, { recursive: true, force: true });
+        deletedCount += dirFiles;
+        console.log(`[bundle-vendor-deps] Deleted dist/${entry.name}/ (${dirFiles} files)`);
+      }
+      continue;
+    }
     if (KEEP_DIST_FILES.has(entry.name)) continue;
-    // Delete all other files (chunk .js files)
     const fullPath = path.join(distDir, entry.name);
     try {
       deletedBytes += fs.statSync(fullPath).size;
@@ -285,29 +537,123 @@ function deleteChunkFiles() {
   );
 }
 
-// ─── Phase 4: Light node_modules cleanup ───
-// We keep ALL packages in node_modules because vendor .ts extensions loaded
-// via jiti at runtime transitively import the entire dependency tree.
-// Only remove .bin/ (not needed at runtime).
+// ─── Phase 4: Clean up node_modules ───
+// Now that extensions are pre-bundled (all npm deps inlined), node_modules
+// only needs EXTERNAL_PACKAGES + their transitive dependencies.
 
 function cleanupNodeModules() {
-  console.log("[bundle-vendor-deps] Phase 4: Light node_modules cleanup...");
+  console.log("[bundle-vendor-deps] Phase 4: Cleaning up node_modules...");
 
   if (!fs.existsSync(nmDir)) {
     console.log("[bundle-vendor-deps] node_modules not found, skipping.");
     return;
   }
 
+  const filesBefore = countFiles(nmDir);
+
+  // Build the keep-set via BFS from EXTERNAL_PACKAGES
+  const keepSet = buildKeepSet();
+  console.log(`[bundle-vendor-deps] Packages to keep: ${keepSet.size}`);
+
+  // Clean top-level entries
+  let removedTopLevel = 0;
+  for (const entry of fs.readdirSync(nmDir, { withFileTypes: true })) {
+    if (entry.name.startsWith(".")) continue; // .pnpm, .bin, .modules.yaml, etc.
+
+    if (entry.name.startsWith("@")) {
+      const scopeDir = path.join(nmDir, entry.name);
+      let scopeEntries;
+      try {
+        scopeEntries = fs.readdirSync(scopeDir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+
+      for (const scopeEntry of scopeEntries) {
+        const fullPkgName = `${entry.name}/${scopeEntry.name}`;
+        if (!keepSet.has(fullPkgName)) {
+          fs.rmSync(path.join(scopeDir, scopeEntry.name), { recursive: true, force: true });
+          removedTopLevel++;
+        }
+      }
+
+      try {
+        if (fs.readdirSync(scopeDir).length === 0) fs.rmdirSync(scopeDir);
+      } catch {}
+    } else {
+      if (!keepSet.has(entry.name)) {
+        fs.rmSync(path.join(nmDir, entry.name), { recursive: true, force: true });
+        removedTopLevel++;
+      }
+    }
+  }
+
+  console.log(`[bundle-vendor-deps] Removed ${removedTopLevel} top-level packages`);
+
+  // Clean .pnpm/ entries
+  const pnpmDir = path.join(nmDir, ".pnpm");
+  let removedPnpm = 0;
+  if (fs.existsSync(pnpmDir)) {
+    for (const entry of fs.readdirSync(pnpmDir, { withFileTypes: true })) {
+      if (!entry.isDirectory() || entry.name === "node_modules") continue;
+      const pkgName = parsePnpmDirName(entry.name);
+      if (pkgName && !keepSet.has(pkgName)) {
+        fs.rmSync(path.join(pnpmDir, entry.name), { recursive: true, force: true });
+        removedPnpm++;
+      }
+    }
+  }
+
+  console.log(`[bundle-vendor-deps] Removed ${removedPnpm} .pnpm/ entries`);
+
+  // Clean up broken symlinks
+  let brokenSymlinks = 0;
+  const cleanBrokenSymlinks = (/** @type {string} */ dir) => {
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        try {
+          const lstat = fs.lstatSync(fullPath);
+          if (lstat.isSymbolicLink()) {
+            try {
+              fs.statSync(fullPath);
+            } catch {
+              fs.unlinkSync(fullPath);
+              brokenSymlinks++;
+            }
+          } else if (lstat.isDirectory() && entry.name.startsWith("@")) {
+            cleanBrokenSymlinks(fullPath);
+            try {
+              if (fs.readdirSync(fullPath).length === 0) fs.rmdirSync(fullPath);
+            } catch {}
+          }
+        } catch {}
+      }
+    } catch {}
+  };
+  cleanBrokenSymlinks(nmDir);
+
+  if (brokenSymlinks > 0) {
+    console.log(`[bundle-vendor-deps] Removed ${brokenSymlinks} broken symlinks`);
+  }
+
   // Remove .bin/ directory (not needed at runtime)
   const binDir = path.join(nmDir, ".bin");
   if (fs.existsSync(binDir)) {
-    const binFiles = countFiles(binDir);
     fs.rmSync(binDir, { recursive: true, force: true });
-    console.log(`[bundle-vendor-deps] Removed .bin/ (${binFiles} files)`);
   }
 
-  const totalFiles = countFiles(nmDir);
-  console.log(`[bundle-vendor-deps] node_modules: ${totalFiles} files (kept intact for jiti runtime)`);
+  // Also clean .pnpm/node_modules/ broken symlinks
+  const pnpmNmDir = path.join(pnpmDir, "node_modules");
+  if (fs.existsSync(pnpmNmDir)) {
+    cleanBrokenSymlinks(pnpmNmDir);
+  }
+
+  const filesAfter = countFiles(nmDir);
+  console.log(
+    `[bundle-vendor-deps] node_modules: ${filesBefore} → ${filesAfter} files ` +
+      `(removed ${filesBefore - filesAfter})`,
+  );
 }
 
 // ─── Phase 5: Smoke test the bundled gateway ───
@@ -326,10 +672,10 @@ function cleanupNodeModules() {
 //      output wraps these in __require() which throws "Dynamic require of X
 //      is not supported".  Fix: add a createRequire banner in the esbuild config.
 //
-//   3. Missing runtime dependencies — Plugins loaded at runtime (outside the
-//      bundle) may import packages that Phase 4 cleanup deleted.  Symptom:
+//   3. Missing runtime dependencies — Pre-bundled extensions or the main bundle
+//      may reference packages deleted by Phase 4 cleanup.  Symptom:
 //      "Cannot find module 'X'" in stderr.  Fix: add the package to
-//      EXTERNAL_PACKAGES so it survives both bundling and cleanup.
+//      EXTERNAL_PACKAGES.
 //
 // See docs/BUNDLE_VENDOR.md for full design docs and runbook.
 
@@ -344,11 +690,8 @@ function smokeTestGateway() {
 
   // Write a minimal config so the gateway can start.
   // Use a high ephemeral port to avoid conflicts with running services.
-  // We intentionally let the gateway discover vendor-internal extensions
-  // (device-pair, memory-core, etc.) to verify that jiti can load .ts files
-  // (i.e. babel.cjs is present in dist/).  EasyClaw's own extensions
-  // (easyclaw-tools, file-permissions) are not present in the smoke test
-  // environment; that's fine — the test just checks the gateway starts.
+  // We let the gateway discover vendor extensions (now pre-bundled .js files)
+  // to verify that pre-bundled extensions load correctly at runtime.
   const minimalConfig = {
     gateway: { port: 59999, mode: "local" },
     models: {},
@@ -364,11 +707,6 @@ function smokeTestGateway() {
   let exitCode = null;
 
   try {
-    // Run for up to 8 seconds.  A healthy gateway stays alive (listening on
-    // its port); we kill it after the timeout.  An unhealthy gateway exits
-    // immediately (code 0 or 1) within the first second.
-    // The gateway may also exit after ~5s if it tries (and fails) to build
-    // the Control UI assets — this is expected in the smoke test environment.
     const stdout = execFileSync(process.execPath, [openclawMjs, "gateway"], {
       cwd: tmpDir,
       timeout: 8000,
@@ -376,13 +714,11 @@ function smokeTestGateway() {
         ...process.env,
         OPENCLAW_CONFIG_PATH: path.join(tmpDir, "openclaw.json"),
         OPENCLAW_STATE_DIR: tmpDir,
-        // Prevent Electron compile cache conflicts
         NODE_COMPILE_CACHE: undefined,
       },
       stdio: ["ignore", "pipe", "pipe"],
       killSignal: "SIGTERM",
     });
-    // If execFileSync returns normally, the process exited on its own
     exitCode = 0;
     allOutput = (stdout || "").toString();
   } catch (err) {
@@ -398,32 +734,17 @@ function smokeTestGateway() {
   } catch {}
 
   // ── Diagnose results ──
-  // The key question: did the gateway code path execute?
-  // If allOutput contains "[gateway]" log lines, the bundle loaded correctly
-  // and isMainModule() passed — the gateway process initialised.
-  // It may still exit (e.g. Control UI build failure) but the bundle is valid.
-
   const gatewayStarted = allOutput.includes("[gateway]");
 
   if (gatewayStarted) {
-    // Gateway code path was reached — fail fast on missing modules.
-    // Even if the gateway itself started, a missing module means a plugin
-    // or extension will be broken in production.  Don't ship broken builds.
     if (allOutput.includes("Cannot find module")) {
       const matches = allOutput.match(/Cannot find module '([^']+)'/g) || [];
       const modules = matches.map((m) => m.match(/Cannot find module '([^']+)'/)?.[1] || "?");
       const unique = [...new Set(modules)];
       console.error(
         `\n[bundle-vendor-deps] ✗ SMOKE TEST FAILED: Gateway started but ${unique.length} module(s) missing at runtime.\n` +
-          `\n` +
-          `  Missing: ${unique.join(", ")}\n` +
-          `\n` +
-          `  Root cause: These modules were removed from node_modules by Phase 4\n` +
-          `  cleanup but are needed at runtime by plugins/extensions loaded via jiti.\n` +
-          `\n` +
-          `  Fix: Add each missing module to EXTERNAL_PACKAGES in this script.\n` +
-          `  This keeps them as external imports AND preserves them in node_modules.\n` +
-          `  See docs/BUNDLE_VENDOR.md § "Adding external packages" for details.\n`,
+          `\n  Missing: ${unique.join(", ")}\n` +
+          `\n  Fix: Add each missing module to EXTERNAL_PACKAGES.\n`,
       );
       process.exit(1);
     }
@@ -431,23 +752,10 @@ function smokeTestGateway() {
     return;
   }
 
-  // Gateway code path was NOT reached — diagnose why.
   if (exitCode === 0 && !allOutput.trim()) {
     console.error(
       `\n[bundle-vendor-deps] ✗ SMOKE TEST FAILED: Gateway exited immediately with code 0 and no output.\n` +
-        `\n` +
-        `  Root cause: The vendor's isMainModule() check failed. This means the\n` +
-        `  bundled entry file's import.meta.url did not match the expected filename.\n` +
-        `\n` +
-        `  The vendor's src/entry.ts has:\n` +
-        `    isMainModule({ currentFile: fileURLToPath(import.meta.url),\n` +
-        `      wrapperEntryPairs: [{ wrapperBasename: "openclaw.mjs", entryBasename: "entry.js" }] })\n` +
-        `\n` +
-        `  If the bundle is NOT named "entry.js", import.meta.url won't match\n` +
-        `  and the gateway silently exits.\n` +
-        `\n` +
-        `  Fix: Ensure Phase 2 renames the bundle to entry.js (not a re-export stub).\n` +
-        `  See docs/BUNDLE_VENDOR.md § "isMainModule check" for full explanation.\n`,
+        `\n  Root cause: isMainModule() check failed. Bundle must be named entry.js.\n`,
     );
     process.exit(1);
   }
@@ -456,16 +764,8 @@ function smokeTestGateway() {
     const match = allOutput.match(/Dynamic require of "([^"]+)" is not supported/);
     const mod = match ? match[1] : "(unknown)";
     console.error(
-      `\n[bundle-vendor-deps] ✗ SMOKE TEST FAILED: CJS require() incompatible with ESM bundle.\n` +
-        `\n` +
-        `  Error: Dynamic require of "${mod}" is not supported\n` +
-        `\n` +
-        `  Root cause: A bundled CJS package uses require("${mod}") which esbuild\n` +
-        `  wraps in __require(). In ESM output this shim throws for Node.js builtins.\n` +
-        `\n` +
-        `  Fix: Add a createRequire banner to the esbuild config:\n` +
-        `    banner: { js: 'import { createRequire as __cr } from "module"; const require = __cr(import.meta.url);' }\n` +
-        `  See docs/BUNDLE_VENDOR.md § "CJS/ESM interop" for details.\n`,
+      `\n[bundle-vendor-deps] ✗ SMOKE TEST FAILED: Dynamic require of "${mod}" is not supported.\n` +
+        `\n  Fix: Ensure the esbuild config has the createRequire banner.\n`,
     );
     process.exit(1);
   }
@@ -474,29 +774,15 @@ function smokeTestGateway() {
     const match = allOutput.match(/Cannot find module '([^']+)'/);
     const mod = match ? match[1] : "(unknown)";
     console.error(
-      `\n[bundle-vendor-deps] ✗ SMOKE TEST FAILED: Missing runtime dependency.\n` +
-        `\n` +
-        `  Error: Cannot find module '${mod}'\n` +
-        `\n` +
-        `  Root cause: The module '${mod}' was removed from node_modules by Phase 4\n` +
-        `  cleanup but is needed at runtime (by a plugin or dynamic import).\n` +
-        `\n` +
-        `  Fix: Add '${mod}' to EXTERNAL_PACKAGES in bundle-vendor-deps.cjs.\n` +
-        `  This tells esbuild to keep it as an external import AND tells Phase 4\n` +
-        `  to preserve it in node_modules.\n` +
-        `  See docs/BUNDLE_VENDOR.md § "Adding external packages" for details.\n`,
+      `\n[bundle-vendor-deps] ✗ SMOKE TEST FAILED: Cannot find module '${mod}'.\n` +
+        `\n  Fix: Add '${mod}' to EXTERNAL_PACKAGES.\n`,
     );
     process.exit(1);
   }
 
-  // Generic failure
   console.error(
     `\n[bundle-vendor-deps] ✗ SMOKE TEST FAILED: Gateway exited with code ${exitCode}.\n` +
-      `\n` +
-      `  Output (first 1000 chars):\n` +
-      `  ${(allOutput || "(empty)").substring(0, 1000)}\n` +
-      `\n` +
-      `  See docs/BUNDLE_VENDOR.md § "Debugging bundle failures" for guidance.\n`,
+      `\n  Output (first 1000 chars):\n  ${(allOutput || "(empty)").substring(0, 1000)}\n`,
   );
   process.exit(1);
 }
@@ -525,6 +811,7 @@ if (!fs.existsSync(nmDir)) {
 (async () => {
   const t0 = Date.now();
   await extractVendorModelCatalog();
+  prebundleExtensions();
   bundleWithEsbuild();
   replaceEntryWithBundle();
   deleteChunkFiles();
