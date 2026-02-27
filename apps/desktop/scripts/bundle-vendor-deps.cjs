@@ -5,13 +5,17 @@
 // Must run AFTER prune-vendor-deps.cjs (which removes devDeps) and
 // BEFORE electron-builder (which copies the results into the installer).
 //
-// This dramatically reduces file count for the installer:
-//   - dist/: 758 chunk files → 3 files (bundle, stub, warning-filter)
-//   - node_modules/: ~56K files → ~1.5K files (native/external only)
+// This reduces file count for the installer:
+//   - dist/: 758 chunk files → 3 files (bundle, babel.cjs, warning-filter)
+//   - node_modules/: kept intact (vendor .ts extensions loaded via jiti at
+//     runtime need the full dependency tree)
 //
-// The combined reduction from ~29K shipped files to ~1.5K files cuts
-// Windows NSIS install time from 5-8 minutes to ~30-60 seconds and
-// gateway cold start from 30-45 seconds to ~5-10 seconds.
+// The dist/ reduction alone cuts ~755 files from the installer.  node_modules
+// is NOT pruned because bundled vendor extensions (device-pair, memory-core,
+// qwen-portal-auth, etc.) are TypeScript files loaded by jiti at runtime.
+// jiti transpiles them on the fly, and those .ts files transitively import
+// the entire vendor source tree + npm dependencies (@mariozechner/pi-ai,
+// @aws-sdk/*, etc.).  Removing any package breaks extension loading.
 
 const fs = require("fs");
 const path = require("path");
@@ -74,6 +78,7 @@ const VENDOR_MODELS_JSON = path.join(distDir, "vendor-models.json");
 // and auxiliary files need to survive Phase 3.
 const KEEP_DIST_FILES = new Set([
   "entry.js",
+  "babel.cjs",       // jiti runtime loader (see Phase 2 comment)
   ".bundled",
   "vendor-models.json",
   "warning-filter.js",
@@ -100,121 +105,11 @@ function countFiles(dir) {
   return count;
 }
 
-/**
- * Parse a .pnpm directory name to extract the package name.
- * Examples:
- *   "sharp@0.34.5"                    → "sharp"
- *   "@img+sharp-darwin-arm64@0.34.5"  → "@img/sharp-darwin-arm64"
- *   "undici@7.22.0"                   → "undici"
- *   "pkg@1.0.0_peer+info"            → "pkg"
- */
-function parsePnpmDirName(dirName) {
-  if (dirName.startsWith("@")) {
-    // Scoped: @scope+name@version[_peer_info]
-    const plusIdx = dirName.indexOf("+");
-    if (plusIdx === -1) return null;
-    const afterPlus = dirName.substring(plusIdx + 1);
-    const atIdx = afterPlus.indexOf("@");
-    if (atIdx === -1) return null;
-    const scope = dirName.substring(0, plusIdx);
-    const name = afterPlus.substring(0, atIdx);
-    return `${scope}/${name}`;
-  }
-  // Unscoped: name@version[_peer_info]
-  const atIdx = dirName.indexOf("@");
-  if (atIdx <= 0) return dirName;
-  return dirName.substring(0, atIdx);
-}
-
-// Node.js built-in modules — these appear as externals in the metafile
-// but are NOT npm packages. Filter them out of the keep set.
-const NODE_BUILTINS = new Set([
-  "assert", "async_hooks", "buffer", "child_process", "cluster", "console",
-  "constants", "crypto", "dgram", "diagnostics_channel", "dns", "domain",
-  "events", "fs", "http", "http2", "https", "inspector", "module", "net",
-  "os", "path", "perf_hooks", "process", "punycode", "querystring",
-  "readline", "repl", "stream", "string_decoder", "sys", "timers", "tls",
-  "trace_events", "tty", "url", "util", "v8", "vm", "wasi", "worker_threads",
-  "zlib",
-]);
-
-/** Returns true if the name is a Node.js built-in (including node: prefix). */
-function isNodeBuiltin(name) {
-  if (name.startsWith("node:")) return true;
-  return NODE_BUILTINS.has(name);
-}
-
-/**
- * Check if a package name matches any pattern in EXTERNAL_PACKAGES.
- * Patterns support trailing `*` wildcards (e.g. "@img/*" matches "@img/sharp-darwin-arm64").
- */
-function matchesExternalPattern(pkgName) {
-  for (const pattern of EXTERNAL_PACKAGES) {
-    if (pattern === pkgName) return true;
-    if (pattern.endsWith("/*")) {
-      const prefix = pattern.slice(0, -1); // "@img/" from "@img/*"
-      if (pkgName.startsWith(prefix)) return true;
-    }
-    if (pattern.endsWith("-*")) {
-      const prefix = pattern.slice(0, -1); // "@lydell/node-pty-" from "@lydell/node-pty-*"
-      if (pkgName.startsWith(prefix)) return true;
-    }
-  }
-  return false;
-}
-
-/**
- * Build a Set of package names that must be kept in node_modules.
- *
- * Only keeps packages that are INTENTIONALLY external (listed in EXTERNAL_PACKAGES)
- * plus their transitive dependencies. Incidental externals (packages esbuild couldn't
- * resolve, like optional `canvas` or `jimp`) are NOT kept — their imports are in
- * try/catch blocks and fail gracefully at runtime.
- */
-function buildKeepSet(usedExternals) {
-  const keepSet = new Set();
-  const queue = [];
-
-  // Seed BFS with ONLY intentionally external packages that were actually referenced
-  for (const pkg of usedExternals) {
-    if (!isNodeBuiltin(pkg) && matchesExternalPattern(pkg)) {
-      queue.push(pkg);
-    }
-  }
-
-  // Explicitly ensure undici is kept (proxy-setup.cjs needs it)
-  queue.push("undici");
-
-  while (queue.length > 0) {
-    const pkgName = queue.shift();
-    if (keepSet.has(pkgName)) continue;
-    if (isNodeBuiltin(pkgName) || pkgName.startsWith("@types/")) continue;
-    keepSet.add(pkgName);
-
-    // Read package.json to find dependencies
-    const pkgJsonPath = path.join(nmDir, pkgName, "package.json");
-    try {
-      if (!fs.existsSync(pkgJsonPath)) continue;
-      const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
-      for (const depMap of [pkgJson.dependencies, pkgJson.optionalDependencies]) {
-        if (!depMap) continue;
-        for (const dep of Object.keys(depMap)) {
-          if (!keepSet.has(dep) && !isNodeBuiltin(dep) && !dep.startsWith("@types/")) {
-            queue.push(dep);
-          }
-        }
-      }
-    } catch {}
-  }
-
-  return keepSet;
-}
 
 // ─── Phase 0: Extract vendor model catalog to static JSON ───
-// model-catalog.ts used to dynamically import models.generated.js from
-// @mariozechner/pi-ai at runtime. Instead, we extract { id, name } per
-// provider at build time so the JS file (and the entire pi-ai package)
-// can be safely removed from node_modules.
+// model-catalog.ts dynamically imports models.generated.js from
+// @mariozechner/pi-ai at runtime. We extract { id, name } per provider
+// at build time into a static JSON file that the bundle inlines.
 
 async function extractVendorModelCatalog() {
   console.log("[bundle-vendor-deps] Phase 0: Extracting vendor model catalog...");
@@ -319,26 +214,22 @@ function bundleWithEsbuild() {
     `[bundle-vendor-deps] Bundle created: ${(bundleSize / 1024 / 1024).toFixed(1)}MB in ${elapsed}ms`,
   );
 
-  // Extract which packages esbuild treated as external imports
-  const usedExternals = new Set();
+  // Log which packages esbuild treated as external imports (for debugging)
   if (result.metafile) {
+    const usedExternals = new Set();
     for (const output of Object.values(result.metafile.outputs)) {
       for (const imp of output.imports || []) {
         if (imp.external) {
-          // Extract package name: "@img/sharp-darwin-arm64" → "@img/sharp-darwin-arm64"
-          // "protobufjs/minimal" → "protobufjs"
           const parts = imp.path.split("/");
           const pkgName = imp.path.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
           usedExternals.add(pkgName);
         }
       }
     }
+    console.log(
+      `[bundle-vendor-deps] External packages referenced: ${[...usedExternals].sort().join(", ")}`,
+    );
   }
-
-  console.log(
-    `[bundle-vendor-deps] External packages referenced: ${[...usedExternals].sort().join(", ")}`,
-  );
-  return usedExternals;
 }
 
 // ─── Phase 2: Replace entry.js with the bundle ───
@@ -353,6 +244,18 @@ function replaceEntryWithBundle() {
   console.log("[bundle-vendor-deps] Phase 2: Replacing entry.js with bundle...");
   fs.unlinkSync(ENTRY_FILE);
   fs.renameSync(BUNDLE_TEMP, ENTRY_FILE);
+
+  // jiti's lazyTransform() does:
+  //   createRequire(import.meta.url)("../dist/babel.cjs")
+  // which resolves relative to entry.js → dist/babel.cjs.
+  // esbuild inlined babel.cjs statically, but this dynamic createRequire
+  // bypasses the static bundle and needs the file on disk.
+  const babelSrc = path.join(nmDir, "@mariozechner", "jiti", "dist", "babel.cjs");
+  const babelDst = path.join(distDir, "babel.cjs");
+  if (fs.existsSync(babelSrc)) {
+    fs.copyFileSync(babelSrc, babelDst);
+    console.log("[bundle-vendor-deps] Copied babel.cjs to dist/ for jiti runtime loader");
+  }
 }
 
 // ─── Phase 3: Delete chunk files from dist/ ───
@@ -382,138 +285,29 @@ function deleteChunkFiles() {
   );
 }
 
-// ─── Phase 4: Clean up node_modules ───
+// ─── Phase 4: Light node_modules cleanup ───
+// We keep ALL packages in node_modules because vendor .ts extensions loaded
+// via jiti at runtime transitively import the entire dependency tree.
+// Only remove .bin/ (not needed at runtime).
 
-function cleanupNodeModules(usedExternals) {
-  console.log("[bundle-vendor-deps] Phase 4: Cleaning up node_modules...");
+function cleanupNodeModules() {
+  console.log("[bundle-vendor-deps] Phase 4: Light node_modules cleanup...");
 
   if (!fs.existsSync(nmDir)) {
-    console.log("[bundle-vendor-deps] node_modules not found, skipping cleanup.");
+    console.log("[bundle-vendor-deps] node_modules not found, skipping.");
     return;
   }
 
-  const filesBefore = countFiles(nmDir);
-
-  // 4a. Build the keep-set via BFS from externals
-  const keepSet = buildKeepSet(usedExternals);
-  console.log(`[bundle-vendor-deps] Packages to keep: ${keepSet.size} (${[...keepSet].sort().join(", ")})`);
-
-  // 4b. Clean top-level entries
-  let removedTopLevel = 0;
-  for (const entry of fs.readdirSync(nmDir, { withFileTypes: true })) {
-    // Skip metadata/special directories
-    if (
-      entry.name === ".pnpm" ||
-      entry.name === ".bin" ||
-      entry.name === ".modules.yaml" ||
-      entry.name.startsWith(".ignored_") ||
-      entry.name.startsWith(".")
-    ) {
-      continue;
-    }
-
-    if (entry.name.startsWith("@")) {
-      // Scoped packages: check each sub-entry
-      const scopeDir = path.join(nmDir, entry.name);
-      let scopeEntries;
-      try {
-        scopeEntries = fs.readdirSync(scopeDir, { withFileTypes: true });
-      } catch {
-        continue;
-      }
-
-      for (const scopeEntry of scopeEntries) {
-        const fullPkgName = `${entry.name}/${scopeEntry.name}`;
-        if (!keepSet.has(fullPkgName)) {
-          fs.rmSync(path.join(scopeDir, scopeEntry.name), { recursive: true, force: true });
-          removedTopLevel++;
-        }
-      }
-
-      // Remove empty scope directories
-      try {
-        if (fs.readdirSync(scopeDir).length === 0) fs.rmdirSync(scopeDir);
-      } catch {}
-    } else {
-      // Unscoped packages
-      if (!keepSet.has(entry.name)) {
-        fs.rmSync(path.join(nmDir, entry.name), { recursive: true, force: true });
-        removedTopLevel++;
-      }
-    }
-  }
-
-  console.log(`[bundle-vendor-deps] Removed ${removedTopLevel} top-level packages`);
-
-  // 4c. Clean .pnpm/ entries
-  const pnpmDir = path.join(nmDir, ".pnpm");
-  let removedPnpm = 0;
-  if (fs.existsSync(pnpmDir)) {
-    for (const entry of fs.readdirSync(pnpmDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      if (entry.name === "node_modules") continue;
-
-      const pkgName = parsePnpmDirName(entry.name);
-      if (pkgName && !keepSet.has(pkgName)) {
-        fs.rmSync(path.join(pnpmDir, entry.name), { recursive: true, force: true });
-        removedPnpm++;
-      }
-    }
-  }
-
-  console.log(`[bundle-vendor-deps] Removed ${removedPnpm} .pnpm/ entries`);
-
-  // 4d. Clean up broken symlinks
-  let brokenSymlinks = 0;
-  const cleanBrokenSymlinks = (dir) => {
-    try {
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const fullPath = path.join(dir, entry.name);
-        try {
-          const lstat = fs.lstatSync(fullPath);
-          if (lstat.isSymbolicLink()) {
-            try {
-              fs.statSync(fullPath); // follows symlink — throws if broken
-            } catch {
-              fs.unlinkSync(fullPath);
-              brokenSymlinks++;
-            }
-          } else if (lstat.isDirectory() && entry.name.startsWith("@")) {
-            // Recurse into scoped dirs
-            cleanBrokenSymlinks(fullPath);
-            // Remove empty scope dirs
-            try {
-              if (fs.readdirSync(fullPath).length === 0) fs.rmdirSync(fullPath);
-            } catch {}
-          }
-        } catch {}
-      }
-    } catch {}
-  };
-  cleanBrokenSymlinks(nmDir);
-
-  if (brokenSymlinks > 0) {
-    console.log(`[bundle-vendor-deps] Removed ${brokenSymlinks} broken symlinks`);
-  }
-
-  // 4e. Remove .bin/ directory (not needed at runtime)
+  // Remove .bin/ directory (not needed at runtime)
   const binDir = path.join(nmDir, ".bin");
   if (fs.existsSync(binDir)) {
+    const binFiles = countFiles(binDir);
     fs.rmSync(binDir, { recursive: true, force: true });
+    console.log(`[bundle-vendor-deps] Removed .bin/ (${binFiles} files)`);
   }
 
-  // 4f. Also clean .pnpm/node_modules/ broken symlinks
-  const pnpmNmDir = path.join(pnpmDir, "node_modules");
-  if (fs.existsSync(pnpmNmDir)) {
-    cleanBrokenSymlinks(pnpmNmDir);
-  }
-
-  // 4g. Report
-  const filesAfter = countFiles(nmDir);
-  console.log(
-    `[bundle-vendor-deps] node_modules: ${filesBefore} → ${filesAfter} files ` +
-      `(removed ${filesBefore - filesAfter})`,
-  );
+  const totalFiles = countFiles(nmDir);
+  console.log(`[bundle-vendor-deps] node_modules: ${totalFiles} files (kept intact for jiti runtime)`);
 }
 
 // ─── Phase 5: Smoke test the bundled gateway ───
@@ -550,13 +344,11 @@ function smokeTestGateway() {
 
   // Write a minimal config so the gateway can start.
   // Use a high ephemeral port to avoid conflicts with running services.
-  // Minimal config: just enough for the gateway to start listening.
-  // Extension auto-discovery is suppressed via OPENCLAW_BUNDLED_PLUGINS_DIR
-  // env var (pointed at tmpDir, which has no extensions/ subdir).
-  // Without this, resolveBundledPluginsDir() walks up from import.meta.url
-  // and finds vendor/openclaw/extensions/ — loading vendor-internal extensions
-  // (feishu, google-gemini-cli-auth, etc.) via jiti, which needs babel.cjs
-  // that was deleted by Phase 3.
+  // We intentionally let the gateway discover vendor-internal extensions
+  // (device-pair, memory-core, etc.) to verify that jiti can load .ts files
+  // (i.e. babel.cjs is present in dist/).  EasyClaw's own extensions
+  // (easyclaw-tools, file-permissions) are not present in the smoke test
+  // environment; that's fine — the test just checks the gateway starts.
   const minimalConfig = {
     gateway: { port: 59999, mode: "local" },
     models: {},
@@ -584,9 +376,6 @@ function smokeTestGateway() {
         ...process.env,
         OPENCLAW_CONFIG_PATH: path.join(tmpDir, "openclaw.json"),
         OPENCLAW_STATE_DIR: tmpDir,
-        // Point bundled plugins dir at tmpDir so the gateway doesn't discover
-        // vendor-internal extensions from vendor/openclaw/extensions/.
-        OPENCLAW_BUNDLED_PLUGINS_DIR: tmpDir,
         // Prevent Electron compile cache conflicts
         NODE_COMPILE_CACHE: undefined,
       },
@@ -617,18 +406,26 @@ function smokeTestGateway() {
   const gatewayStarted = allOutput.includes("[gateway]");
 
   if (gatewayStarted) {
-    // Gateway code path was reached — check for non-fatal warnings
+    // Gateway code path was reached — fail fast on missing modules.
+    // Even if the gateway itself started, a missing module means a plugin
+    // or extension will be broken in production.  Don't ship broken builds.
     if (allOutput.includes("Cannot find module")) {
-      const match = allOutput.match(/Cannot find module '([^']+)'/);
-      const mod = match ? match[1] : "(unknown)";
+      const matches = allOutput.match(/Cannot find module '([^']+)'/g) || [];
+      const modules = matches.map((m) => m.match(/Cannot find module '([^']+)'/)?.[1] || "?");
+      const unique = [...new Set(modules)];
       console.error(
-        `\n[bundle-vendor-deps] ⚠ SMOKE TEST WARNING: Gateway started but a plugin failed to load.\n` +
-          `  Missing module: ${mod}\n` +
-          `  This likely means a runtime dependency was removed by Phase 4 cleanup.\n` +
-          `  Fix: add '${mod}' (or its parent package) to EXTERNAL_PACKAGES in this script.\n` +
+        `\n[bundle-vendor-deps] ✗ SMOKE TEST FAILED: Gateway started but ${unique.length} module(s) missing at runtime.\n` +
+          `\n` +
+          `  Missing: ${unique.join(", ")}\n` +
+          `\n` +
+          `  Root cause: These modules were removed from node_modules by Phase 4\n` +
+          `  cleanup but are needed at runtime by plugins/extensions loaded via jiti.\n` +
+          `\n` +
+          `  Fix: Add each missing module to EXTERNAL_PACKAGES in this script.\n` +
+          `  This keeps them as external imports AND preserves them in node_modules.\n` +
           `  See docs/BUNDLE_VENDOR.md § "Adding external packages" for details.\n`,
       );
-      // Don't fail the build for plugin warnings — the gateway itself started.
+      process.exit(1);
     }
     console.log("[bundle-vendor-deps] Smoke test passed: gateway started successfully.");
     return;
@@ -728,10 +525,10 @@ if (!fs.existsSync(nmDir)) {
 (async () => {
   const t0 = Date.now();
   await extractVendorModelCatalog();
-  const usedExternals = bundleWithEsbuild();
+  bundleWithEsbuild();
   replaceEntryWithBundle();
   deleteChunkFiles();
-  cleanupNodeModules(usedExternals);
+  cleanupNodeModules();
   smokeTestGateway();
 
   // Write marker so re-runs are skipped (idempotency guard).
