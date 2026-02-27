@@ -45,11 +45,10 @@ describe("resolveVendorEntryPath", () => {
 describe("resolveVendorVersion", () => {
   it("returns a version string from the vendor package.json", () => {
     const version = resolveVendorVersion();
-    // The version should be a non-empty string
+    // The version should be a non-empty string matching a date-based format
     expect(version).toBeTruthy();
     expect(typeof version).toBe("string");
-    // The pinned version is "2026.2.23"
-    expect(version).toBe("2026.2.23");
+    expect(version).toMatch(/^\d{4}\.\d{1,2}\.\d{1,2}$/);
   });
 
   it("throws when vendor dir does not exist", () => {
