@@ -440,6 +440,8 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
           { provider: "qwen-coding", modelId: "qwen3-max-2026-01-23", displayName: "Qwen3 Max" },
           { provider: "qwen-coding", modelId: "qwen3-coder-next", displayName: "Qwen3 Coder Next" },
           { provider: "qwen-coding", modelId: "qwen3-coder-plus", displayName: "Qwen3 Coder Plus" },
+          { provider: "qwen-coding", modelId: "MiniMax-M2.5", displayName: "MiniMax M2.5" },
+          { provider: "qwen-coding", modelId: "glm-5", displayName: "GLM-5" },
           { provider: "qwen-coding", modelId: "glm-4.7", displayName: "GLM-4.7" },
           { provider: "qwen-coding", modelId: "kimi-k2.5", displayName: "Kimi K2.5" },
         ],
