@@ -123,7 +123,9 @@ const STRIP_DIRS = new Set([
   "coverage",
 ]);
 
-const STRIP_EXTS = [".map"];
+const STRIP_EXTS = [".map", ".md", ".mdx", ".c", ".h", ".cc", ".cpp", ".gyp", ".gypi"];
+// TypeScript declarations (.d.ts, .d.mts, .d.cts) — ~33K files, ~61MB after prod install
+const STRIP_DTS_RE = /\.d\.[mc]?ts$/;
 
 /** Return total size of a directory in bytes. */
 function dirSize(dir) {
@@ -242,6 +244,14 @@ function stripDir(dir, depth) {
           strippedFiles++;
           break;
         }
+      }
+      // TypeScript declarations (not caught by STRIP_EXTS since .ts != .d.ts)
+      if (STRIP_DTS_RE.test(entry.name)) {
+        try {
+          strippedBytes += fs.statSync(full).size;
+          fs.unlinkSync(full);
+          strippedFiles++;
+        } catch {}
       }
     }
   }
