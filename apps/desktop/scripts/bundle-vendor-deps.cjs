@@ -6,14 +6,14 @@
 // BEFORE electron-builder (which copies the results into the installer).
 //
 // This dramatically reduces file count for the installer:
-//   - extensions/: .ts → pre-bundled .js (inlines plugin-sdk + npm deps)
+//   - dist/plugin-sdk/: 90 chunk files → 2 files (bundled index.js + account-id.js)
+//   - extensions/: .ts → pre-bundled .js (inlines npm deps, plugin-sdk external)
 //   - dist/: 758 chunk files → 3 files (bundle, babel.cjs, warning-filter)
-//   - dist/plugin-sdk/: 1,575 chunk files → deleted (inlined into extensions)
-//   - node_modules/: ~56K files → ~1.5K files (native/external only)
+//   - node_modules/: ~56K files → ~7K files (native/external only)
 //
-// Extensions are pre-bundled BEFORE the main entry.js bundle so that they
-// become self-contained .js files.  This eliminates the runtime dependency
-// chain: extension.ts → jiti → plugin-sdk → 1,575 chunks → node_modules.
+// Plugin-sdk is bundled ONCE (Phase 0.5a), then shared by all extensions.
+// Extensions keep plugin-sdk as an external import resolved by jiti's alias
+// at runtime, avoiding 36× duplication of the ~27MB plugin-sdk code.
 
 const fs = require("fs");
 const path = require("path");
@@ -87,14 +87,16 @@ const KEEP_DIST_FILES = new Set([
   "warning-filter.mjs",
 ]);
 
-// Subdirectories of dist/ to preserve.  plugin-sdk/ is intentionally absent:
-// its 1,575 chunk files are inlined into pre-bundled extensions by Phase 0.5.
+// Subdirectories of dist/ to preserve.  plugin-sdk/ is kept because its
+// index.js is bundled into a single file (Phase 0.5a) that extensions
+// import at runtime via jiti's alias.
 const KEEP_DIST_DIRS = new Set([
   "bundled",
   "canvas-host",
   "cli",
   "control-ui",
   "export-html",
+  "plugin-sdk",
 ]);
 
 // ─── Helpers ───
@@ -323,19 +325,79 @@ async function extractVendorModelCatalog() {
   );
 }
 
-// ─── Phase 0.5: Pre-bundle vendor extensions ───
+// ─── Phase 0.5a: Bundle plugin-sdk into a single file ───
+// dist/plugin-sdk/ contains index.js + ~90 chunk files.  Extensions import
+// plugin-sdk at runtime via jiti's alias ("openclaw/plugin-sdk" → dist/plugin-sdk/index.js).
+// Bundle index.js into a self-contained file so we can delete the chunks.
+// account-id.js is already self-contained (1.1KB, no chunk imports).
+
+function bundlePluginSdk() {
+  console.log("[bundle-vendor-deps] Phase 0.5a: Bundling plugin-sdk...");
+
+  const pluginSdkDir = path.join(distDir, "plugin-sdk");
+  const pluginSdkIndex = path.join(pluginSdkDir, "index.js");
+
+  if (!fs.existsSync(pluginSdkIndex)) {
+    console.log("[bundle-vendor-deps] dist/plugin-sdk/index.js not found, skipping.");
+    return;
+  }
+
+  const esbuild = loadEsbuild();
+  const tmpOut = path.join(pluginSdkDir, "index.bundled.mjs");
+
+  esbuild.buildSync({
+    entryPoints: [pluginSdkIndex],
+    outfile: tmpOut,
+    bundle: true,
+    format: "esm",
+    platform: "node",
+    target: "node22",
+    external: EXTERNAL_PACKAGES,
+    banner: {
+      js: 'import { createRequire as __cr } from "module"; const require = __cr(import.meta.url);',
+    },
+    logLevel: "warning",
+  });
+
+  const bundleSize = fs.statSync(tmpOut).size;
+
+  // Replace index.js with the bundle
+  fs.unlinkSync(pluginSdkIndex);
+  fs.renameSync(tmpOut, pluginSdkIndex);
+
+  // Delete chunk files and subdirs (keep only index.js and account-id.js)
+  const keepFiles = new Set(["index.js", "account-id.js"]);
+  let deleted = 0;
+  for (const entry of fs.readdirSync(pluginSdkDir, { withFileTypes: true })) {
+    if (keepFiles.has(entry.name)) continue;
+    const fullPath = path.join(pluginSdkDir, entry.name);
+    if (entry.isDirectory()) {
+      fs.rmSync(fullPath, { recursive: true, force: true });
+      deleted += countFiles(fullPath) || 1;
+    } else {
+      fs.unlinkSync(fullPath);
+      deleted++;
+    }
+  }
+
+  console.log(
+    `[bundle-vendor-deps] plugin-sdk bundled: ${(bundleSize / 1024 / 1024).toFixed(1)}MB, deleted ${deleted} chunk files`,
+  );
+}
+
+// ─── Phase 0.5b: Pre-bundle vendor extensions ───
 // Vendor extensions are .ts files loaded at runtime by jiti.  Without
 // pre-bundling, jiti needs babel.cjs to transpile them, and the transpiled
-// code imports plugin-sdk → 1,575 chunk files → all of node_modules.
+// code imports plugin-sdk → chunk files → all of node_modules.
 //
-// By pre-bundling each extension into a self-contained .js file:
+// By pre-bundling each extension into a .js file:
 //   1. jiti loads .js directly (no babel transpilation needed)
-//   2. plugin-sdk code is inlined (no chunk files needed)
-//   3. npm dependencies are inlined (node_modules can be pruned)
-//   4. Only EXTERNAL_PACKAGES remain as runtime imports
+//   2. npm dependencies are inlined (node_modules can be pruned)
+//   3. plugin-sdk is kept as external (shared single bundle, not duplicated)
+//   4. Only EXTERNAL_PACKAGES + plugin-sdk remain as runtime imports
 
 function prebundleExtensions() {
-  console.log("[bundle-vendor-deps] Phase 0.5: Pre-bundling vendor extensions...");
+  console.log("[bundle-vendor-deps] Phase 0.5b: Pre-bundling vendor extensions...");
 
   if (!fs.existsSync(extensionsDir)) {
     console.log("[bundle-vendor-deps] extensions/ not found, skipping.");
@@ -344,9 +406,13 @@ function prebundleExtensions() {
 
   const esbuild = loadEsbuild();
 
-  // Resolve plugin-sdk alias paths (needed while dist/plugin-sdk/ still exists)
-  const pluginSdkIndex = path.join(distDir, "plugin-sdk", "index.js");
-  const pluginSdkAccountId = path.join(distDir, "plugin-sdk", "account-id.js");
+  // Extensions keep plugin-sdk as external — jiti resolves "openclaw/plugin-sdk"
+  // to dist/plugin-sdk/index.js (now a single bundle from Phase 0.5a) at runtime.
+  const extExternals = [
+    ...EXTERNAL_PACKAGES,
+    "openclaw/plugin-sdk",
+    "openclaw/plugin-sdk/account-id",
+  ];
 
   // Find all extensions with openclaw.plugin.json
   const extDirs = [];
@@ -380,12 +446,8 @@ function prebundleExtensions() {
         format: "esm",
         platform: "node",
         target: "node22",
-        external: EXTERNAL_PACKAGES,
+        external: extExternals,
         metafile: true,
-        alias: {
-          "openclaw/plugin-sdk": pluginSdkIndex,
-          "openclaw/plugin-sdk/account-id": pluginSdkAccountId,
-        },
         banner: {
           js: 'import { createRequire as __cr } from "module"; const require = __cr(import.meta.url);',
         },
@@ -899,6 +961,7 @@ if (!fs.existsSync(nmDir)) {
 (async () => {
   const t0 = Date.now();
   await extractVendorModelCatalog();
+  bundlePluginSdk();
   const extExternals = prebundleExtensions();
   const bundleExternals = bundleWithEsbuild();
   replaceEntryWithBundle();
