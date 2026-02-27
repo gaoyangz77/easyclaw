@@ -157,10 +157,13 @@ export function normalizeCatalog(
 let vendorCatalogCache: Record<string, CatalogModelEntry[]> | null = null;
 
 /**
- * Dynamically import the vendor's pi-ai MODELS constant and extract { id, name }
- * per provider. This gives us the complete model catalog (700+ models across 20+
- * providers) without copying the data — the vendor's auto-generated file is the
- * single source of truth and updates when the vendor is updated.
+ * Read the vendor model catalog — a pre-extracted JSON file containing { id, name }
+ * per provider from the pi-ai MODELS constant.
+ *
+ * In production builds, `bundle-vendor-deps.cjs` extracts this data at build time
+ * into `dist/vendor-models.json`, eliminating the need to ship the full pi-ai
+ * package. In dev mode (no JSON file yet), falls back to dynamically importing
+ * the original `models.generated.js`.
  *
  * Results are cached in memory after the first call.
  */
@@ -171,6 +174,16 @@ export async function readVendorModelCatalog(
 
   try {
     const vendorDir = resolveVendorDir(vendorDirOverride);
+
+    // Prefer the static JSON extracted at build time
+    const vendorModelsJson = join(vendorDir, "dist", "vendor-models.json");
+    if (existsSync(vendorModelsJson)) {
+      const raw = readFileSync(vendorModelsJson, "utf8");
+      vendorCatalogCache = JSON.parse(raw) as Record<string, CatalogModelEntry[]>;
+      return vendorCatalogCache;
+    }
+
+    // Fallback: dynamically import the original JS module (dev mode)
     const piAiModelsPath = join(
       vendorDir,
       "node_modules",

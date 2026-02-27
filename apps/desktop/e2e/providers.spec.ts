@@ -60,6 +60,78 @@ test.describe("LLM Providers", () => {
     await expect(apiTable).toBeVisible({ timeout: 10_000 });
   });
 
+  test("Gemini OAuth (subscription) has enough models", async ({ window }) => {
+    // Dismiss modals
+    for (let i = 0; i < 3; i++) {
+      const backdrop = window.locator(".modal-backdrop");
+      if (!await backdrop.isVisible({ timeout: 3_000 }).catch(() => false)) break;
+      await backdrop.click({ position: { x: 5, y: 5 }, force: true });
+      await backdrop.waitFor({ state: "hidden", timeout: 3_000 }).catch(() => {});
+    }
+
+    // Navigate to Models page
+    const providersBtn = window.locator(".nav-btn", { hasText: "Models" });
+    await providersBtn.click();
+    await expect(providersBtn).toHaveClass(/nav-active/);
+
+    // Subscription tab is the default, and Gemini (OAuth) is the default provider
+    // (highest priority in EN_PRIORITY_PROVIDERS). No need to re-select.
+    const subTab = window.locator(".tab-btn", { hasText: /Subscription/i });
+    await expect(subTab).toHaveClass(/tab-btn-active/);
+
+    // Verify Gemini (OAuth) is the selected provider
+    const form = window.locator(".page-two-col");
+    await expect(form.locator(".provider-select-trigger")).toContainText(/Gemini.*OAuth/i);
+
+    // Open the model dropdown and count options.
+    // Gemini OAuth uses catalogProvider: "google-gemini-cli" which has fewer models
+    // than the full Google catalog (Cloud Code Assist models only).
+    const modelTrigger = form.locator(".custom-select-trigger");
+    await expect(modelTrigger).toBeVisible({ timeout: 10_000 });
+    await modelTrigger.click();
+    const modelOptions = window.locator(".custom-select-option");
+    await expect(modelOptions.first()).toBeVisible({ timeout: 10_000 });
+
+    const count = await modelOptions.count();
+    expect(count).toBeGreaterThanOrEqual(5);
+  });
+
+  test("Google Gemini (API key) has enough models", async ({ window }) => {
+    // Dismiss modals
+    for (let i = 0; i < 3; i++) {
+      const backdrop = window.locator(".modal-backdrop");
+      if (!await backdrop.isVisible({ timeout: 3_000 }).catch(() => false)) break;
+      await backdrop.click({ position: { x: 5, y: 5 }, force: true });
+      await backdrop.waitFor({ state: "hidden", timeout: 3_000 }).catch(() => {});
+    }
+
+    // Navigate to Models page
+    const providersBtn = window.locator(".nav-btn", { hasText: "Models" });
+    await providersBtn.click();
+    await expect(providersBtn).toHaveClass(/nav-active/);
+
+    // Switch to API Key tab
+    const apiTab = window.locator(".tab-btn", { hasText: /API/i });
+    await apiTab.click();
+    await expect(apiTab).toHaveClass(/tab-btn-active/);
+
+    // Select "Google (Gemini)" from the provider dropdown
+    const form = window.locator(".page-two-col");
+    await form.locator(".provider-select-trigger").click();
+    await form.locator(".provider-select-option", { hasText: /Google \(Gemini\)/i }).click();
+
+    // Open the model dropdown and count options.
+    // The full Google catalog has 20+ models from the vendor registry.
+    const modelTrigger = form.locator(".custom-select-trigger");
+    await expect(modelTrigger).toBeVisible({ timeout: 10_000 });
+    await modelTrigger.click();
+    const modelOptions = window.locator(".custom-select-option");
+    await expect(modelOptions.first()).toBeVisible({ timeout: 10_000 });
+
+    const count = await modelOptions.count();
+    expect(count).toBeGreaterThanOrEqual(10);
+  });
+
   test("add second key and switch active provider", async ({ window }) => {
     const zhipuKey = process.env.E2E_ZHIPU_API_KEY;
     const volcengineKey = process.env.E2E_VOLCENGINE_API_KEY;

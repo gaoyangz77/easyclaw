@@ -16,10 +16,10 @@
     "test:e2e:prod": "playwright test --config e2e/playwright.config.ts",
     "pack:__NOTE__": "WARNING: 'pack' skips rebuild-native and prune-vendor-deps, so vendor/openclaw/node_modules will be incomplete and the gateway will fail to start. Use scripts/test-local.sh for a working packaged build.",
     "pack": "electron-builder --dir",
-    "dist:mac": "node scripts/prune-vendor-deps.cjs && electron-builder --mac",
-    "dist:mac:arm64": "node scripts/prune-vendor-deps.cjs && electron-builder --mac dmg --arm64 && node scripts/sign-arm64.cjs",
-    "dist:win": "node scripts/prune-vendor-deps.cjs && electron-builder --win --config electron-builder.win.yml",
-    "dist:linux": "node scripts/prune-vendor-deps.cjs && electron-builder --linux --config electron-builder.linux.yml"
+    "dist:mac": "node scripts/prune-vendor-deps.cjs && node scripts/bundle-vendor-deps.cjs && electron-builder --mac",
+    "dist:mac:arm64": "node scripts/prune-vendor-deps.cjs && node scripts/bundle-vendor-deps.cjs && electron-builder --mac dmg --arm64 && node scripts/sign-arm64.cjs",
+    "dist:win": "node scripts/prune-vendor-deps.cjs && node scripts/bundle-vendor-deps.cjs && electron-builder --win --config electron-builder.win.yml",
+    "dist:linux": "node scripts/prune-vendor-deps.cjs && node scripts/bundle-vendor-deps.cjs && electron-builder --linux --config electron-builder.linux.yml"
   },
   "dependencies": {
     "@easyclaw/core": "workspace:*",
@@ -48,6 +48,7 @@
     "@types/ws": "^8.18.1",
     "electron": "^40.4.1",
     "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.0",
     "oxlint": "^1.43.0",
     "playwright": "^1.58.2",
     "tsdown": "^0.20.3",
