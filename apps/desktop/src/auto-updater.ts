@@ -17,14 +17,23 @@ const log = createLogger("auto-updater");
 //
 // electron-updater keeps {cacheDir}/installer.exe (the old installer) and
 // {cacheDir}/current.blockmap (its block map) for differential downloads.
-// The NSIS installer always copies itself to installer.exe on every install,
-// including manual installs.  But current.blockmap is only written by the
-// auto-update download flow.  A manual install therefore overwrites
-// installer.exe without updating the blockmap → mismatch → sha512 failure.
+// Two scenarios cause installer.exe and current.blockmap to go out of sync:
 //
-// We write a "blockmap-version" marker after each successful download and
-// check it before the next download.  If the marker doesn't match
-// app.getVersion(), we delete the stale blockmap so electron-updater
+// 1. Manual install: NSIS always copies itself to installer.exe on every
+//    install, but current.blockmap is only written by the auto-update
+//    download flow → installer.exe is updated, blockmap is stale.
+//
+// 2. Download-but-not-install: after a successful download, electron-updater
+//    writes the NEW version's blockmap to current.blockmap, but installer.exe
+//    only gets updated when NSIS actually runs → blockmap is for the new
+//    version, installer.exe is still the old version.
+//
+// Either way, on the next differential download the old blockmap won't
+// match installer.exe → sha512 mismatch → fallback to full download.
+//
+// Fix: write a "blockmap-version" marker after each successful download
+// and check it before the next download.  If the marker doesn't match
+// app.getVersion(), delete the stale blockmap so electron-updater
 // re-downloads the correct one from the server.
 // ---------------------------------------------------------------------------
 
