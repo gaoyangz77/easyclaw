@@ -62,6 +62,16 @@ exports.default = async function copyVendorDeps(context) {
   //    Mach-O binaries with no file extension, causing universal merge errors.
   //    These are bundler/compiler tools not needed at runtime.
   const SKIP_EXTS = new Set([".node", ".dylib"]);
+  // Files not needed at runtime — skipping these cuts file count by ~34K
+  // and saves ~170MB, significantly reducing NSIS install time on Windows.
+  const SKIP_RUNTIME_EXTS = new Set([
+    ".map",                          // source maps (14K files, ~93MB)
+    ".md", ".mdx",                   // documentation (2.7K files)
+    ".c", ".h", ".cc", ".cpp",       // native module build sources
+    ".gyp", ".gypi",                 // node-gyp build files
+  ]);
+  // TypeScript declarations (.d.ts, .d.mts, .d.cts) — 17K+ files, ~76MB
+  const DTS_RE = /\.d\.[mc]?ts$/;
   const SKIP_PACKAGE_PATTERNS = [
     /[\\/]\.pnpm[\\/](@esbuild|esbuild|@rolldown|rolldown)[+@]/,
   ];
@@ -126,6 +136,11 @@ exports.default = async function copyVendorDeps(context) {
         if (ALLOWED_NATIVE_PATTERNS.some((re) => re.test(src))) {
           return true;
         }
+        skippedCount++;
+        return false;
+      }
+      // Skip files not needed at runtime (type declarations, source maps, docs, build sources)
+      if (SKIP_RUNTIME_EXTS.has(ext) || DTS_RE.test(basename)) {
         skippedCount++;
         return false;
       }
