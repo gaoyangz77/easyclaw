@@ -15,6 +15,7 @@ import { MarkdownMessage, CopyButton } from "./chat/ChatMessage.js";
 import type { GatewayEvent, GatewayHelloOk } from "../lib/gateway-client.js";
 import { RunTracker } from "../lib/run-tracker.js";
 import { ChatEventBridge } from "../lib/chat-event-bridge.js";
+import { saveImages, restoreImages, clearImages } from "../lib/image-cache.js";
 import { Modal } from "../components/Modal.js";
 import "./ChatPage.css";
 
@@ -119,7 +120,8 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         limit: fetchLimitRef.current,
       });
 
-      const parsed = parseRawMessages(result?.messages);
+      let parsed = parseRawMessages(result?.messages);
+      parsed = await restoreImages(sessionKeyRef.current, parsed).catch(() => parsed);
 
       if (parsed.length < fetchLimitRef.current || parsed.length <= oldCount) {
         setAllFetched(true);
@@ -172,6 +174,9 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     isLoadingMoreRef.current = false;
   }, [visibleCount]);
 
+  // Prune stale image cache entries (older than 30 days) on mount
+  useEffect(() => { clearImages().catch(() => {}); }, []);
+
   // Load chat history once connected
   const loadHistory = useCallback(async (client: GatewayChatClient) => {
     fetchLimitRef.current = FETCH_BATCH;
@@ -185,9 +190,10 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         limit: FETCH_BATCH,
       });
 
-      const parsed = parseRawMessages(result?.messages);
+      let parsed = parseRawMessages(result?.messages);
       // Guard: don't wipe existing messages if gateway returns empty on reconnect
       if (parsed.length === 0 && messagesLengthRef.current > 0) return;
+      parsed = await restoreImages(sessionKeyRef.current, parsed).catch(() => parsed);
       setAllFetched(parsed.length < FETCH_BATCH);
       shouldInstantScrollRef.current = true;
       setMessages(parsed);
@@ -630,7 +636,11 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     const optimisticImages: ChatImage[] | undefined = files.length > 0
       ? files.map((img) => ({ data: img.base64, mimeType: img.mimeType }))
       : undefined;
-    setMessages((prev) => [...prev, { role: "user", text, timestamp: Date.now(), images: optimisticImages }]);
+    const sentAt = Date.now();
+    setMessages((prev) => [...prev, { role: "user", text, timestamp: sentAt, images: optimisticImages }]);
+    if (optimisticImages) {
+      saveImages(sessionKeyRef.current, sentAt, optimisticImages).catch(() => {});
+    }
     shouldInstantScrollRef.current = true;
     setDraft("");
     setPendingImages([]);
@@ -714,6 +724,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       key: sessionKeyRef.current,
     }).then(() => {
       setMessages([{ role: "assistant", text: `🔄 ${t("chat.resetCommandFeedback")}`, timestamp: Date.now() }]);
+      clearImages(sessionKeyRef.current).catch(() => {});
       setStreaming(null);
       setRunId(null);
       trackerRef.current.reset();
@@ -920,8 +931,10 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
                   </div>
                 ) : null;
               })()}
-              <div className="chat-bubble chat-bubble-assistant chat-streaming-cursor">
-                <MarkdownMessage text={cleanMessageText(streaming)} />
+              <div className="chat-bubble-wrap chat-bubble-wrap-assistant">
+                <div className="chat-bubble chat-bubble-assistant chat-streaming-cursor">
+                  <MarkdownMessage text={cleanMessageText(streaming)} />
+                </div>
               </div>
             </>
           )}
