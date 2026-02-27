@@ -52,6 +52,8 @@ export const KNOWN_CONFIG_KEYS: ReadonlySet<string> = new Set([
   "memory",
   "skills",
   "plugins",
+  "secrets",
+  "acp",
 ]);
 
 /**
