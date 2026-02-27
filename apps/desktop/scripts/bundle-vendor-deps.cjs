@@ -58,6 +58,11 @@ const EXTERNAL_PACKAGES = [
 
   // Proxy dependency (needed by proxy-setup.cjs via createRequire)
   "undici",
+
+  // Schema library used by both bundled code AND plugins loaded at runtime.
+  // Must stay in node_modules so plugins can resolve it.
+  "@sinclair/typebox",
+  "@sinclair/typebox/*",
 ];
 
 // Path to the static vendor model catalog JSON that replaces the dynamic
