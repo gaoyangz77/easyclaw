@@ -4,13 +4,19 @@
     "date": "2026-02-28",
     "en": [
       "Collapsible long messages with code block copy button",
+      "Fix duplicate stop button in top status bar",
+      "Fix adding multiple channel accounts overwriting each other",
       "Fix model switching loop caused by duplicate default keys",
-      "Reduce health probe frequency to prevent API rate limiting"
+      "Reduce health probe frequency to prevent API rate limiting",
+      "Harden build pipeline to prevent installer bloat"
     ],
     "zh": [
       "长消息可折叠，代码块支持一键复制",
+      "修复顶部状态栏重复显示停止按钮",
+      "修复添加多个频道账号时互相覆盖的问题",
       "修复重复默认密钥导致的模型切换循环",
-      "降低健康检测频率，避免触发 API 限流"
+      "降低健康检测频率，避免触发 API 限流",
+      "优化构建流程，防止安装包体积膨胀"
     ]
   },
   {
