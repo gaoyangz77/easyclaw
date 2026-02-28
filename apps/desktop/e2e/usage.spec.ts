@@ -22,6 +22,9 @@ test.describe("Usage Page", () => {
     const DAY = 86_400_000;
 
     // -- Provider keys --
+    // Clear any keys created by onboarding so seeded keys are deterministic
+    db.prepare(`DELETE FROM provider_keys`).run();
+
     // Key 1: openai / gpt-4o (active — is_default=1)
     db.prepare(`
       INSERT OR IGNORE INTO provider_keys
