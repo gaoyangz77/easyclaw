@@ -32,7 +32,7 @@ import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 import { createConnection } from "node:net";
-import { existsSync, unlinkSync, readFileSync } from "node:fs";
+import { existsSync, unlinkSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { createTrayIcon } from "./tray-icon.js";
 import { buildTrayMenu } from "./tray-menu.js";
@@ -65,17 +65,29 @@ let lastSystemProxy: string | null = null;
 // we can determine whether this is the NEW app (install succeeded) or the OLD app
 // (user opened it while the installer is still running).
 const UPDATE_MARKER = join(homedir(), ".easyclaw", "update-installing");
+const UPDATE_MARKER_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 let _updateBlocked = false;
 if (existsSync(UPDATE_MARKER)) {
   try {
     const targetVersion = readFileSync(UPDATE_MARKER, "utf-8").trim();
     if (targetVersion && targetVersion !== app.getVersion()) {
       // We're the OLD app — installer hasn't finished replacing us yet.
-      _updateBlocked = true;
+      // Keep the marker so subsequent launch attempts are also blocked.
+      const markerAge = Date.now() - statSync(UPDATE_MARKER).mtimeMs;
+      if (markerAge < UPDATE_MARKER_MAX_AGE_MS) {
+        _updateBlocked = true;
+      } else {
+        // Marker is stale (>5 min) — installation probably failed, clean up.
+        try { unlinkSync(UPDATE_MARKER); } catch {}
+      }
+    } else {
+      // Version matches (new app) or empty marker — installation complete, clean up.
+      try { unlinkSync(UPDATE_MARKER); } catch {}
     }
-  } catch {}
-  // Clean up marker regardless — the new app doesn't need it.
-  try { unlinkSync(UPDATE_MARKER); } catch {}
+  } catch {
+    // Malformed marker — clean up.
+    try { unlinkSync(UPDATE_MARKER); } catch {}
+  }
 }
 
 // Ensure only one instance of the desktop app runs at a time.

@@ -16,7 +16,7 @@
 ; Shared helper: kill all EasyClaw-related processes
 ; ---------------------------------------------------------------------------
 !macro _killEasyClawProcesses
-  nsExec::ExecToLog 'taskkill /f /t /im EasyClaw.exe'
+  nsExec::ExecToLog 'taskkill /f /im EasyClaw.exe'
   Pop $0
   nsExec::ExecToLog 'taskkill /f /t /im openclaw-gateway.exe'
   Pop $0
