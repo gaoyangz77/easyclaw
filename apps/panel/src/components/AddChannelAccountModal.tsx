@@ -128,9 +128,10 @@ export function AddChannelAccountModal({
           secrets: Object.keys(secrets).length > 0 ? secrets : undefined,
         });
       } else {
+        const accountId = `acct_${Date.now().toString(36)}`;
         await createChannelAccount({
           channelId,
-          accountId: "default",
+          accountId,
           name: name.trim() || undefined,
           config,
           secrets,
