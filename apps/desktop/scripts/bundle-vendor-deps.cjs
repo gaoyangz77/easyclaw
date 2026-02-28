@@ -353,6 +353,7 @@ function bundlePluginSdk() {
     platform: "node",
     target: "node22",
     external: EXTERNAL_PACKAGES,
+    minify: true,
     banner: {
       js: 'import { createRequire as __cr } from "module"; const require = __cr(import.meta.url);',
     },
@@ -448,6 +449,7 @@ function prebundleExtensions() {
         target: "node22",
         external: extExternals,
         metafile: true,
+        minify: true,
         banner: {
           js: 'import { createRequire as __cr } from "module"; const require = __cr(import.meta.url);',
         },
@@ -520,6 +522,7 @@ function bundleWithEsbuild() {
     logLevel: "warning",
     metafile: true,
     sourcemap: false,
+    minify: true,
     // Some bundled packages (e.g. @smithy/*) use CJS require() for Node.js
     // builtins like "buffer". esbuild's ESM output wraps these in a
     // __require() shim that throws "Dynamic require of X is not supported".
@@ -569,37 +572,46 @@ const VENDOR_HEALTH_INTERVAL_ORIGINAL = "HEALTH_REFRESH_INTERVAL_MS = 6e4";
 const VENDOR_HEALTH_INTERVAL_PATCHED  = "HEALTH_REFRESH_INTERVAL_MS = 3e5";
 
 function patchVendorConstants() {
-  console.log("[bundle-vendor-deps] Phase 1.5: Patching vendor constants...");
+  console.log("[bundle-vendor-deps] Phase 0.9: Patching vendor constants...");
 
-  const content = fs.readFileSync(BUNDLE_TEMP, "utf-8");
-  const occurrences = content.split(VENDOR_HEALTH_INTERVAL_ORIGINAL).length - 1;
+  // Patch the vendor dist chunk files BEFORE bundling, not after.
+  // esbuild's minifier inlines constant values and removes variable names,
+  // so string-patching the bundled output would fail.  By patching the source
+  // chunks, esbuild bundles the already-patched values.
+  let totalOccurrences = 0;
+  let patchedFiles = 0;
 
-  if (occurrences === 0) {
+  for (const file of fs.readdirSync(distDir)) {
+    const filePath = path.join(distDir, file);
+    try {
+      if (!fs.statSync(filePath).isFile()) continue;
+    } catch { continue; }
+
+    const content = fs.readFileSync(filePath, "utf-8");
+    const occurrences = content.split(VENDOR_HEALTH_INTERVAL_ORIGINAL).length - 1;
+    if (occurrences === 0) continue;
+
+    const patched = content.replaceAll(
+      VENDOR_HEALTH_INTERVAL_ORIGINAL,
+      VENDOR_HEALTH_INTERVAL_PATCHED,
+    );
+    fs.writeFileSync(filePath, patched, "utf-8");
+    totalOccurrences += occurrences;
+    patchedFiles++;
+    console.log(`  patched ${file} (${occurrences} occurrence(s))`);
+  }
+
+  if (totalOccurrences === 0) {
     console.error(
-      `\n[bundle-vendor-deps] ✗ PATCH FAILED: Could not find "${VENDOR_HEALTH_INTERVAL_ORIGINAL}" in the bundle.\n` +
+      `\n[bundle-vendor-deps] ✗ PATCH FAILED: Could not find "${VENDOR_HEALTH_INTERVAL_ORIGINAL}" in any dist/ file.\n` +
         `\n  The vendor may have renamed or removed HEALTH_REFRESH_INTERVAL_MS.\n` +
         `  Check vendor/openclaw/src/gateway/server-constants.ts and update this patch.\n`,
     );
     process.exit(1);
   }
 
-  const patched = content.replaceAll(
-    VENDOR_HEALTH_INTERVAL_ORIGINAL,
-    VENDOR_HEALTH_INTERVAL_PATCHED,
-  );
-
-  // Verify all occurrences were replaced
-  const remaining = patched.split(VENDOR_HEALTH_INTERVAL_ORIGINAL).length - 1;
-  if (remaining !== 0) {
-    console.error(
-      `\n[bundle-vendor-deps] ✗ PATCH FAILED: ${remaining} occurrence(s) of "${VENDOR_HEALTH_INTERVAL_ORIGINAL}" survived replaceAll.\n`,
-    );
-    process.exit(1);
-  }
-
-  fs.writeFileSync(BUNDLE_TEMP, patched, "utf-8");
   console.log(
-    `[bundle-vendor-deps] Patched HEALTH_REFRESH_INTERVAL_MS: 60s → 300s (${occurrences} occurrence(s))`,
+    `[bundle-vendor-deps] Patched HEALTH_REFRESH_INTERVAL_MS: 60s → 300s (${totalOccurrences} occurrence(s) in ${patchedFiles} file(s))`,
   );
 }
 
@@ -784,6 +796,12 @@ function cleanupNodeModules() {
     `[bundle-vendor-deps] node_modules: ${filesBefore} → ${filesAfter} files ` +
       `(removed ${filesBefore - filesAfter})`,
   );
+
+  // Write the keepSet so copy-vendor-deps can limit its copy to only
+  // the packages that BFS determined are needed at runtime.
+  const keepSetPath = path.join(nmDir, ".bundle-keepset.json");
+  fs.writeFileSync(keepSetPath, JSON.stringify([...keepSet].sort()));
+  console.log(`[bundle-vendor-deps] Wrote keepset (${keepSet.size} packages) to .bundle-keepset.json`);
 
   return keepSet;
 }
@@ -1011,8 +1029,8 @@ if (!fs.existsSync(nmDir)) {
   await extractVendorModelCatalog();
   bundlePluginSdk();
   const extExternals = prebundleExtensions();
-  const bundleExternals = bundleWithEsbuild();
   patchVendorConstants();
+  const bundleExternals = bundleWithEsbuild();
   replaceEntryWithBundle();
   deleteChunkFiles();
   const keepSet = cleanupNodeModules();

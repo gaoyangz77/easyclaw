@@ -38,9 +38,50 @@ exports.default = async function copyVendorDeps(context) {
     return;
   }
 
+  // Diagnostic: log vendorSrc state before copying
+  const srcEntries = fs.readdirSync(vendorSrc).filter((e) => !e.startsWith("."));
   console.log(`[copy-vendor-deps] Copying vendor node_modules...`);
-  console.log(`  from: ${vendorSrc}`);
+  console.log(`  from: ${vendorSrc} (${srcEntries.length} top-level entries, ${fs.readdirSync(vendorSrc).length} total entries)`);
   console.log(`  to:   ${vendorDest}`);
+
+  // Load keepSet from bundle-vendor-deps.
+  // When the bundle pipeline runs, it writes .bundle-keepset.json listing
+  // exactly which packages are needed at runtime. This prevents bloat from
+  // packages that reappear between bundling and electron-builder packing.
+  //
+  // FAIL-FAST: If bundle ran (.bundled marker exists), keepSet MUST exist.
+  // A missing or corrupt keepSet after bundling indicates a pipeline bug.
+  /** @type {Set<string>} */
+  let keepSet;
+  /** @type {Set<string>} */
+  const keptScopes = new Set();
+  const keepSetPath = path.join(vendorSrc, ".bundle-keepset.json");
+  const vendorDistDir = path.resolve(vendorSrc, "..", "dist");
+  const bundledMarker = path.join(vendorDistDir, ".bundled");
+  const bundleRan = fs.existsSync(bundledMarker);
+
+  if (fs.existsSync(keepSetPath)) {
+    // Parse strictly — corrupt JSON must fail the build, not silently
+    // fall back to a full (bloated) copy.
+    const keepList = JSON.parse(fs.readFileSync(keepSetPath, "utf8"));
+    keepSet = new Set(keepList);
+    for (const pkg of keepSet) {
+      if (pkg.startsWith("@")) keptScopes.add(pkg.split("/")[0]);
+    }
+    console.log(`[copy-vendor-deps] Loaded keepset: ${keepSet.size} packages across ${keptScopes.size} scopes`);
+  } else if (bundleRan) {
+    // Bundle ran but keepSet is missing — this is a bug, not a fallback scenario.
+    throw new Error(
+      `[copy-vendor-deps] FATAL: bundle-vendor-deps ran (.bundled marker exists) ` +
+      `but .bundle-keepset.json is missing. This would silently copy ALL packages. ` +
+      `Investigate why the keepSet file was not written or was deleted.`
+    );
+  } else {
+    // Neither bundle nor keepSet — this is a dev/pack build without prune+bundle.
+    // Allow full copy but warn.
+    keepSet = new Set();
+    console.log("[copy-vendor-deps] No keepset and no bundle marker — full copy mode (dev/pack build).");
+  }
 
   // Skip files that break macOS universal (arm64+x64) merge:
   // 1. Most native binaries (.node, .dylib) — architecture-specific and cause
@@ -97,6 +138,46 @@ exports.default = async function copyVendorDeps(context) {
   fs.cpSync(vendorSrc, vendorDest, {
     recursive: true,
     filter: (src) => {
+      // If keepSet is non-empty, restrict to only those packages.
+      // This is the primary gate — prevents copying packages that were
+      // removed by bundle-vendor-deps BFS but reappeared in vendorSrc.
+      if (keepSet.size > 0) {
+        const rel = path.relative(vendorSrc, src);
+        if (rel !== "") {
+          const parts = rel.split(path.sep);
+          if (parts[0].startsWith(".")) {
+            // Skip .pnpm entirely — with hoisted mode, packages are real
+            // directories, not symlinks into .pnpm.
+            // Other dotfiles (.bin) are handled by existing checks below.
+            if (parts[0] === ".pnpm") {
+              skippedCount++;
+              return false;
+            }
+          } else if (parts[0].startsWith("@")) {
+            if (parts.length === 1) {
+              // @scope dir: allow only if keepSet has entries in this scope
+              if (!keptScopes.has(parts[0])) {
+                skippedCount++;
+                return false;
+              }
+            } else {
+              // @scope/name or deeper: check the full package name
+              const pkgName = parts[0] + "/" + parts[1];
+              if (!keepSet.has(pkgName)) {
+                skippedCount++;
+                return false;
+              }
+            }
+          } else {
+            // Unscoped package: check directly
+            if (!keepSet.has(parts[0])) {
+              skippedCount++;
+              return false;
+            }
+          }
+        }
+      }
+
       const basename = path.basename(src);
       // Skip ALL .bin directories at any depth
       if (basename === ".bin") {
@@ -163,5 +244,28 @@ exports.default = async function copyVendorDeps(context) {
 
   // Count top-level entries to report
   const entries = fs.readdirSync(vendorDest).filter((e) => !e.startsWith("."));
-  console.log(`[copy-vendor-deps] Done — ${entries.length} top-level packages copied, ${symlinkCount} symlinks recreated, ${skippedCount} native binaries skipped.`);
+  const keepInfo = keepSet.size > 0 ? ` (keepset: ${keepSet.size} packages)` : " (no keepset, full copy)";
+  console.log(`[copy-vendor-deps] Done — ${entries.length} top-level packages copied${keepInfo}, ${symlinkCount} symlinks recreated, ${skippedCount} entries skipped.`);
+
+  // Post-copy verification: ensure every keepSet package exists in destination.
+  // A missing package means it was absent from vendorSrc (deleted between
+  // bundle and pack) and would cause a runtime "Cannot find module" error.
+  if (keepSet.size > 0) {
+    const missing = [];
+    for (const pkg of keepSet) {
+      const destPkg = path.join(vendorDest, ...pkg.split("/"));
+      if (!fs.existsSync(destPkg)) {
+        missing.push(pkg);
+      }
+    }
+    if (missing.length > 0) {
+      throw new Error(
+        `[copy-vendor-deps] FATAL: ${missing.length} keepset package(s) missing from destination:\n` +
+        `  ${missing.join(", ")}\n` +
+        `These packages were expected by BFS but not found in vendor/openclaw/node_modules.\n` +
+        `This would cause runtime "Cannot find module" errors.`
+      );
+    }
+    console.log(`[copy-vendor-deps] Verified: all ${keepSet.size} keepset packages present in destination.`);
+  }
 };
