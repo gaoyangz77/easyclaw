@@ -285,11 +285,11 @@ export function startPanelServer(options: PanelServerOptions): Server {
   const snapshotEngine = new UsageSnapshotEngine(storage, captureUsage);
   const queryService = new UsageQueryService(storage, captureUsage);
 
-  // Reconcile usage snapshots for all active keys on startup
-  const allActiveKeys = storage.providerKeys.getAll().filter((k) => k.isDefault);
-  for (const key of allActiveKeys) {
-    snapshotEngine.reconcileOnStartup(key.id, key.provider, key.model).catch((err) => {
-      log.error(`Failed to reconcile usage for key ${key.id}:`, err);
+  // Reconcile usage snapshot for the active key on startup
+  const activeKeyOnStartup = storage.providerKeys.getActive();
+  if (activeKeyOnStartup) {
+    snapshotEngine.reconcileOnStartup(activeKeyOnStartup.id, activeKeyOnStartup.provider, activeKeyOnStartup.model).catch((err) => {
+      log.error(`Failed to reconcile usage for key ${activeKeyOnStartup.id}:`, err);
     });
   }
 

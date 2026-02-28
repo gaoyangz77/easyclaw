@@ -671,7 +671,7 @@ describe("UsageQueryService", () => {
 
     it("filters live delta by keyId", async () => {
       createKey({ id: "key-1", provider: "openai", label: "Key 1", model: "gpt-4o", isDefault: true });
-      createKey({ id: "key-2", provider: "anthropic", label: "Key 2", model: "claude-sonnet-4-5-20250929", isDefault: true });
+      createKey({ id: "key-2", provider: "anthropic", label: "Key 2", model: "claude-sonnet-4-5-20250929", isDefault: false });
 
       storage.usageSnapshots.insert({
         keyId: "key-1", provider: "openai", model: "gpt-4o",

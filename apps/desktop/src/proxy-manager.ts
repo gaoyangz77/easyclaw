@@ -116,21 +116,21 @@ export async function writeProxyRouterConfig(
     systemProxy: systemProxy ?? null,
   };
 
-  // For each provider, find active key and its proxy
+  // For each provider, find the first key and its proxy
   for (const provider of ALL_PROVIDERS) {
-    const defaultKey = storage.providerKeys.getDefault(provider);
-    if (defaultKey) {
-      config.activeKeys[provider] = defaultKey.id;
+    const firstKey = storage.providerKeys.getByProvider(provider)[0];
+    if (firstKey) {
+      config.activeKeys[provider] = firstKey.id;
 
       // Reconstruct full proxy URL if configured
-      if (defaultKey.proxyBaseUrl) {
-        const credentials = await secretStore.get(`proxy-auth-${defaultKey.id}`);
+      if (firstKey.proxyBaseUrl) {
+        const credentials = await secretStore.get(`proxy-auth-${firstKey.id}`);
         const proxyUrl = credentials
-          ? reconstructProxyUrl(defaultKey.proxyBaseUrl, credentials)
-          : defaultKey.proxyBaseUrl;
-        config.keyProxies[defaultKey.id] = proxyUrl;
+          ? reconstructProxyUrl(firstKey.proxyBaseUrl, credentials)
+          : firstKey.proxyBaseUrl;
+        config.keyProxies[firstKey.id] = proxyUrl;
       } else {
-        config.keyProxies[defaultKey.id] = null; // Direct connection
+        config.keyProxies[firstKey.id] = null; // Direct connection
       }
     }
   }

@@ -444,7 +444,7 @@ describe("ProviderKeysRepository", () => {
     expect(updated?.model).toBe("gpt-4o-mini");
   });
 
-  it("should set default and clear others", () => {
+  it("should set default and clear others within same provider", () => {
     storage.providerKeys.create({ id: "k1", provider: "openai", label: "A", model: "gpt-4o", isDefault: true, createdAt: "", updatedAt: "" });
     storage.providerKeys.create({ id: "k2", provider: "openai", label: "B", model: "gpt-4o-mini", isDefault: false, createdAt: "", updatedAt: "" });
 
@@ -452,6 +452,28 @@ describe("ProviderKeysRepository", () => {
 
     expect(storage.providerKeys.getById("k1")?.isDefault).toBe(false);
     expect(storage.providerKeys.getById("k2")?.isDefault).toBe(true);
+  });
+
+  it("should set default and clear keys across ALL providers (global unique)", () => {
+    storage.providerKeys.create({ id: "k1", provider: "openai", label: "A", model: "gpt-4o", isDefault: true, createdAt: "", updatedAt: "" });
+    storage.providerKeys.create({ id: "k2", provider: "anthropic", label: "B", model: "claude-sonnet-4-5-20250929", isDefault: false, createdAt: "", updatedAt: "" });
+
+    // Activate anthropic key — should clear openai's default
+    storage.providerKeys.setDefault("k2");
+
+    expect(storage.providerKeys.getById("k1")?.isDefault).toBe(false);
+    expect(storage.providerKeys.getById("k2")?.isDefault).toBe(true);
+    expect(storage.providerKeys.getActive()?.id).toBe("k2");
+  });
+
+  it("getActive() should return the single globally active key", () => {
+    expect(storage.providerKeys.getActive()).toBeUndefined();
+
+    storage.providerKeys.create({ id: "k1", provider: "openai", label: "A", model: "gpt-4o", isDefault: false, createdAt: "", updatedAt: "" });
+    expect(storage.providerKeys.getActive()).toBeUndefined();
+
+    storage.providerKeys.create({ id: "k2", provider: "anthropic", label: "B", model: "claude-sonnet-4-5-20250929", isDefault: true, createdAt: "", updatedAt: "" });
+    expect(storage.providerKeys.getActive()?.id).toBe("k2");
   });
 
   it("should delete a key", () => {
@@ -880,7 +902,7 @@ describe("Database", () => {
       .prepare("SELECT * FROM _migrations")
       .all() as Array<{ id: number; name: string; applied_at: string }>;
 
-    expect(rows).toHaveLength(10);
+    expect(rows).toHaveLength(11);
     expect(rows[0].id).toBe(1);
     expect(rows[0].name).toBe("initial_schema");
     expect(rows[1].id).toBe(2);
@@ -906,6 +928,6 @@ describe("Database", () => {
       .prepare("SELECT * FROM _migrations")
       .all() as Array<{ id: number; name: string }>;
 
-    expect(rows).toHaveLength(10);
+    expect(rows).toHaveLength(11);
   });
 });

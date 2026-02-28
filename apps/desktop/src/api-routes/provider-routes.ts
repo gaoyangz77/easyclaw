@@ -103,15 +103,15 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
       }
     }
 
-    const existingKeys = storage.providerKeys.getByProvider(body.provider);
-    const isFirst = existingKeys.length === 0;
+    const currentActive = storage.providerKeys.getActive();
+    const shouldActivate = !currentActive;
 
     const entry = storage.providerKeys.create({
       id,
       provider: body.provider,
       label,
       model,
-      isDefault: isFirst,
+      isDefault: shouldActivate,
       proxyBaseUrl,
       authType: body.authType ?? "api_key",
       baseUrl: (isLocal || isCustom) ? (body.baseUrl || null) : null,
@@ -125,16 +125,13 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
       await secretStore.set(`provider-key-${id}`, body.apiKey);
     }
 
-    if (isFirst) {
-      const currentProvider = storage.settings.get("llm-provider");
-      if (!currentProvider) {
-        storage.settings.set("llm-provider", body.provider);
-      }
+    if (shouldActivate) {
+      storage.settings.set("llm-provider", body.provider);
     }
 
     await syncActiveKey(body.provider, storage, secretStore);
-    onProviderChange?.(isFirst ? { configOnly: true } : { keyOnly: true });
-    onTelemetryTrack?.("provider.key_added", { provider: body.provider, isFirst });
+    onProviderChange?.(shouldActivate ? { configOnly: true } : { keyOnly: true });
+    onTelemetryTrack?.("provider.key_added", { provider: body.provider, isFirst: shouldActivate });
 
     sendJson(res, 201, entry);
     return true;
@@ -149,12 +146,12 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
       return true;
     }
 
-    const oldDefault = storage.providerKeys.getDefault(entry.provider);
-    const modelChanged = oldDefault?.model !== entry.model;
-    const activeProvider = storage.settings.get("llm-provider");
+    const oldActive = storage.providerKeys.getActive();
+    const modelChanged = oldActive?.model !== entry.model;
+    const activeProvider = oldActive?.provider;
 
-    if (oldDefault && snapshotEngine) {
-      await snapshotEngine.recordDeactivation(oldDefault.id, oldDefault.provider, oldDefault.model);
+    if (oldActive && snapshotEngine) {
+      await snapshotEngine.recordDeactivation(oldActive.id, oldActive.provider, oldActive.model);
     }
     if (snapshotEngine) {
       await snapshotEngine.recordActivation(entry.id, entry.provider, entry.model);
@@ -163,6 +160,9 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
     storage.providerKeys.setDefault(id);
     storage.settings.set("llm-provider", entry.provider);
     await syncActiveKey(entry.provider, storage, secretStore);
+    if (activeProvider && activeProvider !== entry.provider) {
+      await syncActiveKey(activeProvider, storage, secretStore);
+    }
 
     const providerChanged = entry.provider !== activeProvider;
     if (providerChanged || modelChanged) {
@@ -226,10 +226,9 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
           await snapshotEngine.recordActivation(existing.id, existing.provider, body.model);
         }
 
-        const activeProvider = storage.settings.get("llm-provider");
         const modelChanged = modelChanging;
         const proxyChanged = proxyBaseUrl !== undefined && proxyBaseUrl !== existing.proxyBaseUrl;
-        if (existing.isDefault && existing.provider === activeProvider && (modelChanged || proxyChanged)) {
+        if (existing.isDefault && (modelChanged || proxyChanged)) {
           onProviderChange?.();
         }
 
@@ -248,20 +247,24 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
         await secretStore.delete(`provider-key-${id}`);
         await secretStore.delete(`proxy-auth-${id}`);
 
-        let promotedModel: string | undefined;
+        let promotedKey: typeof existing | undefined;
         if (existing.isDefault) {
-          const remaining = storage.providerKeys.getByProvider(existing.provider);
+          const remaining = storage.providerKeys.getAll().filter((k) => k.id !== id);
           if (remaining.length > 0) {
             storage.providerKeys.setDefault(remaining[0].id);
-            promotedModel = remaining[0].model;
+            storage.settings.set("llm-provider", remaining[0].provider);
+            promotedKey = remaining[0];
+          } else {
+            storage.settings.set("llm-provider", "");
           }
         }
 
         await syncActiveKey(existing.provider, storage, secretStore);
+        if (promotedKey && promotedKey.provider !== existing.provider) {
+          await syncActiveKey(promotedKey.provider, storage, secretStore);
+        }
 
-        const activeProvider = storage.settings.get("llm-provider");
-        const modelChanged = existing.isDefault && existing.provider === activeProvider
-          && promotedModel !== existing.model;
+        const modelChanged = existing.isDefault && promotedKey?.model !== existing.model;
         onProviderChange?.(modelChanged ? { configOnly: true } : { keyOnly: true });
 
         sendJson(res, 200, { ok: true });

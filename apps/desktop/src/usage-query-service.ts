@@ -105,8 +105,8 @@ export class UsageQueryService {
     accumulators: Map<string, UsageAccumulator>,
     params: KeyUsageQueryParams,
   ): Promise<void> {
-    const allKeys = this.storage.providerKeys.getAll();
-    const activeKeys = allKeys.filter((k) => k.isDefault);
+    const activeKey = this.storage.providerKeys.getActive();
+    const activeKeys = activeKey ? [activeKey] : [];
 
     if (activeKeys.length === 0) return;
 

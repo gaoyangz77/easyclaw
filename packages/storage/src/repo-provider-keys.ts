@@ -129,8 +129,18 @@ export class ProviderKeysRepository {
   }
 
   /**
-   * Set a key as the default for its provider.
-   * Clears is_default on all other keys for the same provider.
+   * Return the single globally active key (is_default = 1).
+   */
+  getActive(): ProviderKeyEntry | undefined {
+    const row = this.db
+      .prepare("SELECT * FROM provider_keys WHERE is_default = 1 LIMIT 1")
+      .get() as ProviderKeyRow | undefined;
+    return row ? rowToEntry(row) : undefined;
+  }
+
+  /**
+   * Set a key as the globally active key.
+   * Clears is_default on ALL other keys across all providers.
    */
   setDefault(id: string): void {
     const entry = this.getById(id);
@@ -138,8 +148,8 @@ export class ProviderKeysRepository {
 
     const now = new Date().toISOString();
     this.db
-      .prepare("UPDATE provider_keys SET is_default = 0, updated_at = ? WHERE provider = ?")
-      .run(now, entry.provider);
+      .prepare("UPDATE provider_keys SET is_default = 0, updated_at = ? WHERE is_default = 1")
+      .run(now);
     this.db
       .prepare("UPDATE provider_keys SET is_default = 1, updated_at = ? WHERE id = ?")
       .run(now, id);

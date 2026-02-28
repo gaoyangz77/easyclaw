@@ -36,7 +36,7 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
   function buildLocalProviderOverrides(): Record<string, { baseUrl: string; models: Array<{ id: string; name: string }> }> {
     const overrides: Record<string, { baseUrl: string; models: Array<{ id: string; name: string }> }> = {};
     for (const localProvider of LOCAL_PROVIDER_IDS) {
-      const activeKey = storage.providerKeys.getDefault(localProvider);
+      const activeKey = storage.providerKeys.getByProvider(localProvider)[0];
       if (!activeKey) continue;
       const meta = getProviderMeta(localProvider);
       let baseUrl = activeKey.baseUrl || meta?.baseUrl || "http://localhost:11434/v1";
@@ -74,13 +74,10 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
   }
 
   function buildFullGatewayConfig(): Parameters<typeof writeGatewayConfig>[0] {
-    const curProvider = storage.settings.get("llm-provider") as LLMProvider | undefined;
+    const activeKey = storage.providerKeys.getActive();
+    const curProvider = activeKey?.provider as LLMProvider | undefined;
     const curRegion = storage.settings.get("region") ?? (locale === "zh" ? "cn" : "us");
-    let curModelId: string | undefined;
-    if (curProvider) {
-      const activeKey = storage.providerKeys.getDefault(curProvider);
-      if (activeKey?.model) curModelId = activeKey.model;
-    }
+    const curModelId = activeKey?.model;
     const curModel = resolveModelConfig({
       region: curRegion,
       userProvider: curProvider,

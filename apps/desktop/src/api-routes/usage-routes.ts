@@ -203,10 +203,7 @@ export const handleUsageRoutes: RouteHandler = async (req, res, url, pathname, c
 
   if (pathname === "/api/key-usage/active" && req.method === "GET") {
     try {
-      const currentProvider = storage.settings.get("llm-provider");
-      const activeKey = currentProvider
-        ? storage.providerKeys.getDefault(currentProvider as string)
-        : null;
+      const activeKey = storage.providerKeys.getActive();
       sendJson(res, 200, activeKey ? { keyId: activeKey.id, keyLabel: activeKey.label, provider: activeKey.provider, model: activeKey.model, authType: activeKey.authType ?? "api_key" } : null);
     } catch (err) {
       log.error("Failed to get active key:", err);

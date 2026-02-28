@@ -157,4 +157,38 @@ export const migrations: Migration[] = [
       ALTER TABLE provider_keys ADD COLUMN custom_models_json TEXT DEFAULT NULL;
     `,
   },
+  {
+    id: 11,
+    name: "collapse_per_provider_defaults_to_global_unique",
+    sql: `
+      -- is_default was per-provider (each provider could have one default key).
+      -- Collapse to globally unique: exactly one key with is_default=1.
+      --
+      -- Strategy: keep the key that matches settings["llm-provider"].
+      -- Fallback: if no match, keep the most recently updated default.
+
+      -- Step 1: clear is_default on all keys EXCEPT the one matching llm-provider
+      UPDATE provider_keys SET is_default = 0
+      WHERE is_default = 1
+        AND id NOT IN (
+          SELECT pk.id FROM provider_keys pk
+          INNER JOIN settings s ON s.key = 'llm-provider' AND pk.provider = s.value
+          WHERE pk.is_default = 1
+          ORDER BY pk.updated_at DESC
+          LIMIT 1
+        );
+
+      -- Step 2: if multiple defaults still remain (no llm-provider match,
+      -- or llm-provider matched a provider with >1 default key), keep
+      -- only the most recently updated one.
+      UPDATE provider_keys SET is_default = 0
+      WHERE is_default = 1
+        AND id NOT IN (
+          SELECT id FROM provider_keys
+          WHERE is_default = 1
+          ORDER BY updated_at DESC
+          LIMIT 1
+        );
+    `,
+  },
 ];

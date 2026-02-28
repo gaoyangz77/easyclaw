@@ -161,7 +161,7 @@ describe("syncAllAuthProfiles", () => {
         getAll: () => [
           { id: "key-1", provider: "openai", isDefault: true },
           { id: "key-2", provider: "openai", isDefault: false },
-          { id: "key-3", provider: "qwen", isDefault: true },
+          { id: "key-3", provider: "qwen", isDefault: false },
         ],
       },
     };
@@ -189,15 +189,9 @@ describe("syncAllAuthProfiles", () => {
           provider: "openai",
           key: "sk-openai-active",
         },
-        "qwen:active": {
-          type: "api_key",
-          provider: "qwen",
-          key: "sk-qwen-active",
-        },
       },
       order: {
         openai: ["openai:active"],
-        qwen: ["qwen:active"],
       },
     });
   });
@@ -207,16 +201,12 @@ describe("syncAllAuthProfiles", () => {
       providerKeys: {
         getAll: () => [
           { id: "key-1", provider: "openai", isDefault: true },
-          { id: "key-2", provider: "qwen", isDefault: true },
+          { id: "key-2", provider: "qwen", isDefault: false },
         ],
       },
     };
     const mockSecretStore = {
-      get: async (key: string) => {
-        // Only openai key exists in secret store
-        if (key === "provider-key-key-1") return "sk-openai-key";
-        return null;
-      },
+      get: async () => null,
     };
 
     await syncAllAuthProfiles(stateDir, mockStorage, mockSecretStore);
@@ -225,8 +215,8 @@ describe("syncAllAuthProfiles", () => {
     const store = readJsonFile(filePath) as Record<string, unknown>;
     const profiles = store.profiles as Record<string, unknown>;
 
-    expect(profiles["openai:active"]).toBeDefined();
-    expect(profiles["qwen:active"]).toBeUndefined();
+    // Active key exists but its secret is missing — skipped
+    expect(profiles["openai:active"]).toBeUndefined();
   });
 
   it("writes empty store when no keys configured", async () => {

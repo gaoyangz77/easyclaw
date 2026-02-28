@@ -3,8 +3,6 @@ import { useTranslation } from "react-i18next";
 import { getDefaultModelForProvider, SUBSCRIPTION_PROVIDER_IDS } from "@easyclaw/core";
 import type { LLMProvider } from "@easyclaw/core";
 import {
-  fetchSettings,
-  updateSettings,
   fetchProviderKeys,
   createProviderKey,
   updateProviderKey,
@@ -19,7 +17,6 @@ import { ProviderSetupForm } from "../components/ProviderSetupForm.js";
 export function ProvidersPage() {
   const { t } = useTranslation();
   const [keys, setKeys] = useState<ProviderKeyEntry[]>([]);
-  const [defaultProvider, setDefaultProvider] = useState<string>("");
   const [expandedKeyId, setExpandedKeyId] = useState<string | null>(null);
   const [updateApiKey, setUpdateApiKey] = useState("");
   const [editProxyUrl, setEditProxyUrl] = useState("");
@@ -37,11 +34,8 @@ export function ProvidersPage() {
 
   async function loadData() {
     try {
-      const [keysList, settings] = await Promise.all([fetchProviderKeys(), fetchSettings()]);
+      const keysList = await fetchProviderKeys();
       setKeys(keysList);
-      if (settings["llm-provider"]) {
-        setDefaultProvider(settings["llm-provider"]);
-      }
       setError(null);
     } catch (err) {
       setError({ key: "providers.failedToLoad", detail: String(err) });
@@ -88,7 +82,6 @@ export function ProvidersPage() {
     setError(null);
     try {
       await configManager.activateProvider(keyId, provider);
-      setDefaultProvider(provider);
       await loadData();
     } catch (err) {
       setError({ key: "providers.failedToSave", detail: String(err) });
@@ -98,22 +91,7 @@ export function ProvidersPage() {
   async function handleRemoveKey(keyId: string) {
     setError(null);
     try {
-      const removed = keys.find((k) => k.id === keyId);
-      const wasActive = removed && removed.isDefault && removed.provider === defaultProvider;
       await deleteProviderKey(keyId);
-
-      if (wasActive) {
-        const remaining = keys.filter((k) => k.id !== keyId);
-        if (remaining.length > 0) {
-          const next = remaining[0];
-          await activateProviderKey(next.id);
-          await updateSettings({ "llm-provider": next.provider });
-          setDefaultProvider(next.provider);
-        } else {
-          await updateSettings({ "llm-provider": "" });
-          setDefaultProvider("");
-        }
-      }
 
       await loadData();
     } catch (err) {
@@ -199,7 +177,7 @@ export function ProvidersPage() {
         ) : (
           <div className="flex-col-gap-1">
             {keys.map((k) => {
-              const isActive = k.isDefault && k.provider === defaultProvider;
+              const isActive = k.isDefault;
               const isExp = expandedKeyId === k.id;
               return (
                 <div

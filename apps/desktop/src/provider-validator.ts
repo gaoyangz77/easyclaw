@@ -276,7 +276,7 @@ export async function syncActiveKey(
   storage: Storage,
   secretStore: SecretStore,
 ): Promise<void> {
-  const activeKey = storage.providerKeys.getDefault(provider);
+  const activeKey = storage.providerKeys.getByProvider(provider)[0];
   // Custom providers use their slug directly; built-in providers use providerSecretKey()
   const isCustom = activeKey?.authType === "custom";
   const canonicalKey = isCustom ? `${provider}-api-key` : providerSecretKey(provider as LLMProvider);
