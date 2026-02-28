@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.5.13",
+    "date": "2026-02-28",
+    "en": [
+      "Collapsible long messages with code block copy button",
+      "Fix model switching loop caused by duplicate default keys",
+      "Reduce health probe frequency to prevent API rate limiting"
+    ],
+    "zh": [
+      "长消息可折叠，代码块支持一键复制",
+      "修复重复默认密钥导致的模型切换循环",
+      "降低健康检测频率，避免触发 API 限流"
+    ]
+  },
+  {
     "version": "1.5.12",
     "date": "2026-02-27",
     "en": [
