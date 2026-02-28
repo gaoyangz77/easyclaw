@@ -555,6 +555,54 @@ function bundleWithEsbuild() {
   return usedExternals;
 }
 
+// ─── Phase 1.5: Patch vendor constants in the bundle ───
+// The vendor hardcodes HEALTH_REFRESH_INTERVAL_MS = 60s which probes all
+// channel APIs every minute — too aggressive and triggers rate limits for
+// users with multiple channels.  We replace it with 5 minutes (300s) in
+// the bundled output.  This avoids modifying vendor source while keeping
+// the fix inside EasyClaw's own build pipeline.
+//
+// If a future vendor update renames or removes the constant, the assertion
+// below will fail the build loudly so we notice immediately.
+
+const VENDOR_HEALTH_INTERVAL_ORIGINAL = "HEALTH_REFRESH_INTERVAL_MS = 6e4";
+const VENDOR_HEALTH_INTERVAL_PATCHED  = "HEALTH_REFRESH_INTERVAL_MS = 3e5";
+
+function patchVendorConstants() {
+  console.log("[bundle-vendor-deps] Phase 1.5: Patching vendor constants...");
+
+  const content = fs.readFileSync(BUNDLE_TEMP, "utf-8");
+  const occurrences = content.split(VENDOR_HEALTH_INTERVAL_ORIGINAL).length - 1;
+
+  if (occurrences === 0) {
+    console.error(
+      `\n[bundle-vendor-deps] ✗ PATCH FAILED: Could not find "${VENDOR_HEALTH_INTERVAL_ORIGINAL}" in the bundle.\n` +
+        `\n  The vendor may have renamed or removed HEALTH_REFRESH_INTERVAL_MS.\n` +
+        `  Check vendor/openclaw/src/gateway/server-constants.ts and update this patch.\n`,
+    );
+    process.exit(1);
+  }
+
+  const patched = content.replaceAll(
+    VENDOR_HEALTH_INTERVAL_ORIGINAL,
+    VENDOR_HEALTH_INTERVAL_PATCHED,
+  );
+
+  // Verify all occurrences were replaced
+  const remaining = patched.split(VENDOR_HEALTH_INTERVAL_ORIGINAL).length - 1;
+  if (remaining !== 0) {
+    console.error(
+      `\n[bundle-vendor-deps] ✗ PATCH FAILED: ${remaining} occurrence(s) of "${VENDOR_HEALTH_INTERVAL_ORIGINAL}" survived replaceAll.\n`,
+    );
+    process.exit(1);
+  }
+
+  fs.writeFileSync(BUNDLE_TEMP, patched, "utf-8");
+  console.log(
+    `[bundle-vendor-deps] Patched HEALTH_REFRESH_INTERVAL_MS: 60s → 300s (${occurrences} occurrence(s))`,
+  );
+}
+
 // ─── Phase 2: Replace entry.js with the bundle ───
 // The bundle must be named entry.js (not gateway-bundle.mjs) because the
 // vendor's isMainModule() check compares import.meta.url against the
@@ -964,6 +1012,7 @@ if (!fs.existsSync(nmDir)) {
   bundlePluginSdk();
   const extExternals = prebundleExtensions();
   const bundleExternals = bundleWithEsbuild();
+  patchVendorConstants();
   replaceEntryWithBundle();
   deleteChunkFiles();
   const keepSet = cleanupNodeModules();
