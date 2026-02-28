@@ -997,13 +997,6 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         <span className="chat-status-spacer" />
         <button
           className="btn btn-sm btn-secondary"
-          onClick={handleStop}
-          disabled={!isStreaming && !trackerRef.current.getView().canAbort}
-        >
-          {t("chat.stopCommand")}
-        </button>
-        <button
-          className="btn btn-sm btn-secondary"
           onClick={handleReset}
           disabled={connectionState !== "connected"}
         >
