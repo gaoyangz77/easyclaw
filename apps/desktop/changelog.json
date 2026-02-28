@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.5.12",
+    "date": "2026-02-27",
+    "en": [
+      "Fix NSIS installer killing itself during upgrade",
+      "Upgrade core engine to v2026.2.26"
+    ],
+    "zh": [
+      "修复安装程序升级时意外终止自身的问题",
+      "升级核心引擎至 v2026.2.26"
+    ]
+  },
+  {
     "version": "1.5.11",
     "date": "2026-02-26",
     "en": [
