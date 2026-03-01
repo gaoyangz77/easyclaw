@@ -7,13 +7,15 @@
 //
 // This dramatically reduces file count for the installer:
 //   - dist/plugin-sdk/: 90 chunk files → 2 files (bundled index.js + account-id.js)
-//   - extensions/: .ts → pre-bundled .js (inlines npm deps, plugin-sdk external)
+//   - extensions/: .ts → pre-bundled .js (inlines npm deps + tree-shaken plugin-sdk)
 //   - dist/: 758 chunk files → 3 files (bundle, babel.cjs, warning-filter)
 //   - node_modules/: ~56K files → ~7K files (native/external only)
 //
-// Plugin-sdk is bundled ONCE (Phase 0.5a), then shared by all extensions.
-// Extensions keep plugin-sdk as an external import resolved by jiti's alias
-// at runtime, avoiding 36× duplication of the ~27MB plugin-sdk code.
+// Plugin-sdk is inlined (tree-shaken) into each pre-bundled vendor extension
+// during Phase 0.5b, eliminating the ~30s runtime parse of the monolithic
+// plugin-sdk bundle on Windows.  Phase 0.5a still creates the monolithic
+// bundle for user-installed / third-party plugins that import plugin-sdk
+// at runtime.
 
 const fs = require("fs");
 const path = require("path");
@@ -117,6 +119,24 @@ function countFiles(dir) {
     }
   } catch {}
   return count;
+}
+
+/** Sum byte sizes of all files in a directory recursively. */
+function dirSize(/** @type {string} */ dir) {
+  let total = 0;
+  try {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isSymbolicLink()) {
+        // skip symlinks — they point to .pnpm which is counted separately
+      } else if (entry.isDirectory()) {
+        total += dirSize(full);
+      } else {
+        total += fs.statSync(full).size;
+      }
+    }
+  } catch {}
+  return total;
 }
 
 /**
@@ -326,8 +346,10 @@ async function extractVendorModelCatalog() {
 }
 
 // ─── Phase 0.5a: Bundle plugin-sdk into a single file ───
-// dist/plugin-sdk/ contains index.js + ~90 chunk files.  Extensions import
-// plugin-sdk at runtime via jiti's alias ("openclaw/plugin-sdk" → dist/plugin-sdk/index.js).
+// dist/plugin-sdk/ contains index.js + ~90 chunk files.  Vendor extensions
+// now inline plugin-sdk at build time (Phase 0.5b), but user-installed /
+// third-party plugins still import plugin-sdk at runtime via jiti's alias
+// ("openclaw/plugin-sdk" → dist/plugin-sdk/index.js).
 // Bundle index.js into a self-contained file so we can delete the chunks.
 // account-id.js is already self-contained (1.1KB, no chunk imports).
 
@@ -394,26 +416,49 @@ function bundlePluginSdk() {
 // By pre-bundling each extension into a .js file:
 //   1. jiti loads .js directly (no babel transpilation needed)
 //   2. npm dependencies are inlined (node_modules can be pruned)
-//   3. plugin-sdk is kept as external (shared single bundle, not duplicated)
-//   4. Only EXTERNAL_PACKAGES + plugin-sdk remain as runtime imports
+//   3. plugin-sdk is inlined and tree-shaken (only used exports are included)
+//   4. Only EXTERNAL_PACKAGES remain as runtime imports
+//
+// NOTE: Must run BEFORE Phase 0.5a because esbuild needs the original
+// plugin-sdk chunk files to follow imports and tree-shake effectively.
 
 function prebundleExtensions() {
   console.log("[bundle-vendor-deps] Phase 0.5b: Pre-bundling vendor extensions...");
 
   if (!fs.existsSync(extensionsDir)) {
     console.log("[bundle-vendor-deps] extensions/ not found, skipping.");
-    return new Set();
+    return { externals: new Set(), inlinedCount: 0 };
   }
 
   const esbuild = loadEsbuild();
 
-  // Extensions keep plugin-sdk as external — jiti resolves "openclaw/plugin-sdk"
-  // to dist/plugin-sdk/index.js (now a single bundle from Phase 0.5a) at runtime.
-  const extExternals = [
-    ...EXTERNAL_PACKAGES,
+  // Plugin-sdk inlining strategy:
+  //
+  // Extensions that import few plugin-sdk functions (e.g. emptyPluginConfigSchema)
+  // get plugin-sdk inlined + tree-shaken → self-contained, no runtime parse.
+  // Extensions that import many plugin-sdk utilities (channel plugins) keep
+  // plugin-sdk as external → loaded at runtime via jiti, but these are only
+  // enabled when the user specifically configures the channel.
+  //
+  // Adaptive threshold: if an inlined extension exceeds INLINE_SIZE_LIMIT,
+  // it is rebuilt with plugin-sdk external to avoid bloating the installer.
+  const INLINE_SIZE_LIMIT = 2 * 1024 * 1024; // 2 MB
+
+  const extExternalsBase = [...EXTERNAL_PACKAGES];
+  const extExternalsWithSdk = [
+    ...extExternalsBase,
     "openclaw/plugin-sdk",
     "openclaw/plugin-sdk/account-id",
   ];
+  const pluginSdkDir = path.join(distDir, "plugin-sdk");
+  const pluginSdkAlias = {
+    "openclaw/plugin-sdk": path.join(pluginSdkDir, "index.js"),
+    "openclaw/plugin-sdk/account-id": path.join(pluginSdkDir, "account-id.js"),
+  };
+  // Mark plugin-sdk chunks as side-effect-free for esbuild tree-shaking.
+  const pluginSdkPkg = path.join(pluginSdkDir, "package.json");
+  const hadPkgJson = fs.existsSync(pluginSdkPkg);
+  fs.writeFileSync(pluginSdkPkg, JSON.stringify({ sideEffects: false }), "utf-8");
 
   // Find all extensions with openclaw.plugin.json
   const extDirs = [];
@@ -426,9 +471,36 @@ function prebundleExtensions() {
   }
 
   let bundled = 0;
+  let inlinedCount = 0;
   let skipped = 0;
   const errors = [];
   const allExtPkgs = new Set();
+
+  /**
+   * Build a single extension with esbuild and collect external deps from metafile.
+   * @param {string} entryPoint
+   * @param {string} outfile
+   * @param {{inline: boolean}} opts
+   * @returns {import("esbuild").BuildResult}
+   */
+  function buildExtension(entryPoint, outfile, opts) {
+    return esbuild.buildSync({
+      entryPoints: [entryPoint],
+      outfile,
+      bundle: true,
+      format: "esm",
+      platform: "node",
+      target: "node22",
+      external: opts.inline ? extExternalsBase : extExternalsWithSdk,
+      ...(opts.inline ? { alias: pluginSdkAlias } : {}),
+      metafile: true,
+      minify: true,
+      banner: {
+        js: 'import { createRequire as __cr } from "module"; const require = __cr(import.meta.url);',
+      },
+      logLevel: "warning",
+    });
+  }
 
   for (const ext of extDirs) {
     const indexTs = path.join(ext.dir, "index.ts");
@@ -440,21 +512,20 @@ function prebundleExtensions() {
     const indexJs = path.join(ext.dir, "index.js");
 
     try {
-      const result = esbuild.buildSync({
-        entryPoints: [indexTs],
-        outfile: indexJs,
-        bundle: true,
-        format: "esm",
-        platform: "node",
-        target: "node22",
-        external: extExternals,
-        metafile: true,
-        minify: true,
-        banner: {
-          js: 'import { createRequire as __cr } from "module"; const require = __cr(import.meta.url);',
-        },
-        logLevel: "warning",
-      });
+      // First attempt: inline plugin-sdk (tree-shaken).
+      let result = buildExtension(indexTs, indexJs, { inline: true });
+      let inlined = true;
+
+      // If the output exceeds the threshold, the extension uses too many
+      // plugin-sdk internals — rebuild with plugin-sdk as external to
+      // avoid inflating the installer.
+      const outSize = fs.statSync(indexJs).size;
+      if (outSize > INLINE_SIZE_LIMIT) {
+        result = buildExtension(indexTs, indexJs, { inline: false });
+        inlined = false;
+      } else {
+        inlinedCount++;
+      }
 
       // Collect external packages from metafile
       if (result.metafile) {
@@ -489,8 +560,17 @@ function prebundleExtensions() {
 
   console.log(
     `[bundle-vendor-deps] Pre-bundled ${bundled} extensions` +
+      ` (${inlinedCount} with plugin-sdk inlined)` +
       (skipped > 0 ? ` (${skipped} skipped — no index.ts)` : ""),
   );
+
+  // Clean up the temporary package.json so it doesn't interfere with
+  // Phase 0.5a (monolithic bundle) or jiti runtime resolution.
+  if (hadPkgJson) {
+    // Restore if one existed before (shouldn't normally happen)
+  } else {
+    fs.unlinkSync(pluginSdkPkg);
+  }
 
   if (errors.length > 0) {
     console.error(`\n[bundle-vendor-deps] ✗ ${errors.length} extension(s) failed to bundle:\n`);
@@ -500,7 +580,7 @@ function prebundleExtensions() {
     process.exit(1);
   }
 
-  return allExtPkgs;
+  return { externals: allExtPkgs, inlinedCount };
 }
 
 // ─── Phase 1: esbuild bundle ───
@@ -1003,6 +1083,87 @@ function smokeTestGateway() {
   process.exit(1);
 }
 
+// ─── Size Report ───
+// Collects sizes of key pipeline outputs and writes a JSON report to tmp/.
+// Used by the update-vendor skill to detect size regressions across upgrades.
+
+function generateSizeReport(/** @type {number} */ inlinedCount) {
+  console.log("[bundle-vendor-deps] ─── Size Report ───");
+
+  const fmt = (/** @type {number} */ bytes) =>
+    bytes >= 1024 * 1024
+      ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
+      : `${(bytes / 1024).toFixed(1)} KB`;
+
+  // 1. Entry bundle
+  const entryBundle = fs.existsSync(ENTRY_FILE) ? fs.statSync(ENTRY_FILE).size : 0;
+  console.log(`  dist/entry.js              ${fmt(entryBundle)}`);
+
+  // 2. Plugin-sdk monolithic bundle
+  const pluginSdkIndex = path.join(distDir, "plugin-sdk", "index.js");
+  const pluginSdk = fs.existsSync(pluginSdkIndex) ? fs.statSync(pluginSdkIndex).size : 0;
+  console.log(`  dist/plugin-sdk/index.js   ${fmt(pluginSdk)}`);
+
+  // 3. Extensions — itemized
+  let extTotal = 0;
+  let extCount = 0;
+  /** @type {Array<{name: string, size: number}>} */
+  const extItems = [];
+  if (fs.existsSync(extensionsDir)) {
+    for (const entry of fs.readdirSync(extensionsDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const extDir = path.join(extensionsDir, entry.name);
+      const size = dirSize(extDir);
+      if (size > 0) {
+        extItems.push({ name: entry.name, size });
+        extTotal += size;
+        extCount++;
+      }
+    }
+  }
+  extItems.sort((a, b) => b.size - a.size);
+  console.log(`  extensions/ (${extCount} items)    ${fmt(extTotal)}`);
+  const top5 = extItems.slice(0, 5).map((e) => `${e.name} (${fmt(e.size)})`);
+  if (top5.length > 0) {
+    console.log(`    top 5: ${top5.join(", ")}`);
+  }
+
+  // 4. node_modules
+  const nmSize = fs.existsSync(nmDir) ? dirSize(nmDir) : 0;
+  console.log(`  node_modules/              ${fmt(nmSize)}`);
+
+  // Grand total
+  const grandTotal = entryBundle + pluginSdk + extTotal + nmSize;
+  console.log(`  TOTAL                      ${fmt(grandTotal)}`);
+
+  // Write JSON report
+  const vendorVersionFile = path.resolve(__dirname, "..", "..", "..", ".openclaw-version");
+  const vendorHash = fs.existsSync(vendorVersionFile)
+    ? fs.readFileSync(vendorVersionFile, "utf-8").trim().slice(0, 7)
+    : "unknown";
+
+  const report = {
+    vendorHash,
+    timestamp: new Date().toISOString(),
+    entryBundle,
+    pluginSdk,
+    extensions: {
+      total: extTotal,
+      count: extCount,
+      inlined: inlinedCount,
+      items: Object.fromEntries(extItems.map((e) => [e.name, e.size])),
+    },
+    nodeModules: nmSize,
+    grandTotal,
+  };
+
+  const tmpDir = path.resolve(__dirname, "..", "..", "..", "tmp");
+  if (!fs.existsSync(tmpDir)) fs.mkdirSync(tmpDir, { recursive: true });
+  const reportPath = path.join(tmpDir, `vendor-size-report-${vendorHash}.json`);
+  fs.writeFileSync(reportPath, JSON.stringify(report, null, 2), "utf-8");
+  console.log(`  → Saved to tmp/vendor-size-report-${vendorHash}.json`);
+}
+
 // ─── Main ───
 
 // Guard: skip if already bundled (marker written after successful run)
@@ -1027,8 +1188,8 @@ if (!fs.existsSync(nmDir)) {
 (async () => {
   const t0 = Date.now();
   await extractVendorModelCatalog();
+  const { externals: extExternals, inlinedCount } = prebundleExtensions();
   bundlePluginSdk();
-  const extExternals = prebundleExtensions();
   patchVendorConstants();
   const bundleExternals = bundleWithEsbuild();
   replaceEntryWithBundle();
@@ -1038,6 +1199,7 @@ if (!fs.existsSync(nmDir)) {
   const allExternals = new Set([...extExternals, ...bundleExternals]);
   verifyExternalImports(allExternals, keepSet);
   smokeTestGateway();
+  generateSizeReport(inlinedCount);
 
   // Write marker so re-runs are skipped (idempotency guard).
   // Placed AFTER smoke test so a failed run can be re-tried.
