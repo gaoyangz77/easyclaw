@@ -1105,11 +1105,12 @@ function smokeTestGateway() {
 
   let allOutput = "";
   let exitCode = null;
+  let killed = false;
 
   try {
     const stdout = execFileSync(process.execPath, [openclawMjs, "gateway"], {
       cwd: tmpDir,
-      timeout: 8000,
+      timeout: 30_000,
       env: {
         ...process.env,
         OPENCLAW_CONFIG_PATH: path.join(tmpDir, "openclaw.json"),
@@ -1124,6 +1125,7 @@ function smokeTestGateway() {
     allOutput = (stdout || "").toString();
   } catch (err) {
     exitCode = /** @type {any} */ (err).status ?? null;
+    killed = /** @type {any} */ (err).killed ?? false;
     const stderrStr = (/** @type {any} */ (err).stderr || "").toString();
     const stdoutStr = (/** @type {any} */ (err).stdout || "").toString();
     allOutput = stdoutStr + "\n" + stderrStr;
@@ -1177,6 +1179,15 @@ function smokeTestGateway() {
     console.error(
       `\n[bundle-vendor-deps] ✗ SMOKE TEST FAILED: Cannot find module '${mod}'.\n` +
         `\n  Fix: Add '${mod}' to EXTERNAL_PACKAGES.\n`,
+    );
+    process.exit(1);
+  }
+
+  if (killed && !allOutput.trim()) {
+    console.error(
+      `\n[bundle-vendor-deps] ✗ SMOKE TEST FAILED: Gateway process timed out with no output.\n` +
+        `\n  The gateway did not produce any output before the 30 s timeout.\n` +
+        `  This may indicate the bundled entry.js is too large to parse on this CI runner.\n`,
     );
     process.exit(1);
   }
