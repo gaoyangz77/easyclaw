@@ -29,10 +29,14 @@ extraResources:
       - "package.json"
       - "dist/**"
       - "docs/**"
+      - "extensions/**"
+      - "!extensions/**/node_modules/**"
       - "packages/**"
       - "!packages/**/node_modules/**"
   # Pre-bundled vendor extensions (CJS format, tree-shaken by bundle-vendor-deps.cjs).
-  # Staged outside vendor/ so vendor stays in a clean git state.
+  # Written directly to .prebundled-extensions/ by Phase 0.5b — overlays vendor
+  # extensions with bundled .js + updated package.json in release builds.
+  # In pack-only builds (no bundle step), this dir doesn't exist and is skipped.
   - from: ".prebundled-extensions"
     to: "vendor/openclaw/extensions"
   # EasyClaw extensions — auto-discovered by OpenClaw at runtime

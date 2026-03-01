@@ -193,25 +193,7 @@ function loadEsbuild() {
   }
 }
 
-/**
- * Delete all .ts files (not .d.ts) recursively in a directory.
- * Used to clean up extension source files after pre-bundling.
- */
-function deleteTsFiles(/** @type {string} */ dir) {
-  let count = 0;
-  try {
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        count += deleteTsFiles(full);
-      } else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".d.ts")) {
-        fs.unlinkSync(full);
-        count++;
-      }
-    }
-  } catch {}
-  return count;
-}
+
 
 /**
  * Build a Set of package names that must be kept in node_modules.
@@ -462,6 +444,13 @@ function prebundleExtensions() {
     return { externals: new Set(), inlinedCount: 0 };
   }
 
+  // Output goes directly to the staging dir (outside vendor) so we never
+  // modify git-tracked files in vendor/openclaw/extensions/.
+  if (fs.existsSync(extStagingDir)) {
+    fs.rmSync(extStagingDir, { recursive: true, force: true });
+  }
+  fs.mkdirSync(extStagingDir, { recursive: true });
+
   const esbuild = loadEsbuild();
 
   // Plugin-sdk inlining strategy:
@@ -547,7 +536,10 @@ function prebundleExtensions() {
       continue;
     }
 
-    const indexJs = path.join(ext.dir, "index.js");
+    // Write bundled output to staging dir, not vendor.
+    const stagingExtDir = path.join(extStagingDir, ext.name);
+    fs.mkdirSync(stagingExtDir, { recursive: true });
+    const indexJs = path.join(stagingExtDir, "index.js");
 
     try {
       // First attempt: inline plugin-sdk (tree-shaken).
@@ -576,31 +568,23 @@ function prebundleExtensions() {
         }
       }
 
-      // Delete .ts source files (now inlined into index.js)
-      deleteTsFiles(ext.dir);
+      // Copy manifest to staging dir so the gateway can discover the extension.
+      const manifestSrc = path.join(ext.dir, "openclaw.plugin.json");
+      fs.copyFileSync(manifestSrc, path.join(stagingExtDir, "openclaw.plugin.json"));
 
-      // Update package.json: fix entry references and remove "type": "module".
-      // Extensions are now CJS, but "type": "module" in package.json forces
-      // jiti (and Node.js) to treat .js as ESM, triggering babel ESM→CJS
-      // transform on every load — adding 10+ seconds on macOS.
-      const pkgJsonPath = path.join(ext.dir, "package.json");
-      if (fs.existsSync(pkgJsonPath)) {
-        const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
-        let changed = false;
-        // Fix .ts → .js entry references
+      // Write package.json to staging dir (read from source, fix entry refs,
+      // remove "type": "module" so jiti/Node.js treat the CJS .js as CJS).
+      const srcPkgPath = path.join(ext.dir, "package.json");
+      if (fs.existsSync(srcPkgPath)) {
+        const pkgJson = JSON.parse(fs.readFileSync(srcPkgPath, "utf-8"));
         const raw = JSON.stringify(pkgJson);
         if (raw.includes("./index.ts")) {
           Object.assign(pkgJson, JSON.parse(raw.replace(/\.\/index\.ts/g, "./index.js")));
-          changed = true;
         }
-        // Remove "type": "module" so jiti/Node.js treat .js as CJS
         if (pkgJson.type === "module") {
           delete pkgJson.type;
-          changed = true;
         }
-        if (changed) {
-          fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n", "utf-8");
-        }
+        fs.writeFileSync(path.join(stagingExtDir, "package.json"), JSON.stringify(pkgJson, null, 2) + "\n", "utf-8");
       }
 
       bundled++;
@@ -609,17 +593,16 @@ function prebundleExtensions() {
     }
   }
 
-  // Ensure ALL extension directories with .js files have a package.json
-  // that does NOT declare "type": "module".  Extensions without their own
-  // package.json inherit "type": "module" from the vendor root, forcing
-  // jiti/Node.js to treat CJS .js files as ESM → slow babel transform.
-  for (const entry of fs.readdirSync(extensionsDir, { withFileTypes: true })) {
+  // Ensure ALL staged extension directories have a package.json that does
+  // NOT declare "type": "module".  Without one, the CJS .js file would
+  // inherit "type": "module" from the vendor root → slow babel transform.
+  for (const entry of fs.readdirSync(extStagingDir, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
-    const extPkgPath = path.join(extensionsDir, entry.name, "package.json");
-    if (!fs.existsSync(extPkgPath)) {
-      const jsFile = path.join(extensionsDir, entry.name, "index.js");
+    const stagingPkgPath = path.join(extStagingDir, entry.name, "package.json");
+    if (!fs.existsSync(stagingPkgPath)) {
+      const jsFile = path.join(extStagingDir, entry.name, "index.js");
       if (fs.existsSync(jsFile)) {
-        fs.writeFileSync(extPkgPath, "{}\n", "utf-8");
+        fs.writeFileSync(stagingPkgPath, "{}\n", "utf-8");
       }
     }
   }
@@ -778,9 +761,13 @@ function replaceEntryWithBundle() {
   // After pre-bundling extensions to .js, babel is NOT needed for normal
   // operation.  We copy it as a safety net in case a .ts extension is
   // missed or a future vendor update adds one.
-  const babelSrc = path.join(nmDir, "@mariozechner", "jiti", "dist", "babel.cjs");
+  // jiti may be hoisted as "jiti" or scoped as "@mariozechner/jiti"
+  const babelSrc = [
+    path.join(nmDir, "jiti", "dist", "babel.cjs"),
+    path.join(nmDir, "@mariozechner", "jiti", "dist", "babel.cjs"),
+  ].find((p) => fs.existsSync(p));
   const babelDst = path.join(distDir, "babel.cjs");
-  if (fs.existsSync(babelSrc)) {
+  if (babelSrc) {
     fs.copyFileSync(babelSrc, babelDst);
     console.log("[bundle-vendor-deps] Copied babel.cjs to dist/ (safety net for jiti)");
   }
@@ -1103,8 +1090,8 @@ function smokeTestGateway() {
 
   // Write a minimal config so the gateway can start.
   // Use a high ephemeral port to avoid conflicts with running services.
-  // We let the gateway discover vendor extensions (now pre-bundled .js files)
-  // to verify that pre-bundled extensions load correctly at runtime.
+  // Point OPENCLAW_BUNDLED_PLUGINS_DIR at the staging dir so the gateway
+  // discovers pre-bundled CJS extensions (not vendor .ts source files).
   const minimalConfig = {
     gateway: { port: 59999, mode: "local" },
     models: {},
@@ -1127,6 +1114,7 @@ function smokeTestGateway() {
         ...process.env,
         OPENCLAW_CONFIG_PATH: path.join(tmpDir, "openclaw.json"),
         OPENCLAW_STATE_DIR: tmpDir,
+        OPENCLAW_BUNDLED_PLUGINS_DIR: extStagingDir,
         NODE_COMPILE_CACHE: undefined,
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -1226,10 +1214,10 @@ function generateSizeReport(/** @type {number} */ inlinedCount) {
   let extCount = 0;
   /** @type {Array<{name: string, size: number}>} */
   const extItems = [];
-  if (fs.existsSync(extensionsDir)) {
-    for (const entry of fs.readdirSync(extensionsDir, { withFileTypes: true })) {
+  if (fs.existsSync(extStagingDir)) {
+    for (const entry of fs.readdirSync(extStagingDir, { withFileTypes: true })) {
       if (!entry.isDirectory()) continue;
-      const extDir = path.join(extensionsDir, entry.name);
+      const extDir = path.join(extStagingDir, entry.name);
       const size = dirSize(extDir);
       if (size > 0) {
         extItems.push({ name: entry.name, size });
@@ -1281,65 +1269,6 @@ function generateSizeReport(/** @type {number} */ inlinedCount) {
   console.log(`  → Saved to tmp/vendor-size-report-${vendorHash}.json`);
 }
 
-// ─── Phase 6: Stage pre-bundled extensions and restore vendor ───
-// prebundleExtensions() writes bundled .js files into vendor/openclaw/extensions/
-// in-place (needed by the smoke test and size report).  After those steps finish,
-// copy the results to a staging directory outside vendor and restore vendor's
-// extensions/ to a clean git state.  electron-builder.yml reads from the staging
-// dir instead.
-//
-// Note: dist/ is also modified by the pipeline but is listed in vendor's
-// .gitignore, so it doesn't trigger the pre-commit hook.  Only extensions/
-// (which contains tracked .ts source files) needs staging + cleanup.
-//
-// This prevents vendor/openclaw/ from having unstaged changes or untracked
-// files that trip the pre-commit hook on every git commit/push.
-
-function stageExtensionsAndCleanVendor() {
-  if (!fs.existsSync(extensionsDir)) return;
-
-  console.log("[bundle-vendor-deps] Phase 6: Staging pre-bundled extensions...");
-
-  // Clean previous staging dir
-  if (fs.existsSync(extStagingDir)) {
-    fs.rmSync(extStagingDir, { recursive: true, force: true });
-  }
-
-  // Copy bundled extensions to staging, excluding node_modules/ —
-  // extensions are pre-bundled CJS so their original npm deps are not needed.
-  // Copying them would also break the macOS universal merge (symlinks in
-  // .bin/ differ between arch temp dirs).
-  fs.cpSync(extensionsDir, extStagingDir, {
-    recursive: true,
-    filter: (src) => !src.includes(`${path.sep}node_modules`),
-  });
-
-  // Count what was staged
-  let stagedCount = 0;
-  for (const entry of fs.readdirSync(extStagingDir, { withFileTypes: true })) {
-    if (entry.isDirectory()) stagedCount++;
-  }
-
-  // Restore vendor/openclaw/extensions/ to its pristine git state.
-  // checkout restores modified/deleted tracked files; clean removes untracked
-  // files (the generated index.js bundles + package.json stubs).
-  const { execSync } = require("child_process");
-  try {
-    execSync(`git -C "${vendorDir}" checkout -- extensions/`, { stdio: "ignore" });
-  } catch {
-    // If vendor isn't a git repo (e.g. extracted tarball), skip cleanup.
-  }
-  try {
-    execSync(`git -C "${vendorDir}" clean -fd -- extensions/`, { stdio: "ignore" });
-  } catch {
-    // Same — non-git vendor, skip.
-  }
-
-  console.log(
-    `[bundle-vendor-deps] Staged ${stagedCount} extension dirs to .prebundled-extensions/`,
-  );
-}
-
 // ─── Main ───
 
 // Guard: skip if already bundled (marker written after successful run)
@@ -1377,7 +1306,6 @@ if (!fs.existsSync(nmDir)) {
   verifyExternalImports(allExternals, keepSet);
   smokeTestGateway();
   generateSizeReport(inlinedCount);
-  stageExtensionsAndCleanVendor();
 
   // Write marker so re-runs are skipped (idempotency guard).
   // Placed AFTER smoke test so a failed run can be re-tried.
