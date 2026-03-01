@@ -90,8 +90,8 @@ const KEEP_DIST_FILES = new Set([
 ]);
 
 // Subdirectories of dist/ to preserve.  plugin-sdk/ is kept because its
-// index.js is bundled into a single file (Phase 0.5a) that extensions
-// import at runtime via jiti's alias.
+// index.js is bundled into a single file (Phase 0.5a) that third-party
+// plugins import at runtime via jiti's alias.
 const KEEP_DIST_DIRS = new Set([
   "bundled",
   "canvas-host",
@@ -477,7 +477,7 @@ function prebundleExtensions() {
   const allExtPkgs = new Set();
 
   /**
-   * Build a single extension with esbuild and collect external deps from metafile.
+   * Build a single extension with esbuild.
    * @param {string} entryPoint
    * @param {string} outfile
    * @param {{inline: boolean}} opts
@@ -514,7 +514,6 @@ function prebundleExtensions() {
     try {
       // First attempt: inline plugin-sdk (tree-shaken).
       let result = buildExtension(indexTs, indexJs, { inline: true });
-      let inlined = true;
 
       // If the output exceeds the threshold, the extension uses too many
       // plugin-sdk internals — rebuild with plugin-sdk as external to
@@ -522,7 +521,6 @@ function prebundleExtensions() {
       const outSize = fs.statSync(indexJs).size;
       if (outSize > INLINE_SIZE_LIMIT) {
         result = buildExtension(indexTs, indexJs, { inline: false });
-        inlined = false;
       } else {
         inlinedCount++;
       }
@@ -565,10 +563,8 @@ function prebundleExtensions() {
   );
 
   // Clean up the temporary package.json so it doesn't interfere with
-  // Phase 0.5a (monolithic bundle) or jiti runtime resolution.
-  if (hadPkgJson) {
-    // Restore if one existed before (shouldn't normally happen)
-  } else {
+  // Phase 0.5a or jiti runtime resolution.
+  if (!hadPkgJson) {
     fs.unlinkSync(pluginSdkPkg);
   }
 
@@ -720,6 +716,56 @@ function replaceEntryWithBundle() {
     fs.copyFileSync(babelSrc, babelDst);
     console.log("[bundle-vendor-deps] Copied babel.cjs to dist/ (safety net for jiti)");
   }
+}
+
+// ─── Phase 2.5: Inject startup timing instrumentation ───
+// Temporary diagnostic: prepends a stdout/stderr interceptor that logs
+// elapsed-time markers when the gateway emits known log lines.
+// This helps pinpoint which gateway startup phase is slow on Windows.
+// TODO: Remove once the Windows startup regression is diagnosed.
+
+function patchStartupTiming() {
+  console.log("[bundle-vendor-deps] Phase 2.5: Injecting startup timing instrumentation...");
+
+  const content = fs.readFileSync(ENTRY_FILE, "utf-8");
+
+  // Anchor strings that appear exactly once in the bundled entry.js,
+  // corresponding to key gateway startup phases:
+  //   1. "auto-enabled plugins"    — after plugin discovery
+  //   2. "memory slot plugin"      — memory plugin init
+  //   3. "host mounted at"         — HTTP/canvas server ready
+  //   4. "listening on ws"         — WebSocket server ready
+  //   5. "agent model"             — agent model resolved
+  //   6. "[health-monitor] started" — health monitor started
+  const timingCode = [
+    "// ── Startup Timing (diagnostic) ──",
+    "if(!globalThis.__easyclaw_timing){globalThis.__easyclaw_timing=1;",
+    "var __t0=Date.now(),__tm={};",
+    "var __origOut=process.stdout.write.bind(process.stdout);",
+    "var __origErr=process.stderr.write.bind(process.stderr);",
+    'function __tmark(s){if(!__tm[s]){__tm[s]=1;__origErr("[TIMING] "+s+": "+(Date.now()-__t0)+"ms\\n")}}',
+    '__tmark("entry-loaded");',
+    'var __anchors=["auto-enabled plugins","memory slot plugin","host mounted at","listening on ws","agent model","[health-monitor] started"];',
+    "process.stdout.write=function(){var c=arguments[0];if(typeof c===\"string\")for(var i=0;i<__anchors.length;i++)if(c.includes(__anchors[i]))__tmark(__anchors[i]);return __origOut.apply(null,arguments)};",
+    "process.stderr.write=function(){var c=arguments[0];if(typeof c===\"string\")for(var i=0;i<__anchors.length;i++)if(c.includes(__anchors[i]))__tmark(__anchors[i]);return __origErr.apply(null,arguments)};",
+    "}",
+  ].join("\n");
+
+  // Insert after the first line (esbuild's banner with the createRequire import)
+  const firstNewline = content.indexOf("\n");
+  if (firstNewline === -1) {
+    // Single-line output (unlikely) — just prepend
+    fs.writeFileSync(ENTRY_FILE, timingCode + "\n" + content, "utf-8");
+  } else {
+    const patched =
+      content.slice(0, firstNewline + 1) +
+      timingCode +
+      "\n" +
+      content.slice(firstNewline + 1);
+    fs.writeFileSync(ENTRY_FILE, patched, "utf-8");
+  }
+
+  console.log("[bundle-vendor-deps] Injected timing markers for 6 gateway startup phases");
 }
 
 // ─── Phase 3: Delete chunk files from dist/ ───
@@ -1193,6 +1239,7 @@ if (!fs.existsSync(nmDir)) {
   patchVendorConstants();
   const bundleExternals = bundleWithEsbuild();
   replaceEntryWithBundle();
+  patchStartupTiming();
   deleteChunkFiles();
   const keepSet = cleanupNodeModules();
   // Merge all external packages from extensions + main bundle for verification
