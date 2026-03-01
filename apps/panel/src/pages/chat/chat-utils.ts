@@ -52,6 +52,11 @@ export function cleanMessageText(text: string): string {
   // Strip inline timestamp — rendered separately above the bubble
   cleaned = cleaned.replace(/^\[[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})? [A-Z]{2,5}\]\s*/, "");
 
+  // Strip Feishu/Lark sender open_id prefix (e.g. "ou_04119179e9551e91a9f8af9a09de50e8: Hi")
+  // The gateway prepends `{senderName ?? senderOpenId}: ` to messages; when the
+  // display name isn't resolved, the raw ou_xxx id leaks into the chat bubble.
+  cleaned = cleaned.replace(/^ou_[a-f0-9]+:\s*/, "");
+
   // Detect audio transcript pattern:
   //   [Audio] User text: [Telegram ... ] <media:audio>\nTranscript: 实际文本
   const audioMatch = cleaned.match(/\[Audio\]\s*User text:\s*\[.*?\]\s*<media:audio>\s*Transcript:\s*([\s\S]*)/);

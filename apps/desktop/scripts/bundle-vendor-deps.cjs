@@ -371,14 +371,16 @@ function bundlePluginSdk() {
     entryPoints: [pluginSdkIndex],
     outfile: tmpOut,
     bundle: true,
-    format: "esm",
+    // CJS so jiti can require() without babel ESM→CJS transform.
+    format: "cjs",
     platform: "node",
     target: "node22",
+    define: { "import.meta.url": "__import_meta_url" },
+    banner: {
+      js: 'var __import_meta_url = require("url").pathToFileURL(__filename).href;',
+    },
     external: EXTERNAL_PACKAGES,
     minify: true,
-    banner: {
-      js: 'import { createRequire as __cr } from "module"; const require = __cr(import.meta.url);',
-    },
     logLevel: "warning",
   });
 
@@ -388,8 +390,29 @@ function bundlePluginSdk() {
   fs.unlinkSync(pluginSdkIndex);
   fs.renameSync(tmpOut, pluginSdkIndex);
 
+  // Also bundle account-id.js as CJS (it's originally ESM).
+  // We need both files to be CJS so the {"type":"commonjs"} package.json
+  // (which enables the require() preload) doesn't break ESM imports.
+  const accountIdPath = path.join(pluginSdkDir, "account-id.js");
+  if (fs.existsSync(accountIdPath)) {
+    const accountIdTmp = path.join(pluginSdkDir, "account-id.bundled.cjs");
+    esbuild.buildSync({
+      entryPoints: [accountIdPath],
+      outfile: accountIdTmp,
+      bundle: true,
+      format: "cjs",
+      platform: "node",
+      target: "node22",
+      external: EXTERNAL_PACKAGES,
+      minify: true,
+      logLevel: "warning",
+    });
+    fs.unlinkSync(accountIdPath);
+    fs.renameSync(accountIdTmp, accountIdPath);
+  }
+
   // Delete chunk files and subdirs (keep only index.js and account-id.js)
-  const keepFiles = new Set(["index.js", "account-id.js"]);
+  const keepFiles = new Set(["index.js", "account-id.js", "package.json"]);
   let deleted = 0;
   for (const entry of fs.readdirSync(pluginSdkDir, { withFileTypes: true })) {
     if (keepFiles.has(entry.name)) continue;
@@ -402,6 +425,14 @@ function bundlePluginSdk() {
       deleted++;
     }
   }
+
+  // Write {"type": "commonjs"} package.json so require() works despite
+  // the vendor root package.json having "type": "module".
+  fs.writeFileSync(
+    path.join(pluginSdkDir, "package.json"),
+    '{"type":"commonjs"}\n',
+    "utf-8",
+  );
 
   console.log(
     `[bundle-vendor-deps] plugin-sdk bundled: ${(bundleSize / 1024 / 1024).toFixed(1)}MB, deleted ${deleted} chunk files`,
@@ -488,16 +519,22 @@ function prebundleExtensions() {
       entryPoints: [entryPoint],
       outfile,
       bundle: true,
-      format: "esm",
+      // CJS format so jiti can require() directly without babel ESM→CJS transform.
+      // ESM format caused jiti to babel-transform every extension on load — the
+      // 20 MB llm-task extension alone took ~5 s on macOS, totalling 12+ s startup.
+      // The `define` replaces import.meta.url (ESM-only) with a CJS-compatible
+      // polyfill variable, and the banner provides the polyfill value.
+      format: "cjs",
       platform: "node",
       target: "node22",
+      define: { "import.meta.url": "__import_meta_url" },
+      banner: {
+        js: 'var __import_meta_url = require("url").pathToFileURL(__filename).href;',
+      },
       external: opts.inline ? extExternalsBase : extExternalsWithSdk,
       ...(opts.inline ? { alias: pluginSdkAlias } : {}),
       metafile: true,
       minify: true,
-      banner: {
-        js: 'import { createRequire as __cr } from "module"; const require = __cr(import.meta.url);',
-      },
       logLevel: "warning",
     });
   }
@@ -541,18 +578,48 @@ function prebundleExtensions() {
       // Delete .ts source files (now inlined into index.js)
       deleteTsFiles(ext.dir);
 
-      // Update package.json entry if it references .ts
+      // Update package.json: fix entry references and remove "type": "module".
+      // Extensions are now CJS, but "type": "module" in package.json forces
+      // jiti (and Node.js) to treat .js as ESM, triggering babel ESM→CJS
+      // transform on every load — adding 10+ seconds on macOS.
       const pkgJsonPath = path.join(ext.dir, "package.json");
       if (fs.existsSync(pkgJsonPath)) {
-        const content = fs.readFileSync(pkgJsonPath, "utf-8");
-        if (content.includes("./index.ts")) {
-          fs.writeFileSync(pkgJsonPath, content.replace(/\.\/index\.ts/g, "./index.js"), "utf-8");
+        const pkgJson = JSON.parse(fs.readFileSync(pkgJsonPath, "utf-8"));
+        let changed = false;
+        // Fix .ts → .js entry references
+        const raw = JSON.stringify(pkgJson);
+        if (raw.includes("./index.ts")) {
+          Object.assign(pkgJson, JSON.parse(raw.replace(/\.\/index\.ts/g, "./index.js")));
+          changed = true;
+        }
+        // Remove "type": "module" so jiti/Node.js treat .js as CJS
+        if (pkgJson.type === "module") {
+          delete pkgJson.type;
+          changed = true;
+        }
+        if (changed) {
+          fs.writeFileSync(pkgJsonPath, JSON.stringify(pkgJson, null, 2) + "\n", "utf-8");
         }
       }
 
       bundled++;
     } catch (err) {
       errors.push({ name: ext.name, error: /** @type {Error} */ (err).message });
+    }
+  }
+
+  // Ensure ALL extension directories with .js files have a package.json
+  // that does NOT declare "type": "module".  Extensions without their own
+  // package.json inherit "type": "module" from the vendor root, forcing
+  // jiti/Node.js to treat CJS .js files as ESM → slow babel transform.
+  for (const entry of fs.readdirSync(extensionsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const extPkgPath = path.join(extensionsDir, entry.name, "package.json");
+    if (!fs.existsSync(extPkgPath)) {
+      const jsFile = path.join(extensionsDir, entry.name, "index.js");
+      if (fs.existsSync(jsFile)) {
+        fs.writeFileSync(extPkgPath, "{}\n", "utf-8");
+      }
     }
   }
 
@@ -721,51 +788,58 @@ function replaceEntryWithBundle() {
 // ─── Phase 2.5: Inject startup timing instrumentation ───
 // Temporary diagnostic: prepends a stdout/stderr interceptor that logs
 // elapsed-time markers when the gateway emits known log lines.
-// This helps pinpoint which gateway startup phase is slow on Windows.
-// TODO: Remove once the Windows startup regression is diagnosed.
 
-function patchStartupTiming() {
-  console.log("[bundle-vendor-deps] Phase 2.5: Injecting startup timing instrumentation...");
+// ─── Phase 2.6: Pre-load plugin-sdk to bypass jiti ───
+//
+// jiti takes ~13 seconds to process the 16.6 MB plugin-sdk bundle because it
+// runs babel ESM detection + transform on every file it loads. Native require()
+// loads the same file in ~650ms. By pre-loading the plugin-sdk into
+// require.cache before jiti tries to load it, jiti finds the cached module and
+// returns immediately, cutting ~12 seconds off every gateway restart.
+
+function patchPluginSdkPreload() {
+  console.log("[bundle-vendor-deps] Phase 2.6: Injecting plugin-sdk preload...");
 
   const content = fs.readFileSync(ENTRY_FILE, "utf-8");
 
-  // Anchor strings that appear exactly once in the bundled entry.js,
-  // corresponding to key gateway startup phases:
-  //   1. "auto-enabled plugins"    — after plugin discovery
-  //   2. "memory slot plugin"      — memory plugin init
-  //   3. "host mounted at"         — HTTP/canvas server ready
-  //   4. "listening on ws"         — WebSocket server ready
-  //   5. "agent model"             — agent model resolved
-  //   6. "[health-monitor] started" — health monitor started
-  const timingCode = [
-    "// ── Startup Timing (diagnostic) ──",
-    "if(!globalThis.__easyclaw_timing){globalThis.__easyclaw_timing=1;",
-    "var __t0=Date.now(),__tm={};",
-    "var __origOut=process.stdout.write.bind(process.stdout);",
-    "var __origErr=process.stderr.write.bind(process.stderr);",
-    'function __tmark(s){if(!__tm[s]){__tm[s]=1;__origErr("[TIMING] "+s+": "+(Date.now()-__t0)+"ms\\n")}}',
-    '__tmark("entry-loaded");',
-    'var __anchors=["auto-enabled plugins","memory slot plugin","host mounted at","listening on ws","agent model","[health-monitor] started"];',
-    "process.stdout.write=function(){var c=arguments[0];if(typeof c===\"string\")for(var i=0;i<__anchors.length;i++)if(c.includes(__anchors[i]))__tmark(__anchors[i]);return __origOut.apply(null,arguments)};",
-    "process.stderr.write=function(){var c=arguments[0];if(typeof c===\"string\")for(var i=0;i<__anchors.length;i++)if(c.includes(__anchors[i]))__tmark(__anchors[i]);return __origErr.apply(null,arguments)};",
-    "}",
+  // The preload code computes the plugin-sdk path relative to entry.js
+  // and loads it via native require() before jiti runs. jiti checks
+  // require.cache (when moduleCache is enabled, which is the default) and
+  // returns the cached exports immediately, skipping its slow babel pipeline.
+  const preloadCode = [
+    "// ── Plugin-SDK preload (bypass jiti) ──",
+    'var __sdkDir=require("path").join(require("url").fileURLToPath(import.meta.url),"..","plugin-sdk");',
+    'var __sdkIndex=require("path").join(__sdkDir,"index.js");',
+    "try{",
+    "  require(__sdkIndex);",
+    // Also populate common sub-path imports that extensions use
+    '  var __fs=require("fs"),__path=require("path");',
+    "  var __subFiles=__fs.readdirSync(__sdkDir).filter(function(f){return f.endsWith('.js')&&f!=='index.js'});",
+    "  __subFiles.forEach(function(f){try{require(__path.join(__sdkDir,f))}catch(e){}});",
+    '}catch(e){process.stderr.write("[preload] plugin-sdk: "+e.message+"\\n")}',
   ].join("\n");
 
-  // Insert after the first line (esbuild's banner with the createRequire import)
-  const firstNewline = content.indexOf("\n");
-  if (firstNewline === -1) {
-    // Single-line output (unlikely) — just prepend
-    fs.writeFileSync(ENTRY_FILE, timingCode + "\n" + content, "utf-8");
-  } else {
-    const patched =
-      content.slice(0, firstNewline + 1) +
-      timingCode +
-      "\n" +
-      content.slice(firstNewline + 1);
-    fs.writeFileSync(ENTRY_FILE, patched, "utf-8");
+  // Insert after the createRequire line (so `require` is available)
+  const requireIdx = content.indexOf("const require");
+  if (requireIdx === -1) {
+    console.warn("[bundle-vendor-deps] WARNING: Could not find 'const require' — plugin-sdk preload NOT injected");
+    return;
   }
 
-  console.log("[bundle-vendor-deps] Injected timing markers for 6 gateway startup phases");
+  const afterRequireLine = content.indexOf("\n", requireIdx);
+  if (afterRequireLine === -1) {
+    console.warn("[bundle-vendor-deps] WARNING: No newline after 'const require' — plugin-sdk preload NOT injected");
+    return;
+  }
+
+  const patched =
+    content.slice(0, afterRequireLine + 1) +
+    preloadCode +
+    "\n" +
+    content.slice(afterRequireLine + 1);
+
+  fs.writeFileSync(ENTRY_FILE, patched, "utf-8");
+  console.log("[bundle-vendor-deps] Plugin-sdk preload injected");
 }
 
 // ─── Phase 3: Delete chunk files from dist/ ───
@@ -1239,7 +1313,7 @@ if (!fs.existsSync(nmDir)) {
   patchVendorConstants();
   const bundleExternals = bundleWithEsbuild();
   replaceEntryWithBundle();
-  patchStartupTiming();
+  patchPluginSdkPreload();
   deleteChunkFiles();
   const keepSet = cleanupNodeModules();
   // Merge all external packages from extensions + main bundle for verification
