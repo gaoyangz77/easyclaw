@@ -9,6 +9,7 @@ dist/
 .DS_Store
 server/
 apps/desktop/release/
+apps/desktop/.prebundled-extensions/
 playwright-report/
 test-results/
 .venv/

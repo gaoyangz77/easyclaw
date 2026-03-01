@@ -24,6 +24,7 @@ const vendorDir = path.resolve(__dirname, "..", "..", "..", "vendor", "openclaw"
 const distDir = path.join(vendorDir, "dist");
 const nmDir = path.join(vendorDir, "node_modules");
 const extensionsDir = path.join(vendorDir, "extensions");
+const extStagingDir = path.resolve(__dirname, "..", ".prebundled-extensions");
 
 const ENTRY_FILE = path.join(distDir, "entry.js");
 const BUNDLE_TEMP = path.join(distDir, "gateway-bundle.tmp.mjs");
@@ -785,10 +786,6 @@ function replaceEntryWithBundle() {
   }
 }
 
-// ─── Phase 2.5: Inject startup timing instrumentation ───
-// Temporary diagnostic: prepends a stdout/stderr interceptor that logs
-// elapsed-time markers when the gateway emits known log lines.
-
 // ─── Phase 2.6: Pre-load plugin-sdk to bypass jiti ───
 //
 // jiti takes ~13 seconds to process the 16.6 MB plugin-sdk bundle because it
@@ -1284,6 +1281,50 @@ function generateSizeReport(/** @type {number} */ inlinedCount) {
   console.log(`  → Saved to tmp/vendor-size-report-${vendorHash}.json`);
 }
 
+// ─── Phase 6: Stage pre-bundled extensions and restore vendor ───
+// prebundleExtensions() writes bundled .js files into vendor/openclaw/extensions/
+// in-place (needed by the smoke test and size report).  After those steps finish,
+// copy the results to a staging directory outside vendor and restore vendor to a
+// clean git state.  electron-builder.yml reads from the staging dir instead.
+//
+// This prevents vendor/openclaw/ from having untracked files that trip the
+// pre-commit hook on every git commit/push.
+
+function stageExtensionsAndCleanVendor() {
+  if (!fs.existsSync(extensionsDir)) return;
+
+  console.log("[bundle-vendor-deps] Phase 6: Staging pre-bundled extensions...");
+
+  // Clean previous staging dir
+  if (fs.existsSync(extStagingDir)) {
+    fs.rmSync(extStagingDir, { recursive: true, force: true });
+  }
+
+  // Copy bundled extensions (index.js + manifest + package.json) to staging.
+  // Use cpSync for a faithful recursive copy.
+  fs.cpSync(extensionsDir, extStagingDir, { recursive: true });
+
+  // Count what was staged
+  let stagedCount = 0;
+  for (const entry of fs.readdirSync(extStagingDir, { withFileTypes: true })) {
+    if (entry.isDirectory()) stagedCount++;
+  }
+
+  // Restore vendor/openclaw/extensions/ to its pristine git state.
+  const { execSync } = require("child_process");
+  try {
+    execSync(`git -C "${vendorDir}" checkout -- extensions/`, { stdio: "ignore" });
+    execSync(`git -C "${vendorDir}" clean -fd extensions/`, { stdio: "ignore" });
+  } catch {
+    // If vendor isn't a git repo (e.g. extracted tarball), skip cleanup.
+    // The bundled files remain in vendor but won't cause issues.
+  }
+
+  console.log(
+    `[bundle-vendor-deps] Staged ${stagedCount} extension dirs to .prebundled-extensions/`,
+  );
+}
+
 // ─── Main ───
 
 // Guard: skip if already bundled (marker written after successful run)
@@ -1321,6 +1362,7 @@ if (!fs.existsSync(nmDir)) {
   verifyExternalImports(allExternals, keepSet);
   smokeTestGateway();
   generateSizeReport(inlinedCount);
+  stageExtensionsAndCleanVendor();
 
   // Write marker so re-runs are skipped (idempotency guard).
   // Placed AFTER smoke test so a failed run can be re-tried.
