@@ -17,16 +17,18 @@ EasyClaw 把 OpenClaw 封装成一个**人人都能用的桌面应用**：安装
 ## 功能特性
 
 - **自然语言规则**：用自然语言编写规则——它们会编译为策略、守卫或技能，并立即生效（无需重启）
-- **多服务商 LLM 支持**：支持 17+ 个服务商（OpenAI、Anthropic、Google Gemini、DeepSeek、智谱/Z.ai、Moonshot、通义千问、Groq、Mistral、xAI、OpenRouter、MiniMax、Venice AI、小米、火山引擎/豆包、Amazon Bedrock 等），具备多密钥管理和区域感知默认值
-- **Gemini CLI OAuth**：使用 Google 账号登录即可免费使用 Gemini——无需 API 密钥。自动检测或安装 Gemini CLI 凭据
+- **多服务商 LLM 支持**：支持 20+ 个服务商（OpenAI、Anthropic、Google Gemini、DeepSeek、智谱/Z.ai、Moonshot/Kimi、通义千问、Groq、Mistral、xAI、OpenRouter、MiniMax、Venice AI、小米/MiMo、火山引擎/豆包、Amazon Bedrock、NVIDIA NIM 等），另有订阅/编程计划（Claude、Gemini、智谱编程、通义编程、Kimi Code、MiniMax 编程、火山编程）以及 Ollama 本地模型支持
+- **OAuth 与订阅计划**：使用 Google 账号登录即可免费使用 Gemini，或连接 Claude/Anthropic 订阅——无需 API 密钥。自动检测或安装 CLI 凭据
 - **按服务商配置代理**：为每个 LLM 服务商或 API 密钥配置 HTTP/SOCKS5 代理，支持自动路由和热重载——对受限地区至关重要
 - **微信消息通道（企业微信）**：通过企业微信客服 API 中继服务，直接在微信中与 Agent 对话。开源中继服务器见 `apps/wecom-relay`
-- **多账号通道支持**：通过界面配置 Telegram、Discord、Slack、WhatsApp、钉钉等，密钥安全存储（Keychain/DPAPI）
+- **多账号通道支持**：通过界面配置 Telegram、WhatsApp、Discord、Slack、Google Chat、Signal、iMessage、飞书/Lark、LINE、Matrix、Mattermost、Microsoft Teams 等，密钥安全存储（Keychain/DPAPI）
 - **Token 用量追踪**：按模型和服务商实时统计，自动从 OpenClaw 会话文件刷新
 - **语音消息支持**：根据地区自动选择合适的语音识别服务（Groq / 火山引擎）
 - **可视化权限控制**：通过界面控制文件读写权限
 - **零重启更新**：API 密钥、代理和通道变更通过热重载立即生效——无需重启网关
 - **本地优先与隐私保护**：所有数据保存在本地；密钥永不以明文存储
+- **与 Agent 对话**：基于 WebSocket 的实时聊天，支持 Markdown 渲染、Emoji 选择器、图片附件、模型切换和持久化对话历史
+- **技能市场**：内置技能市场，可浏览、搜索和一键安装社区技能，轻松管理已安装技能
 - **自动更新**：客户端更新检查器，静态清单托管
 - **隐私优先遥测**：可选的匿名使用分析——不收集个人身份信息
 
@@ -86,7 +88,7 @@ easyclaw/
 │   ├── telemetry/        # 隐私优先的匿名分析客户端
 │   └── policy/           # 策略注入器 & 守卫评估器逻辑
 ├── extensions/
-│   ├── dingtalk/         # 钉钉通道集成
+│   ├── dingtalk/         # 钉钉通道插件
 │   ├── easyclaw-policy/  # OpenClaw 策略注入插件壳
 │   ├── file-permissions/ # OpenClaw 文件访问控制插件
 │   └── wecom/            # 企业微信通道插件（运行在网关内）
@@ -108,7 +110,7 @@ Monorepo 使用 pnpm workspaces（`apps/*`、`packages/*`、`extensions/*`），
 | 包                       | 说明                                                                                   |
 | ------------------------ | -------------------------------------------------------------------------------------- |
 | `@easyclaw/desktop`      | Electron 35 托盘应用。管理网关生命周期，在端口 3210 托管面板服务，数据存储于 SQLite。   |
-| `@easyclaw/panel`        | React 19 + Vite 6 SPA。包含规则、服务商、通道、权限、用量页面，以及首次启动引导向导。  |
+| `@easyclaw/panel`        | React 19 + Vite 6 SPA。包含聊天、规则、服务商、通道、权限、语音转文字、用量、技能市场页面，以及首次启动引导向导。  |
 | `@easyclaw/wecom-relay`  | 企业微信客服 API 中继服务器。通过 WebSocket 将微信用户桥接到网关。支持 Docker 部署。    |
 
 ### 扩展
@@ -116,7 +118,7 @@ Monorepo 使用 pnpm workspaces（`apps/*`、`packages/*`、`extensions/*`），
 | 包                   | 说明                                                                                         |
 | -------------------- | -------------------------------------------------------------------------------------------- |
 | `@easyclaw/wecom`            | 企业微信通道插件。通过 WebSocket 连接中继服务器，收发消息，注册为 OpenClaw 通道。              |
-| `@easyclaw/dingtalk`         | 钉钉通道集成（占位）。                                                                       |
+| `@easyclaw/dingtalk`         | 钉钉通道插件。                                                                               |
 | `@easyclaw/easyclaw-policy`  | 薄 OpenClaw 插件壳，将策略注入接入网关的 `before_agent_start` 钩子。                          |
 | `@easyclaw/file-permissions` | OpenClaw 插件，通过在工具调用执行前拦截和验证来强制执行文件访问权限。                          |
 
@@ -124,7 +126,7 @@ Monorepo 使用 pnpm workspaces（`apps/*`、`packages/*`、`extensions/*`），
 
 | 包                                 | 说明                                                                                                                           |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `@easyclaw/core`                   | Zod 校验类型：`Rule`、`ChannelConfig`、`PermissionConfig`、`ModelConfig`，LLM 服务商定义（OpenAI、Anthropic、Google Gemini、DeepSeek、智谱、Moonshot、通义千问等），区域感知默认值。 |
+| `@easyclaw/core`                   | Zod 校验类型：`Rule`、`ChannelConfig`、`PermissionConfig`、`ModelConfig`，LLM 服务商定义（20+ 服务商，含订阅/编程计划及 Ollama），区域感知默认值。 |
 | `@easyclaw/gateway`                | `GatewayLauncher`（支持指数退避的启动/停止/重启）、配置写入器、从系统密钥链注入密钥、Gemini CLI OAuth 流程、认证配置同步、Skills 目录监听实现热重载。 |
 | `@easyclaw/logger`                 | 基于 tslog 的日志模块。写入 `~/.easyclaw/logs/`。                                                                              |
 | `@easyclaw/storage`                | 基于 better-sqlite3 的 SQLite 存储。包含规则、产物、通道、权限、设置的 Repository，内置迁移系统。数据库位于 `~/.easyclaw/easyclaw.db`。 |
@@ -209,16 +211,21 @@ pnpm --filter @easyclaw/gateway test
 
 面板服务器暴露以下端点：
 
-| 端点                 | 方法                   | 说明                              |
-| -------------------- | ---------------------- | --------------------------------- |
-| `/api/rules`         | GET, POST, PUT, DELETE | 规则增删改查                      |
-| `/api/channels`      | GET, POST, PUT, DELETE | 通道管理                          |
-| `/api/permissions`   | GET, POST, PUT, DELETE | 权限管理                          |
-| `/api/settings`      | GET, PUT               | 键值对设置存储                    |
-| `/api/providers`     | GET                    | 可用 LLM 服务商                   |
-| `/api/provider-keys` | GET, POST, PUT, DELETE | API 密钥和 OAuth 凭据管理         |
-| `/api/oauth`         | POST                   | Gemini CLI OAuth 流程（获取/保存） |
-| `/api/status`        | GET                    | 系统状态（规则数、网关状态）      |
+| 端点                   | 方法                   | 说明                              |
+| ---------------------- | ---------------------- | --------------------------------- |
+| `/api/rules`           | GET, POST, PUT, DELETE | 规则增删改查                      |
+| `/api/channels`        | GET, POST, PUT, DELETE | 通道管理                          |
+| `/api/permissions`     | GET, POST, PUT, DELETE | 权限管理                          |
+| `/api/settings`        | GET, PUT               | 键值对设置存储                    |
+| `/api/agent-settings`  | GET, PUT               | Agent 设置（DM 范围、浏览器模式） |
+| `/api/providers`       | GET                    | 可用 LLM 服务商                   |
+| `/api/provider-keys`   | GET, POST, PUT, DELETE | API 密钥和 OAuth 凭据管理         |
+| `/api/oauth`           | POST                   | Gemini CLI OAuth 流程（获取/保存） |
+| `/api/skills`          | GET, POST, DELETE      | 技能市场与已安装技能              |
+| `/api/usage`           | GET                    | Token 用量统计                    |
+| `/api/stt`             | GET, PUT               | 语音转文字配置                    |
+| `/api/telemetry`       | POST                   | 匿名遥测事件                     |
+| `/api/status`          | GET                    | 系统状态（规则数、网关状态）      |
 
 ### 数据目录
 
@@ -233,12 +240,12 @@ pnpm --filter @easyclaw/gateway test
 
 ## 构建安装包
 
-`dist:mac` 和 `dist:win` 脚本会在打包前自动将 `vendor/openclaw/node_modules` 剪裁为仅生产依赖。这将 DMG 从约 360MB 缩减到约 270MB。
+`dist:mac` 和 `dist:win` 脚本会在打包前自动剪裁并打包 `vendor/openclaw`。这将文件数从约 58K 缩减到约 7K（通过 esbuild 打包），DMG 从约 360MB 缩减到约 310MB。详见 `docs/BUNDLE_VENDOR.md`。
 
-**构建完成后**，vendor 的 node_modules 会被剪裁。要恢复完整依赖用于开发：
+**构建完成后**，vendor 会被剪裁/打包。要恢复完整依赖用于开发：
 
 ```bash
-cd vendor/openclaw && CI=true pnpm install --no-frozen-lockfile && cd ../..
+bash .claude/skills/update-vendor/scripts/provision-vendor.sh $(tr -d '[:space:]' < .openclaw-version)
 ```
 
 ### macOS（DMG，universal arm64+x64）
@@ -300,10 +307,12 @@ CI 构建完成且本地测试通过后：
 
 ## 注意：better-sqlite3 原生模块
 
-`desktop dev` 会自动为 Electron 的 Node ABI 重新构建 better-sqlite3。这意味着**之后运行测试可能会失败**（`NODE_MODULE_VERSION` 不匹配）。修复方法：
+better-sqlite3 运行在两个 ABI 不兼容的运行时下（Node.js 用于测试，Electron 用于应用）。`scripts/rebuild-native.sh` 会为两者编译并将二进制文件放在 `lib/binding/` 中。这通过根目录的 `postinstall` 钩子自动运行。
+
+如果 Electron 升级后测试出现 `NODE_MODULE_VERSION` 不匹配错误：
 
 ```bash
-pnpm install   # 恢复系统 Node 的预编译二进制文件
+bash scripts/rebuild-native.sh   # 为两种 ABI 重新编译
 ```
 
 ## 测试

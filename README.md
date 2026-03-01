@@ -17,16 +17,18 @@ EasyClaw wraps OpenClaw into a desktop app that **anyone can use**: install, lau
 ## Features
 
 - **Natural Language Rules**: Write rules in plain language—they compile to policy, guards, or skills and take effect immediately (no restart)
-- **Multi-Provider LLM Support**: 17+ providers (OpenAI, Anthropic, Google Gemini, DeepSeek, Zhipu/Z.ai, Moonshot, Qwen, Groq, Mistral, xAI, OpenRouter, MiniMax, Venice AI, Xiaomi, Volcengine/Doubao, Amazon Bedrock, etc.) with multi-key management and region-aware defaults
-- **Gemini CLI OAuth**: Sign in with Google for free-tier Gemini access—no API key needed. Auto-detects or installs Gemini CLI credentials
+- **Multi-Provider LLM Support**: 20+ providers (OpenAI, Anthropic, Google Gemini, DeepSeek, Zhipu/Z.ai, Moonshot/Kimi, Qwen, Groq, Mistral, xAI, OpenRouter, MiniMax, Venice AI, Xiaomi/MiMo, Volcengine/Doubao, Amazon Bedrock, NVIDIA NIM, etc.) plus subscription/coding plans (Claude, Gemini, Zhipu Coding, Qwen Coding, Kimi Code, MiniMax Coding, Volcengine Coding) and Ollama for local models
+- **OAuth & Subscription Plans**: Sign in with Google for free-tier Gemini access or connect Claude/Anthropic subscription—no API key needed. Auto-detects or installs CLI credentials
 - **Per-Provider Proxy Support**: Configure HTTP/SOCKS5 proxies per LLM provider or API key, with automatic routing and hot reload—essential for restricted regions
 - **WeChat Messaging (WeCom)**: Chat with your agent from WeChat via a WeCom Customer Service relay. Open-source relay server included (`apps/wecom-relay`)
-- **Multi-Account Channels**: Configure Telegram, Discord, Slack, WhatsApp, DingTalk, and more through UI with secure secret storage (Keychain/DPAPI)
+- **Multi-Account Channels**: Configure Telegram, WhatsApp, Discord, Slack, Google Chat, Signal, iMessage, Feishu/Lark, LINE, Matrix, Mattermost, Microsoft Teams, and more through UI with secure secret storage (Keychain/DPAPI)
 - **Token Usage Tracking**: Real-time statistics by model and provider, auto-refreshed from OpenClaw session files
 - **Speech-to-Text**: Region-aware STT integration for voice messages (Groq, Volcengine)
 - **Visual Permissions**: Control file read/write access through UI
 - **Zero-Restart Updates**: API key, proxy, and channel changes apply instantly via hot reload—no gateway restart needed
 - **Local-First & Private**: All data stays on your machine; secrets never stored in plaintext
+- **Chat with Agent**: Real-time WebSocket chat with markdown rendering, emoji picker, image attachments, model switching, and persistent conversation history
+- **Skills Marketplace**: Browse, search, and install community skills from a built-in marketplace; manage installed skills with one click
 - **Auto-Update**: Client update checker with static manifest hosting
 - **Privacy-First Telemetry**: Optional anonymous usage analytics—no PII collected
 
@@ -86,7 +88,7 @@ easyclaw/
 │   ├── telemetry/        # Privacy-first anonymous analytics client
 │   └── policy/           # Policy injector & guard evaluator logic
 ├── extensions/
-│   ├── dingtalk/         # DingTalk channel integration
+│   ├── dingtalk/         # DingTalk channel plugin
 │   ├── easyclaw-policy/  # OpenClaw plugin shell for policy injection
 │   ├── file-permissions/ # OpenClaw plugin for file access control
 │   └── wecom/            # WeCom channel plugin (runs inside gateway)
@@ -108,7 +110,7 @@ The monorepo uses pnpm workspaces (`apps/*`, `packages/*`, `extensions/*`) with 
 | Package                  | Description                                                                                                            |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | `@easyclaw/desktop`      | Electron 35 tray app. Manages gateway lifecycle, hosts the panel server on port 3210, stores data in SQLite.           |
-| `@easyclaw/panel`        | React 19 + Vite 6 SPA. Pages for rules, providers, channels, permissions, usage, and a first-launch onboarding wizard. |
+| `@easyclaw/panel`        | React 19 + Vite 6 SPA. Pages for chat, rules, providers, channels, permissions, STT, usage, skills marketplace, and a first-launch onboarding wizard. |
 | `@easyclaw/wecom-relay`  | WeCom Customer Service relay server. Bridges WeChat users to the gateway via WebSocket. Deploy with Docker.            |
 
 ### Extensions
@@ -116,7 +118,7 @@ The monorepo uses pnpm workspaces (`apps/*`, `packages/*`, `extensions/*`) with 
 | Package              | Description                                                                                                                    |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `@easyclaw/wecom`            | WeCom channel plugin. Connects to the relay server via WebSocket, receives/sends messages, and registers as an OpenClaw channel. |
-| `@easyclaw/dingtalk`         | DingTalk channel integration (placeholder).                                                                                    |
+| `@easyclaw/dingtalk`         | DingTalk channel integration.                                                                                                  |
 | `@easyclaw/easyclaw-policy`  | Thin OpenClaw plugin shell that wires policy injection into the gateway's `before_agent_start` hook.                           |
 | `@easyclaw/file-permissions` | OpenClaw plugin that enforces file access permissions by intercepting and validating tool calls before execution.               |
 
@@ -124,7 +126,7 @@ The monorepo uses pnpm workspaces (`apps/*`, `packages/*`, `extensions/*`) with 
 
 | Package                            | Description                                                                                                                                                                                         |
 | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `@easyclaw/core`                   | Zod-validated types: `Rule`, `ChannelConfig`, `PermissionConfig`, `ModelConfig`, LLM provider definitions (OpenAI, Anthropic, Google Gemini, DeepSeek, Zhipu, Moonshot, Qwen, and more), region-aware defaults. |
+| `@easyclaw/core`                   | Zod-validated types: `Rule`, `ChannelConfig`, `PermissionConfig`, `ModelConfig`, LLM provider definitions (20+ providers including subscription/coding plans and Ollama), region-aware defaults. |
 | `@easyclaw/gateway`                | `GatewayLauncher` (spawn/stop/restart with exponential backoff), config writer, secret injection from system keychain, Gemini CLI OAuth flow, auth profile sync, skills directory watcher for hot reload. |
 | `@easyclaw/logger`                 | tslog-based logger. Writes to `~/.easyclaw/logs/`.                                                                                                                                                  |
 | `@easyclaw/storage`                | SQLite via better-sqlite3. Repositories for rules, artifacts, channels, permissions, settings. Migration system included. DB at `~/.easyclaw/easyclaw.db`.                                          |
@@ -210,16 +212,21 @@ The desktop app runs as a **tray-only** application (hidden from the dock on mac
 
 The panel server exposes these endpoints:
 
-| Endpoint             | Methods                | Description                               |
-| -------------------- | ---------------------- | ----------------------------------------- |
-| `/api/rules`         | GET, POST, PUT, DELETE | CRUD for rules                            |
-| `/api/channels`      | GET, POST, PUT, DELETE | Channel management                        |
-| `/api/permissions`   | GET, POST, PUT, DELETE | Permission management                     |
-| `/api/settings`      | GET, PUT               | Key-value settings store                  |
-| `/api/providers`     | GET                    | Available LLM providers                   |
-| `/api/provider-keys` | GET, POST, PUT, DELETE | API key and OAuth credential management   |
-| `/api/oauth`         | POST                   | Gemini CLI OAuth flow (acquire/save)      |
-| `/api/status`        | GET                    | System status (rule count, gateway state) |
+| Endpoint               | Methods                | Description                               |
+| ---------------------- | ---------------------- | ----------------------------------------- |
+| `/api/rules`           | GET, POST, PUT, DELETE | CRUD for rules                            |
+| `/api/channels`        | GET, POST, PUT, DELETE | Channel management                        |
+| `/api/permissions`     | GET, POST, PUT, DELETE | Permission management                     |
+| `/api/settings`        | GET, PUT               | Key-value settings store                  |
+| `/api/agent-settings`  | GET, PUT               | Agent settings (DM scope, browser mode)   |
+| `/api/providers`       | GET                    | Available LLM providers                   |
+| `/api/provider-keys`   | GET, POST, PUT, DELETE | API key and OAuth credential management   |
+| `/api/oauth`           | POST                   | Gemini CLI OAuth flow (acquire/save)      |
+| `/api/skills`          | GET, POST, DELETE      | Skills marketplace and installed skills   |
+| `/api/usage`           | GET                    | Token usage statistics                    |
+| `/api/stt`             | GET, PUT               | Speech-to-text configuration              |
+| `/api/telemetry`       | POST                   | Anonymous telemetry events                |
+| `/api/status`          | GET                    | System status (rule count, gateway state) |
 
 ### Data Directories
 
