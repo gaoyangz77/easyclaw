@@ -1,6 +1,7 @@
 import { spawn, execSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
+import { join } from "node:path";
 import { createLogger } from "@easyclaw/logger";
 import type {
   GatewayLaunchOptions,
@@ -184,18 +185,25 @@ export class GatewayLauncher extends EventEmitter<GatewayEvents> {
       env["OPENCLAW_STATE_DIR"] = this.options.stateDir;
     }
 
-    // Sanitize env vars that can cause the ELECTRON_RUN_AS_NODE child process
-    // to hang or misbehave. These are inherited from the parent (Electron main
-    // process) or CI environment but are dangerous in the gateway context:
+    // Sanitize env vars inherited from the parent (Electron main process) or
+    // CI environment that can cause the ELECTRON_RUN_AS_NODE child to hang.
     //
-    // NODE_COMPILE_CACHE — V8 compile cache created by a different Node.js
-    //   version is incompatible with Electron's embedded V8. On Windows,
-    //   mandatory file locking can deadlock during cache deserialization,
-    //   producing zero stdout/stderr (the exact symptom in the 15s timeout).
+    // NODE_COMPILE_CACHE — Set to a gateway-specific directory so V8 caches
+    //   compiled bytecode for entry.js (~22 MB). Without this, V8 recompiles
+    //   from scratch on every restart (~6 s on Windows). The cache is safe
+    //   because: (a) the gateway always uses the same Electron-embedded V8,
+    //   so there are no version mismatches; (b) we wait for the previous
+    //   process to exit before restarting, avoiding Windows file-lock races;
+    //   (c) V8 silently ignores corrupt cache entries and recompiles.
+    //   We delete any INHERITED value first (could point to a system Node.js
+    //   cache with an incompatible V8 version) and set our own.
     //
     // NODE_V8_COVERAGE — Coverage instrumentation can hang if the output
     //   directory doesn't exist or isn't writable by the child process.
     delete env.NODE_COMPILE_CACHE;
+    if (this.options.stateDir) {
+      env.NODE_COMPILE_CACHE = join(this.options.stateDir, "compile-cache");
+    }
 
     const child = spawn(this.options.nodeBin, [this.options.entryPath, "gateway"], {
       env,
