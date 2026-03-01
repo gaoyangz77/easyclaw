@@ -55,6 +55,18 @@
   ; Delete the old uninstaller binary (belt-and-suspenders).
   Delete "$INSTDIR\${UNINSTALL_FILENAME}"
 
+  ; Clean stale vendor build artifacts from previous installations.
+  ; The bundle pipeline reduces file count (plugin-sdk chunks deleted,
+  ; .ts sources replaced by pre-bundled .js), but NSIS only overwrites
+  ; existing files — it never deletes files absent from the new version.
+  ; Stale .ts and chunk files cause jiti to parse the full 16.6MB
+  ; plugin-sdk monolith on every gateway restart (~20s regression).
+  ; Only clean dist/ and extensions/ (small, fast). Deliberately skip
+  ; node_modules/ (~7K files) — it doesn't cause the regression and
+  ; would be slow to delete.
+  RMDir /r "$INSTDIR\resources\vendor\openclaw\dist"
+  RMDir /r "$INSTDIR\resources\vendor\openclaw\extensions"
+
   ; Remove gateway lock files so the new version starts clean.
   RMDir /r "$TEMP\openclaw"
 !macroend
