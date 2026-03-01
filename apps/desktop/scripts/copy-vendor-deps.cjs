@@ -9,6 +9,19 @@
 const fs = require("fs");
 const path = require("path");
 
+/** Recursively count files in a directory. */
+function countFiles(/** @type {string} */ dir) {
+  let count = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      count += countFiles(path.join(dir, entry.name));
+    } else {
+      count++;
+    }
+  }
+  return count;
+}
+
 /**
  * @param {import("electron-builder").AfterPackContext} context
  */
@@ -267,5 +280,49 @@ exports.default = async function copyVendorDeps(context) {
       );
     }
     console.log(`[copy-vendor-deps] Verified: all ${keepSet.size} keepset packages present in destination.`);
+  }
+
+  // ── Clean up .ts source files from pre-bundled extensions ──
+  // When bundle-vendor-deps runs, Phase 0.5b writes CJS bundles to
+  // .prebundled-extensions/ which electron-builder overlays on top of the
+  // vendor extensions/ copy.  The result: each extension dir has BOTH
+  // index.ts (from vendor) and index.js (from overlay).
+  //
+  // OpenClaw's plugin discovery searches ["index.ts", "index.js", ...] and
+  // picks the FIRST match.  If index.ts is still present, the gateway loads
+  // it through jiti/babel → 30 s startup delay.  Delete .ts source files
+  // from extension dirs that have a bundled index.js to force the fast path.
+  //
+  // This only runs when the bundle pipeline ran (bundleRan === true).
+  // Pack-only builds (no bundle) keep the .ts files so jiti can load them.
+  const extensionsDest = path.join(resourcesDir, "vendor", "openclaw", "extensions");
+  if (bundleRan && fs.existsSync(extensionsDest)) {
+    let cleanedExts = 0;
+    let cleanedFiles = 0;
+
+    for (const ext of fs.readdirSync(extensionsDest, { withFileTypes: true })) {
+      if (!ext.isDirectory()) continue;
+      const extDir = path.join(extensionsDest, ext.name);
+      const hasBundle = fs.existsSync(path.join(extDir, "index.js"));
+      if (!hasBundle) continue;
+
+      // Remove .ts source files (not .d.ts) and src/ directory
+      cleanedExts++;
+      const indexTs = path.join(extDir, "index.ts");
+      if (fs.existsSync(indexTs)) {
+        fs.unlinkSync(indexTs);
+        cleanedFiles++;
+      }
+      const srcDir = path.join(extDir, "src");
+      if (fs.existsSync(srcDir)) {
+        const count = countFiles(srcDir);
+        fs.rmSync(srcDir, { recursive: true, force: true });
+        cleanedFiles += count;
+      }
+    }
+
+    if (cleanedExts > 0) {
+      console.log(`[copy-vendor-deps] Cleaned .ts source files from ${cleanedExts} pre-bundled extensions (${cleanedFiles} files removed).`);
+    }
   }
 };
