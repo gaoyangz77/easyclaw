@@ -1284,11 +1284,16 @@ function generateSizeReport(/** @type {number} */ inlinedCount) {
 // ─── Phase 6: Stage pre-bundled extensions and restore vendor ───
 // prebundleExtensions() writes bundled .js files into vendor/openclaw/extensions/
 // in-place (needed by the smoke test and size report).  After those steps finish,
-// copy the results to a staging directory outside vendor and restore vendor to a
-// clean git state.  electron-builder.yml reads from the staging dir instead.
+// copy the results to a staging directory outside vendor and restore vendor's
+// extensions/ to a clean git state.  electron-builder.yml reads from the staging
+// dir instead.
 //
-// This prevents vendor/openclaw/ from having untracked files that trip the
-// pre-commit hook on every git commit/push.
+// Note: dist/ is also modified by the pipeline but is listed in vendor's
+// .gitignore, so it doesn't trigger the pre-commit hook.  Only extensions/
+// (which contains tracked .ts source files) needs staging + cleanup.
+//
+// This prevents vendor/openclaw/ from having unstaged changes or untracked
+// files that trip the pre-commit hook on every git commit/push.
 
 function stageExtensionsAndCleanVendor() {
   if (!fs.existsSync(extensionsDir)) return;
@@ -1300,9 +1305,14 @@ function stageExtensionsAndCleanVendor() {
     fs.rmSync(extStagingDir, { recursive: true, force: true });
   }
 
-  // Copy bundled extensions (index.js + manifest + package.json) to staging.
-  // Use cpSync for a faithful recursive copy.
-  fs.cpSync(extensionsDir, extStagingDir, { recursive: true });
+  // Copy bundled extensions to staging, excluding node_modules/ —
+  // extensions are pre-bundled CJS so their original npm deps are not needed.
+  // Copying them would also break the macOS universal merge (symlinks in
+  // .bin/ differ between arch temp dirs).
+  fs.cpSync(extensionsDir, extStagingDir, {
+    recursive: true,
+    filter: (src) => !src.includes(`${path.sep}node_modules`),
+  });
 
   // Count what was staged
   let stagedCount = 0;
@@ -1311,13 +1321,18 @@ function stageExtensionsAndCleanVendor() {
   }
 
   // Restore vendor/openclaw/extensions/ to its pristine git state.
+  // checkout restores modified/deleted tracked files; clean removes untracked
+  // files (the generated index.js bundles + package.json stubs).
   const { execSync } = require("child_process");
   try {
     execSync(`git -C "${vendorDir}" checkout -- extensions/`, { stdio: "ignore" });
-    execSync(`git -C "${vendorDir}" clean -fd extensions/`, { stdio: "ignore" });
   } catch {
     // If vendor isn't a git repo (e.g. extracted tarball), skip cleanup.
-    // The bundled files remain in vendor but won't cause issues.
+  }
+  try {
+    execSync(`git -C "${vendorDir}" clean -fd -- extensions/`, { stdio: "ignore" });
+  } catch {
+    // Same — non-git vendor, skip.
   }
 
   console.log(
