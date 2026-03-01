@@ -1199,6 +1199,141 @@ function smokeTestGateway() {
   process.exit(1);
 }
 
+// ─── Phase 5.5: Pre-warm V8 compile cache ───
+//
+// Generates a V8 compile cache for dist/entry.js at build time using the
+// Electron binary (same V8 version as runtime). This pre-compiled bytecode
+// is shipped with the app so the first gateway startup skips the expensive
+// parse+compile phase (~3-4s for the 22MB bundle).
+//
+// The cache is keyed by source content hash (not file path), so it remains
+// valid at runtime even though the file path differs from build time.
+// V8 bytecode (Ignition tier) is architecture-independent, so a cache
+// generated on x64 works on arm64 (relevant for macOS universal builds).
+
+function generateCompileCache() {
+  console.log("[bundle-vendor-deps] Phase 5.5: Generating V8 compile cache...");
+
+  const { execFileSync } = require("child_process");
+  const crypto = require("crypto");
+  const os = require("os");
+
+  // Locate Electron binary — skip gracefully if not available (e.g. CI without Electron)
+  let electronPath;
+  try {
+    electronPath = require("electron");
+    if (typeof electronPath !== "string") {
+      console.log("[bundle-vendor-deps] Electron binary path not a string, skipping compile cache.");
+      return;
+    }
+  } catch {
+    console.log("[bundle-vendor-deps] Electron binary not found, skipping compile cache generation.");
+    return;
+  }
+
+  const cacheDir = path.join(distDir, "compile-cache");
+
+  // Clean up any previous cache
+  if (fs.existsSync(cacheDir)) {
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+  }
+  fs.mkdirSync(cacheDir, { recursive: true });
+
+  // Create a temporary warm-up script that imports entry.js, triggering V8
+  // compilation. The compile cache (NODE_COMPILE_CACHE) captures the bytecode.
+  // CJS format so it works regardless of package.json "type" field.
+  const warmUpScript = path.join(distDir, "_warmup.cjs");
+  fs.writeFileSync(
+    warmUpScript,
+    [
+      "'use strict';",
+      "const { pathToFileURL } = require('url');",
+      "const entryPath = process.argv[2];",
+      "import(pathToFileURL(entryPath).href)",
+      "  .then(() => setTimeout(() => process.exit(0), 1000))",
+      "  .catch(() => setTimeout(() => process.exit(0), 1000));",
+      "// Hard timeout in case import() hangs",
+      "setTimeout(() => process.exit(0), 25000);",
+    ].join("\n"),
+    "utf-8",
+  );
+
+  // Write a minimal config so the gateway can start (same as smoke test)
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "easyclaw-compile-cache-"));
+  const minimalConfig = {
+    gateway: { port: 59998, mode: "local" },
+    models: {},
+    agents: { defaults: { skipBootstrap: true } },
+  };
+  fs.writeFileSync(
+    path.join(tmpDir, "openclaw.json"),
+    JSON.stringify(minimalConfig),
+    "utf-8",
+  );
+
+  const t0 = Date.now();
+
+  try {
+    execFileSync(electronPath, [warmUpScript, ENTRY_FILE], {
+      cwd: tmpDir,
+      timeout: 30_000,
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: "1",
+        NODE_COMPILE_CACHE: cacheDir,
+        OPENCLAW_CONFIG_PATH: path.join(tmpDir, "openclaw.json"),
+        OPENCLAW_STATE_DIR: tmpDir,
+        OPENCLAW_BUNDLED_PLUGINS_DIR: extStagingDir,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+      killSignal: "SIGTERM",
+    });
+  } catch (err) {
+    // Process may be killed by timeout or exit non-zero — the cache is still
+    // generated as long as V8 had time to compile and flush. Only warn if the
+    // process was killed before it could compile (very short timeout).
+    const killed = /** @type {any} */ (err).killed ?? false;
+    if (killed) {
+      console.log("[bundle-vendor-deps] Compile cache warm-up timed out (cache may be incomplete).");
+    }
+  }
+
+  // Clean up temp files
+  fs.unlinkSync(warmUpScript);
+  try {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  } catch {}
+
+  // Check if cache files were generated
+  const cacheFiles = fs.existsSync(cacheDir)
+    ? fs.readdirSync(cacheDir).filter((f) => !f.startsWith("."))
+    : [];
+
+  if (cacheFiles.length === 0) {
+    console.log("[bundle-vendor-deps] No compile cache files generated (V8 may not support this). Skipping.");
+    fs.rmSync(cacheDir, { recursive: true, force: true });
+    return;
+  }
+
+  // Write version marker — hash of entry.js content for cache invalidation
+  const entryHash = crypto
+    .createHash("sha256")
+    .update(fs.readFileSync(ENTRY_FILE))
+    .digest("hex")
+    .slice(0, 16);
+  fs.writeFileSync(path.join(cacheDir, ".version"), entryHash, "utf-8");
+
+  const elapsed = Date.now() - t0;
+  const cacheSize = dirSize(cacheDir);
+  const fmt = (/** @type {number} */ bytes) =>
+    bytes >= 1024 * 1024
+      ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
+      : `${(bytes / 1024).toFixed(1)} KB`;
+  console.log(
+    `[bundle-vendor-deps] Compile cache generated: ${cacheFiles.length} file(s), ${fmt(cacheSize)} in ${(elapsed / 1000).toFixed(1)}s`,
+  );
+}
+
 // ─── Size Report ───
 // Collects sizes of key pipeline outputs and writes a JSON report to tmp/.
 // Used by the update-vendor skill to detect size regressions across upgrades.
@@ -1316,6 +1451,7 @@ if (!fs.existsSync(nmDir)) {
   const allExternals = new Set([...extExternals, ...bundleExternals]);
   verifyExternalImports(allExternals, keepSet);
   smokeTestGateway();
+  generateCompileCache();
   generateSizeReport(inlinedCount);
 
   // Write marker so re-runs are skipped (idempotency guard).

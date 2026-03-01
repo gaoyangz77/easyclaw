@@ -1,7 +1,8 @@
 import { spawn, execSync } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { join } from "node:path";
+import { existsSync, readFileSync, mkdirSync, cpSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { createLogger } from "@easyclaw/logger";
 import type {
   GatewayLaunchOptions,
@@ -188,21 +189,49 @@ export class GatewayLauncher extends EventEmitter<GatewayEvents> {
     // Sanitize env vars inherited from the parent (Electron main process) or
     // CI environment that can cause the ELECTRON_RUN_AS_NODE child to hang.
     //
-    // NODE_COMPILE_CACHE — Set to a gateway-specific directory so V8 caches
-    //   compiled bytecode for entry.js (~22 MB). Without this, V8 recompiles
-    //   from scratch on every restart (~6 s on Windows). The cache is safe
-    //   because: (a) the gateway always uses the same Electron-embedded V8,
-    //   so there are no version mismatches; (b) we wait for the previous
-    //   process to exit before restarting, avoiding Windows file-lock races;
-    //   (c) V8 silently ignores corrupt cache entries and recompiles.
-    //   We delete any INHERITED value first (could point to a system Node.js
-    //   cache with an incompatible V8 version) and set our own.
+    // NODE_COMPILE_CACHE — V8 compile cache for entry.js (~22 MB). The build
+    //   pipeline pre-warms this cache using the Electron binary so the first
+    //   startup skips the ~3-4 s parse+compile phase. The shipped cache lives
+    //   in dist/compile-cache/ (read-only in packaged apps), so we copy it to
+    //   the user's writable stateDir on first launch or after app updates
+    //   (detected via a .version marker). Subsequent restarts reuse the cache.
     //
     // NODE_V8_COVERAGE — Coverage instrumentation can hang if the output
     //   directory doesn't exist or isn't writable by the child process.
     delete env.NODE_COMPILE_CACHE;
     if (this.options.stateDir) {
-      env.NODE_COMPILE_CACHE = join(this.options.stateDir, "compile-cache");
+      const userCacheDir = join(this.options.stateDir, "compile-cache");
+      const shippedCacheDir = join(
+        dirname(this.options.entryPath),
+        "dist",
+        "compile-cache",
+      );
+      const shippedVersionFile = join(shippedCacheDir, ".version");
+
+      // Seed from shipped pre-warmed cache if version changed (new install/update)
+      if (existsSync(shippedVersionFile)) {
+        try {
+          const shippedVer = readFileSync(shippedVersionFile, "utf-8").trim();
+          const userVerFile = join(userCacheDir, ".version");
+          const userVer = existsSync(userVerFile)
+            ? readFileSync(userVerFile, "utf-8").trim()
+            : "";
+          if (shippedVer !== userVer) {
+            mkdirSync(userCacheDir, { recursive: true });
+            cpSync(shippedCacheDir, userCacheDir, {
+              recursive: true,
+              force: true,
+            });
+            log.info(
+              `Seeded compile cache from shipped cache (version: ${shippedVer})`,
+            );
+          }
+        } catch {
+          // Copy failed — runtime will compile from scratch (graceful degradation)
+        }
+      }
+
+      env.NODE_COMPILE_CACHE = userCacheDir;
     }
 
     const child = spawn(this.options.nodeBin, [this.options.entryPath, "gateway"], {
