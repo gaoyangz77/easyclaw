@@ -319,6 +319,35 @@ exports.default = async function copyVendorDeps(context) {
         fs.rmSync(srcDir, { recursive: true, force: true });
         cleanedFiles += count;
       }
+
+      // Fix package.json: ./index.ts → ./index.js + remove "type": "module"
+      // The .prebundled-extensions overlay should have already written a fixed
+      // package.json, but if the overlay didn't apply (e.g. electron-builder
+      // race or platform quirk), the original package.json still references
+      // ./index.ts which we just deleted → "escapes package directory" error.
+      // Also remove "type": "module" so the CJS bundle isn't misidentified.
+      const pkgPath = path.join(extDir, "package.json");
+      if (fs.existsSync(pkgPath)) {
+        try {
+          const pkgJson = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+          let changed = false;
+          const raw = JSON.stringify(pkgJson);
+          if (raw.includes("./index.ts")) {
+            Object.assign(pkgJson, JSON.parse(raw.replace(/\.\/index\.ts/g, "./index.js")));
+            changed = true;
+          }
+          if (pkgJson.type === "module") {
+            delete pkgJson.type;
+            changed = true;
+          }
+          if (changed) {
+            fs.writeFileSync(pkgPath, JSON.stringify(pkgJson, null, 2) + "\n", "utf-8");
+            cleanedFiles++;
+          }
+        } catch {
+          // Corrupt package.json — skip silently, the bundle should work without it
+        }
+      }
     }
 
     if (cleanedExts > 0) {
