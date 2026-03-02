@@ -34,8 +34,12 @@ function resolvePairingPath(channelId: string): string {
   return join(stateDir, "credentials", `${channelId}-pairing.json`);
 }
 
-function resolveAllowFromPath(channelId: string): string {
+function resolveAllowFromPath(channelId: string, accountId?: string): string {
   const stateDir = resolveOpenClawStateDir();
+  const normalized = accountId?.trim().toLowerCase() || "";
+  if (normalized) {
+    return join(stateDir, "credentials", `${channelId}-${normalized}-allowFrom.json`);
+  }
   return join(stateDir, "credentials", `${channelId}-allowFrom.json`);
 }
 
@@ -57,9 +61,9 @@ async function writePairingRequests(channelId: string, requests: PairingRequest[
   await fs.writeFile(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8");
 }
 
-async function readAllowFromList(channelId: string): Promise<string[]> {
+async function readAllowFromList(channelId: string, accountId?: string): Promise<string[]> {
   try {
-    const filePath = resolveAllowFromPath(channelId);
+    const filePath = resolveAllowFromPath(channelId, accountId);
     const content = await fs.readFile(filePath, "utf-8");
     const data: AllowFromStore = JSON.parse(content);
     return Array.isArray(data.allowFrom) ? data.allowFrom : [];
@@ -69,10 +73,44 @@ async function readAllowFromList(channelId: string): Promise<string[]> {
   }
 }
 
-async function writeAllowFromList(channelId: string, allowFrom: string[]): Promise<void> {
-  const filePath = resolveAllowFromPath(channelId);
+async function writeAllowFromList(channelId: string, allowFrom: string[], accountId?: string): Promise<void> {
+  const filePath = resolveAllowFromPath(channelId, accountId);
   const data: AllowFromStore = { version: 1, allowFrom };
   await fs.writeFile(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8");
+}
+
+/** Read and merge allowFrom entries from all scoped + legacy files for a channel. */
+async function readAllAllowFromLists(channelId: string): Promise<string[]> {
+  const stateDir = resolveOpenClawStateDir();
+  const credentialsDir = join(stateDir, "credentials");
+  const prefix = `${channelId}-`;
+  const suffix = "-allowFrom.json";
+  const allEntries = new Set<string>();
+
+  let files: string[];
+  try {
+    files = await fs.readdir(credentialsDir);
+  } catch (err: any) {
+    if (err.code === "ENOENT") return [];
+    throw err;
+  }
+
+  for (const file of files) {
+    // Match both legacy "{channelId}-allowFrom.json" and scoped "{channelId}-{accountId}-allowFrom.json"
+    if (!file.startsWith(prefix) || !file.endsWith(suffix)) continue;
+
+    try {
+      const content = await fs.readFile(join(credentialsDir, file), "utf-8");
+      const data: AllowFromStore = JSON.parse(content);
+      if (Array.isArray(data.allowFrom)) {
+        for (const entry of data.allowFrom) allEntries.add(entry);
+      }
+    } catch {
+      // Skip unreadable files
+    }
+  }
+
+  return [...allEntries];
 }
 
 const APPROVAL_MESSAGES = {
@@ -309,7 +347,7 @@ export const handleChannelRoutes: RouteHandler = async (req, res, url, pathname,
     }
 
     try {
-      const allowlist = await readAllowFromList(channelId);
+      const allowlist = await readAllAllowFromLists(channelId);
       sendJson(res, 200, { allowlist });
     } catch (err) {
       log.error(`Failed to read allowlist for ${channelId}:`, err);
@@ -342,14 +380,15 @@ export const handleChannelRoutes: RouteHandler = async (req, res, url, pathname,
       }
 
       const request = requests[requestIndex];
+      const accountId = request.meta?.accountId;
 
       requests.splice(requestIndex, 1);
       await writePairingRequests(body.channelId, requests);
 
-      const allowlist = await readAllowFromList(body.channelId);
+      const allowlist = await readAllowFromList(body.channelId, accountId);
       if (!allowlist.includes(request.id)) {
         allowlist.push(request.id);
-        await writeAllowFromList(body.channelId, allowlist);
+        await writeAllowFromList(body.channelId, allowlist, accountId);
       }
 
       sendJson(res, 200, { ok: true, id: request.id, entry: request });
@@ -379,16 +418,44 @@ export const handleChannelRoutes: RouteHandler = async (req, res, url, pathname,
     const [channelId, entry] = parts.map(decodeURIComponent);
 
     try {
-      const allowlist = await readAllowFromList(channelId);
-      const filtered = allowlist.filter(e => e !== entry);
-      const changed = filtered.length !== allowlist.length;
+      let changed = false;
+      const stateDir = resolveOpenClawStateDir();
+      const credentialsDir = join(stateDir, "credentials");
+      const prefix = `${channelId}-`;
+      const suffix = "-allowFrom.json";
+
+      let files: string[];
+      try {
+        files = await fs.readdir(credentialsDir);
+      } catch (err: any) {
+        if (err.code === "ENOENT") files = [];
+        else throw err;
+      }
+
+      // Remove entry from all matching allowFrom files (legacy + scoped)
+      for (const file of files) {
+        if (!file.startsWith(prefix) || !file.endsWith(suffix)) continue;
+        const filePath = join(credentialsDir, file);
+        try {
+          const content = await fs.readFile(filePath, "utf-8");
+          const data: AllowFromStore = JSON.parse(content);
+          if (!Array.isArray(data.allowFrom)) continue;
+          const filtered = data.allowFrom.filter((e: string) => e !== entry);
+          if (filtered.length !== data.allowFrom.length) {
+            await fs.writeFile(filePath, JSON.stringify({ version: 1, allowFrom: filtered }, null, 2) + "\n", "utf-8");
+            changed = true;
+          }
+        } catch {
+          // Skip unreadable files
+        }
+      }
 
       if (changed) {
-        await writeAllowFromList(channelId, filtered);
         log.info(`Removed from ${channelId} allowlist: ${entry}`);
       }
 
-      sendJson(res, 200, { ok: true, changed, allowFrom: filtered });
+      const remaining = await readAllAllowFromLists(channelId);
+      sendJson(res, 200, { ok: true, changed, allowFrom: remaining });
     } catch (err) {
       log.error("Failed to remove from allowlist:", err);
       sendJson(res, 500, { error: String(err) });
