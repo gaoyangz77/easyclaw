@@ -27,7 +27,7 @@ const extensionsDir = path.join(vendorDir, "extensions");
 const extStagingDir = path.resolve(__dirname, "..", ".prebundled-extensions");
 
 const ENTRY_FILE = path.join(distDir, "entry.js");
-const BUNDLE_TEMP = path.join(distDir, "gateway-bundle.tmp.mjs");
+const BUNDLE_TEMP_DIR = path.join(distDir, "_bundled");
 
 // ─── External packages: cannot be bundled by esbuild ───
 // Native modules (.node binaries), complex dynamic loaders, and undici
@@ -630,18 +630,34 @@ function prebundleExtensions() {
   return { externals: allExtPkgs, inlinedCount };
 }
 
-// ─── Phase 1: esbuild bundle ───
+// ─── Phase 1: esbuild bundle with code splitting ───
+//
+// Instead of bundling everything into a single 22MB monolith, we use
+// esbuild's code splitting to preserve dynamic import() boundaries.
+// This means V8 only parses/compiles/evaluates the code actually needed
+// at startup (~5-8MB), deferring the rest until it's first used.
+//
+// Output: dist/_bundled/entry.js + dist/_bundled/chunk-*.js
+// Phase 2 moves these into dist/.
 
 function bundleWithEsbuild() {
-  console.log("[bundle-vendor-deps] Phase 1: Bundling dist/entry.js with esbuild...");
+  console.log("[bundle-vendor-deps] Phase 1: Bundling dist/entry.js with code splitting...");
 
   const esbuild = loadEsbuild();
+
+  // Clean temp output dir
+  if (fs.existsSync(BUNDLE_TEMP_DIR)) {
+    fs.rmSync(BUNDLE_TEMP_DIR, { recursive: true, force: true });
+  }
+  fs.mkdirSync(BUNDLE_TEMP_DIR, { recursive: true });
 
   const t0 = Date.now();
   const result = esbuild.buildSync({
     entryPoints: [ENTRY_FILE],
     bundle: true,
-    outfile: BUNDLE_TEMP,
+    outdir: BUNDLE_TEMP_DIR,
+    splitting: true,
+    chunkNames: "chunk-[hash]",
     format: "esm",
     platform: "node",
     target: "node22",
@@ -660,9 +676,20 @@ function bundleWithEsbuild() {
   });
 
   const elapsed = Date.now() - t0;
-  const bundleSize = fs.statSync(BUNDLE_TEMP).size;
+
+  // Report split output
+  const outputFiles = fs.readdirSync(BUNDLE_TEMP_DIR);
+  const entryOut = path.join(BUNDLE_TEMP_DIR, "entry.js");
+  const entrySize = fs.existsSync(entryOut) ? fs.statSync(entryOut).size : 0;
+  const chunkFiles = outputFiles.filter((f) => f !== "entry.js");
+  let totalSize = entrySize;
+  for (const f of chunkFiles) {
+    totalSize += fs.statSync(path.join(BUNDLE_TEMP_DIR, f)).size;
+  }
   console.log(
-    `[bundle-vendor-deps] Bundle created: ${(bundleSize / 1024 / 1024).toFixed(1)}MB in ${elapsed}ms`,
+    `[bundle-vendor-deps] Bundle created in ${elapsed}ms: ` +
+      `entry.js ${(entrySize / 1024 / 1024).toFixed(1)}MB + ` +
+      `${chunkFiles.length} chunks = ${(totalSize / 1024 / 1024).toFixed(1)}MB total`,
   );
 
   // Collect which packages esbuild treated as external imports
@@ -742,26 +769,48 @@ function patchVendorConstants() {
   );
 }
 
-// ─── Phase 2: Replace entry.js with the bundle ───
-// The bundle must be named entry.js (not gateway-bundle.mjs) because the
-// vendor's isMainModule() check compares import.meta.url against the
-// wrapperEntryPairs table which only recognises "entry.js".  Using a
-// re-export stub breaks this: import.meta.url inside the bundle would
-// point at "gateway-bundle.mjs", causing isMainModule() to return false
-// and the gateway to exit immediately with code 0.
+// ─── Phase 2: Replace dist/ with split bundle output ───
+// Moves entry.js + chunk-*.js from the temp _bundled/ dir into dist/,
+// replacing the original vendor chunk files.
+//
+// The entry must be named entry.js because the vendor's isMainModule()
+// check compares import.meta.url against a table that only recognises
+// "entry.js".
 
 function replaceEntryWithBundle() {
-  console.log("[bundle-vendor-deps] Phase 2: Replacing entry.js with bundle...");
-  fs.unlinkSync(ENTRY_FILE);
-  fs.renameSync(BUNDLE_TEMP, ENTRY_FILE);
+  console.log("[bundle-vendor-deps] Phase 2: Replacing dist/ with split bundle...");
 
-  // jiti's lazyTransform() does:
-  //   createRequire(import.meta.url)("../dist/babel.cjs")
-  // which resolves relative to entry.js → dist/babel.cjs.
-  // After pre-bundling extensions to .js, babel is NOT needed for normal
-  // operation.  We copy it as a safety net in case a .ts extension is
-  // missed or a future vendor update adds one.
-  // jiti may be hoisted as "jiti" or scoped as "@mariozechner/jiti"
+  // 1. Delete old vendor files from dist/ (chunks, old entry.js, etc.)
+  //    Keep only files in KEEP_DIST_FILES and directories in KEEP_DIST_DIRS.
+  let deletedOld = 0;
+  for (const entry of fs.readdirSync(distDir, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      // _bundled is our temp dir, keep it for now; other dirs handled by KEEP_DIST_DIRS
+      if (entry.name === "_bundled" || KEEP_DIST_DIRS.has(entry.name)) continue;
+      const dirPath = path.join(distDir, entry.name);
+      fs.rmSync(dirPath, { recursive: true, force: true });
+      deletedOld++;
+      continue;
+    }
+    if (KEEP_DIST_FILES.has(entry.name)) continue;
+    try {
+      fs.unlinkSync(path.join(distDir, entry.name));
+      deletedOld++;
+    } catch {}
+  }
+  console.log(`[bundle-vendor-deps] Removed ${deletedOld} old vendor files/dirs from dist/`);
+
+  // 2. Move all files from _bundled/ to dist/
+  const bundledFiles = fs.readdirSync(BUNDLE_TEMP_DIR);
+  for (const file of bundledFiles) {
+    fs.renameSync(path.join(BUNDLE_TEMP_DIR, file), path.join(distDir, file));
+  }
+  console.log(`[bundle-vendor-deps] Moved ${bundledFiles.length} files from _bundled/ to dist/`);
+
+  // 3. Clean up temp dir
+  fs.rmSync(BUNDLE_TEMP_DIR, { recursive: true, force: true });
+
+  // 4. Copy babel.cjs as safety net for jiti
   const babelSrc = [
     path.join(nmDir, "jiti", "dist", "babel.cjs"),
     path.join(nmDir, "@mariozechner", "jiti", "dist", "babel.cjs"),
@@ -770,6 +819,55 @@ function replaceEntryWithBundle() {
   if (babelSrc) {
     fs.copyFileSync(babelSrc, babelDst);
     console.log("[bundle-vendor-deps] Copied babel.cjs to dist/ (safety net for jiti)");
+  }
+}
+
+// ─── Phase 2.5: Patch isMainModule for code splitting ───
+//
+// The vendor's isMainModule() function checks whether the running file is the
+// "entry" by comparing import.meta.url against a wrapperEntryPairs table that
+// only recognises "entry.js".  With code splitting the startup code lives in
+// a chunk file (e.g. chunk-ZFAOC7KA.js), so import.meta.url points to the
+// chunk and the check fails — the gateway exits immediately with code 0.
+//
+// This phase finds the chunk containing the wrapperEntryPairs table and adds
+// the chunk's own filename as a valid entryBasename.
+
+function patchIsMainModule() {
+  console.log("[bundle-vendor-deps] Phase 2.5: Patching isMainModule for code splitting...");
+
+  const PAIRS_PATTERN = '[{wrapperBasename:"openclaw.mjs",entryBasename:"entry.js"},{wrapperBasename:"openclaw.js",entryBasename:"entry.js"}]';
+
+  // Find the chunk that contains the wrapperEntryPairs table
+  const chunkFiles = fs.readdirSync(distDir).filter(
+    (f) => f.startsWith("chunk-") && f.endsWith(".js"),
+  );
+
+  let patchedFile = null;
+  for (const chunkFile of chunkFiles) {
+    const chunkPath = path.join(distDir, chunkFile);
+    const content = fs.readFileSync(chunkPath, "utf-8");
+    if (!content.includes(PAIRS_PATTERN)) continue;
+
+    // Add the chunk's own basename as a valid entry for both wrappers.
+    // Also add entry.js as wrapper so the chain openclaw.mjs→entry.js→chunk works.
+    const patchedPairs =
+      '[{wrapperBasename:"openclaw.mjs",entryBasename:"entry.js"},' +
+      '{wrapperBasename:"openclaw.js",entryBasename:"entry.js"},' +
+      `{wrapperBasename:"openclaw.mjs",entryBasename:"${chunkFile}"},` +
+      `{wrapperBasename:"openclaw.js",entryBasename:"${chunkFile}"},` +
+      `{wrapperBasename:"entry.js",entryBasename:"${chunkFile}"}]`;
+
+    const patched = content.replace(PAIRS_PATTERN, patchedPairs);
+    fs.writeFileSync(chunkPath, patched, "utf-8");
+    patchedFile = chunkFile;
+    break;
+  }
+
+  if (patchedFile) {
+    console.log(`[bundle-vendor-deps] Patched wrapperEntryPairs in ${patchedFile}`);
+  } else {
+    console.warn("[bundle-vendor-deps] WARNING: Could not find wrapperEntryPairs in any chunk — isMainModule may fail at runtime");
   }
 }
 
@@ -826,40 +924,14 @@ function patchPluginSdkPreload() {
   console.log("[bundle-vendor-deps] Plugin-sdk preload injected");
 }
 
-// ─── Phase 3: Delete chunk files from dist/ ───
-// Also deletes dist/plugin-sdk/ (1,575 chunk files) since all its code
-// is now inlined into the pre-bundled extensions by Phase 0.5.
+// ─── Phase 3: (no-op with code splitting) ───
+// Old vendor chunk cleanup is now handled by Phase 2 which replaces all
+// dist/ contents with the split bundle output.  This function is kept as
+// a placeholder for the pipeline call site.
 
 function deleteChunkFiles() {
-  console.log("[bundle-vendor-deps] Phase 3: Deleting chunk files from dist/...");
-
-  let deletedCount = 0;
-  let deletedBytes = 0;
-
-  for (const entry of fs.readdirSync(distDir, { withFileTypes: true })) {
-    if (entry.isDirectory()) {
-      // Delete directories NOT in the keep set (e.g. plugin-sdk/)
-      if (!KEEP_DIST_DIRS.has(entry.name)) {
-        const dirPath = path.join(distDir, entry.name);
-        const dirFiles = countFiles(dirPath);
-        fs.rmSync(dirPath, { recursive: true, force: true });
-        deletedCount += dirFiles;
-        console.log(`[bundle-vendor-deps] Deleted dist/${entry.name}/ (${dirFiles} files)`);
-      }
-      continue;
-    }
-    if (KEEP_DIST_FILES.has(entry.name)) continue;
-    const fullPath = path.join(distDir, entry.name);
-    try {
-      deletedBytes += fs.statSync(fullPath).size;
-      fs.unlinkSync(fullPath);
-      deletedCount++;
-    } catch {}
-  }
-
-  console.log(
-    `[bundle-vendor-deps] Deleted ${deletedCount} chunk files (${(deletedBytes / 1024 / 1024).toFixed(1)}MB)`,
-  );
+  // Phase 2 already cleaned dist/ and moved split chunks in.
+  // Nothing left to do here.
 }
 
 // ─── Phase 4: Clean up node_modules ───
@@ -1201,15 +1273,13 @@ function smokeTestGateway() {
 
 // ─── Phase 5.5: Pre-warm V8 compile cache ───
 //
-// Generates a V8 compile cache for dist/entry.js at build time using the
-// Electron binary (same V8 version as runtime). This pre-compiled bytecode
-// is shipped with the app so the first gateway startup skips the expensive
-// parse+compile phase (~3-4s for the 22MB bundle).
+// Generates a V8 compile cache for dist/ JS files at build time using the
+// Electron binary (same V8 version as runtime). With code splitting, only
+// the startup-critical chunks are loaded during warm-up, so the cache is
+// smaller and more targeted than before.
 //
 // The cache is keyed by source content hash (not file path), so it remains
 // valid at runtime even though the file path differs from build time.
-// V8 bytecode (Ignition tier) is architecture-independent, so a cache
-// generated on x64 works on arm64 (relevant for macOS universal builds).
 
 function generateCompileCache() {
   console.log("[bundle-vendor-deps] Phase 5.5: Generating V8 compile cache...");
@@ -1315,12 +1385,17 @@ function generateCompileCache() {
     return;
   }
 
-  // Write version marker — hash of entry.js content for cache invalidation
-  const entryHash = crypto
-    .createHash("sha256")
-    .update(fs.readFileSync(ENTRY_FILE))
-    .digest("hex")
-    .slice(0, 16);
+  // Write version marker — hash of all dist JS files (entry + chunks)
+  // for cache invalidation. With code splitting, a chunk change also
+  // invalidates the cache.
+  const hashStream = crypto.createHash("sha256");
+  const distJsFiles = fs.readdirSync(distDir)
+    .filter((f) => f.endsWith(".js"))
+    .sort();
+  for (const f of distJsFiles) {
+    hashStream.update(fs.readFileSync(path.join(distDir, f)));
+  }
+  const entryHash = hashStream.digest("hex").slice(0, 16);
   fs.writeFileSync(path.join(cacheDir, ".version"), entryHash, "utf-8");
 
   const elapsed = Date.now() - t0;
@@ -1346,9 +1421,17 @@ function generateSizeReport(/** @type {number} */ inlinedCount) {
       ? `${(bytes / 1024 / 1024).toFixed(1)} MB`
       : `${(bytes / 1024).toFixed(1)} KB`;
 
-  // 1. Entry bundle
+  // 1. Entry bundle + chunks (code splitting)
   const entryBundle = fs.existsSync(ENTRY_FILE) ? fs.statSync(ENTRY_FILE).size : 0;
+  const chunkJsFiles = fs.readdirSync(distDir).filter((f) => f.startsWith("chunk-") && f.endsWith(".js"));
+  let chunksTotal = 0;
+  for (const f of chunkJsFiles) {
+    chunksTotal += fs.statSync(path.join(distDir, f)).size;
+  }
   console.log(`  dist/entry.js              ${fmt(entryBundle)}`);
+  if (chunkJsFiles.length > 0) {
+    console.log(`  dist/chunk-*.js (${chunkJsFiles.length} files) ${fmt(chunksTotal)}`);
+  }
 
   // 2. Plugin-sdk monolithic bundle
   const pluginSdkIndex = path.join(distDir, "plugin-sdk", "index.js");
@@ -1384,7 +1467,7 @@ function generateSizeReport(/** @type {number} */ inlinedCount) {
   console.log(`  node_modules/              ${fmt(nmSize)}`);
 
   // Grand total
-  const grandTotal = entryBundle + pluginSdk + extTotal + nmSize;
+  const grandTotal = entryBundle + chunksTotal + pluginSdk + extTotal + nmSize;
   console.log(`  TOTAL                      ${fmt(grandTotal)}`);
 
   // Write JSON report
@@ -1397,6 +1480,7 @@ function generateSizeReport(/** @type {number} */ inlinedCount) {
     vendorHash,
     timestamp: new Date().toISOString(),
     entryBundle,
+    chunks: { count: chunkJsFiles.length, total: chunksTotal },
     pluginSdk,
     extensions: {
       total: extTotal,
@@ -1444,6 +1528,7 @@ if (!fs.existsSync(nmDir)) {
   patchVendorConstants();
   const bundleExternals = bundleWithEsbuild();
   replaceEntryWithBundle();
+  patchIsMainModule();
   patchPluginSdkPreload();
   deleteChunkFiles();
   const keepSet = cleanupNodeModules();
