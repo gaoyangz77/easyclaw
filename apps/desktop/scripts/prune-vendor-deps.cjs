@@ -177,6 +177,12 @@ try {
   process.exit(1);
 }
 
+// Restore tracked files dirtied by pnpm install (e.g. .npmrc) so the
+// pre-commit hook doesn't block commits due to vendor repo being dirty.
+try {
+  execSync("git checkout -- .", { cwd: vendorDir, stdio: "ignore" });
+} catch {}
+
 const sizeP1 = dirSize(nmDir);
 console.log(
   `[prune-vendor-deps] After Phase 1: ${(sizeP1 / 1024 / 1024).toFixed(0)}MB ` +

@@ -1543,5 +1543,13 @@ if (!fs.existsSync(nmDir)) {
   // Placed AFTER smoke test so a failed run can be re-tried.
   fs.writeFileSync(BUNDLED_MARKER, new Date().toISOString(), "utf-8");
 
+  // Restore any tracked files in vendor/openclaw that got dirtied by
+  // pnpm install (e.g. .npmrc).  The pre-commit hook checks that
+  // vendor repos are clean — this avoids blocking subsequent commits.
+  try {
+    const { execFileSync } = require("child_process");
+    execFileSync("git", ["-C", vendorDir, "checkout", "--", "."], { stdio: "ignore" });
+  } catch {}
+
   console.log(`[bundle-vendor-deps] Done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 })();
