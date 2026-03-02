@@ -263,21 +263,49 @@ exports.default = async function copyVendorDeps(context) {
   // Post-copy verification: ensure every keepSet package exists in destination.
   // A missing package means it was absent from vendorSrc (deleted between
   // bundle and pack) and would cause a runtime "Cannot find module" error.
+  //
+  // If a package is missing but exists as a symlink in vendorSrc, resolve it
+  // by copying the dereferenced content.  This handles edge cases where
+  // bundle-vendor-deps' symlink resolution didn't fully clean up (e.g. a
+  // second pnpm install ran after the bundle step).
   if (keepSet.size > 0) {
+    let resolvedCount = 0;
     const missing = [];
     const notInSource = [];
     for (const pkg of keepSet) {
       const destPkg = path.join(vendorDest, ...pkg.split("/"));
-      if (!fs.existsSync(destPkg)) {
-        // Only fail if the package was in vendorSrc — if it wasn't there
-        // either, it's an optional/native dep that was never installed.
+      try {
+        fs.statSync(destPkg); // follows symlinks — throws if broken or absent
+      } catch {
+        // Package is missing or a broken symlink in destination.
+        // Try to resolve from source by dereferencing the symlink.
         const srcPkg = path.join(vendorSrc, ...pkg.split("/"));
-        if (fs.existsSync(srcPkg)) {
-          missing.push(pkg);
-        } else {
-          notInSource.push(pkg);
+        let resolved = false;
+        try {
+          const realPath = fs.realpathSync(srcPkg);
+          if (fs.statSync(realPath).isDirectory()) {
+            // Remove broken symlink at dest if it exists
+            try { fs.rmSync(destPkg, { force: true }); } catch {}
+            fs.mkdirSync(path.dirname(destPkg), { recursive: true });
+            fs.cpSync(realPath, destPkg, { recursive: true });
+            resolvedCount++;
+            resolved = true;
+          }
+        } catch {}
+        if (!resolved) {
+          // If it wasn't in the source either, it's an optional/native dep
+          // that was never installed on this platform — not an error.
+          try {
+            fs.lstatSync(srcPkg);
+            missing.push(pkg);
+          } catch {
+            notInSource.push(pkg);
+          }
         }
       }
+    }
+    if (resolvedCount > 0) {
+      console.log(`[copy-vendor-deps] Resolved ${resolvedCount} missing keepset package(s) by dereferencing from source`);
     }
     if (notInSource.length > 0) {
       console.log(`[copy-vendor-deps] Note: ${notInSource.length} keepset package(s) not in source (optional/native, OK): ${notInSource.join(", ")}`);

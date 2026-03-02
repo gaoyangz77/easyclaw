@@ -938,6 +938,55 @@ function deleteChunkFiles() {
 // Now that extensions are pre-bundled (all npm deps inlined), node_modules
 // only needs EXTERNAL_PACKAGES + their transitive dependencies.
 
+/**
+ * Resolve symlinks in node_modules to real directories.
+ *
+ * Root pnpm install processes the "file:vendor/openclaw" dependency using
+ * node-linker=pnpm (default), replacing vendor's hoisted real directories
+ * with symlinks into root's .pnpm/ store.  These break when copy-vendor-deps
+ * copies them to the packaged app (it skips .pnpm/ entirely, so the symlink
+ * targets don't exist in the destination).
+ *
+ * This function converts any top-level symlinks back to real directories by
+ * dereferencing them, ensuring the copy succeeds on all platforms.
+ */
+function resolveNodeModulesSymlinks() {
+  let resolved = 0;
+  const resolveInDir = (/** @type {string} */ dir) => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (entry.name.startsWith(".")) continue;
+      const fullPath = path.join(dir, entry.name);
+
+      if (entry.isSymbolicLink()) {
+        try {
+          const realPath = fs.realpathSync(fullPath);
+          if (fs.statSync(realPath).isDirectory()) {
+            fs.unlinkSync(fullPath);
+            fs.cpSync(realPath, fullPath, { recursive: true });
+            resolved++;
+          }
+        } catch {
+          // Broken symlink — will be cleaned up by cleanBrokenSymlinks later
+        }
+      } else if (entry.isDirectory() && entry.name.startsWith("@")) {
+        // Recurse into scope directories (@scope/)
+        resolveInDir(fullPath);
+      }
+    }
+  };
+
+  resolveInDir(nmDir);
+  if (resolved > 0) {
+    console.log(`[bundle-vendor-deps] Resolved ${resolved} symlinks to real directories`);
+  }
+}
+
 /** @returns {Set<string>} keepSet — packages that were found and preserved */
 function cleanupNodeModules() {
   console.log("[bundle-vendor-deps] Phase 4: Cleaning up node_modules...");
@@ -946,6 +995,10 @@ function cleanupNodeModules() {
     console.log("[bundle-vendor-deps] node_modules not found, skipping.");
     return new Set();
   }
+
+  // Resolve symlinks before anything else — root pnpm install may have
+  // replaced vendor's hoisted real directories with symlinks.
+  resolveNodeModulesSymlinks();
 
   const filesBefore = countFiles(nmDir);
 
