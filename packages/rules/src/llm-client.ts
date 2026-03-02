@@ -50,6 +50,9 @@ export async function chatCompletion(
       model: "openclaw",
       messages,
       temperature: 0,
+      // Tag as internal so the gateway generates a deterministic session key
+      // (`openai-user:easyclaw-rule-compile`) that the panel can filter out.
+      user: "easyclaw-rule-compile",
     }),
   });
 

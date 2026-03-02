@@ -146,9 +146,20 @@ export async function fetchPairingRequests(channelId: string): Promise<PairingRe
   return data.requests;
 }
 
-export async function fetchAllowlist(channelId: string): Promise<string[]> {
-  const data = await fetchJson<{ allowlist: string[] }>(`/pairing/allowlist/${channelId}`);
-  return data.allowlist;
+export interface AllowlistResult {
+  allowlist: string[];
+  labels: Record<string, string>;
+}
+
+export async function fetchAllowlist(channelId: string): Promise<AllowlistResult> {
+  return fetchJson<AllowlistResult>(`/pairing/allowlist/${channelId}`);
+}
+
+export async function setRecipientLabel(channelId: string, recipientId: string, label: string): Promise<void> {
+  await fetchJson(`/pairing/allowlist/${channelId}/${encodeURIComponent(recipientId)}/label`, {
+    method: "PUT",
+    body: JSON.stringify({ label }),
+  });
 }
 
 export async function approvePairing(channelId: string, code: string, locale?: string): Promise<{ id: string }> {

@@ -7,3 +7,4 @@ export { handleChannelRoutes } from "./channel-routes.js";
 export { handleUsageRoutes } from "./usage-routes.js";
 export { handleWecomRoutes } from "./wecom-routes.js";
 export { handleSkillsRoutes } from "./skills-routes.js";
+export { handleChatSessionRoutes } from "./chat-session-routes.js";

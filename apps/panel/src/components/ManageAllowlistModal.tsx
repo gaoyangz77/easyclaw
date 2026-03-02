@@ -37,12 +37,12 @@ export function ManageAllowlistModal({
       setError(null);
 
       try {
-        const [requests, list] = await Promise.all([
+        const [requests, result] = await Promise.all([
           fetchPairingRequests(channelId),
           fetchAllowlist(channelId),
         ]);
         setPairingRequests(requests);
-        setAllowlist(list);
+        setAllowlist(result.allowlist);
       } catch (err) {
         setError(String(err));
       } finally {

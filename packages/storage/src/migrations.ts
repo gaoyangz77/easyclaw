@@ -191,4 +191,31 @@ export const migrations: Migration[] = [
         );
     `,
   },
+  {
+    id: 12,
+    name: "add_chat_sessions_table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS chat_sessions (
+        key TEXT PRIMARY KEY,
+        custom_title TEXT,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        archived_at INTEGER,
+        created_at INTEGER NOT NULL
+      );
+    `,
+  },
+  {
+    id: 13,
+    name: "add_channel_recipients_table",
+    sql: `
+      CREATE TABLE IF NOT EXISTS channel_recipients (
+        channel_id TEXT NOT NULL,
+        recipient_id TEXT NOT NULL,
+        label TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (channel_id, recipient_id)
+      );
+    `,
+  },
 ];

@@ -20,7 +20,7 @@ EasyClaw wraps OpenClaw into a desktop app that **anyone can use**: install, lau
 - **Multi-Provider LLM Support**: 20+ providers (OpenAI, Anthropic, Google Gemini, DeepSeek, Zhipu/Z.ai, Moonshot/Kimi, Qwen, Groq, Mistral, xAI, OpenRouter, MiniMax, Venice AI, Xiaomi/MiMo, Volcengine/Doubao, Amazon Bedrock, NVIDIA NIM, etc.) plus subscription/coding plans (Claude, Gemini, Zhipu Coding, Qwen Coding, Kimi Code, MiniMax Coding, Volcengine Coding) and Ollama for local models
 - **OAuth & Subscription Plans**: Sign in with Google for free-tier Gemini access or connect Claude/Anthropic subscription—no API key needed. Auto-detects or installs CLI credentials
 - **Per-Provider Proxy Support**: Configure HTTP/SOCKS5 proxies per LLM provider or API key, with automatic routing and hot reload—essential for restricted regions
-- **WeChat Messaging (WeCom)**: Chat with your agent from WeChat via a WeCom Customer Service relay. Open-source relay server included (`apps/wecom-relay`)
+- **WeChat Messaging (WeCom)** *(deprecated)*: Chat with your agent from WeChat via a WeCom Customer Service relay. ⚠️ Our WeCom account was banned by Tencent on 2026-02-26, so this channel is no longer functional. The code remains in the repo for reference
 - **Multi-Account Channels**: Configure Telegram, WhatsApp, Discord, Slack, Google Chat, Signal, iMessage, Feishu/Lark, LINE, Matrix, Mattermost, Microsoft Teams, and more through UI with secure secret storage (Keychain/DPAPI)
 - **Token Usage Tracking**: Real-time statistics by model and provider, auto-refreshed from OpenClaw session files
 - **Speech-to-Text**: Region-aware STT integration for voice messages (Groq, Volcengine)
@@ -73,7 +73,7 @@ easyclaw/
 ├── apps/
 │   ├── desktop/          # Electron tray app (main process)
 │   ├── panel/            # React management UI (served by desktop)
-│   └── wecom-relay/      # WeCom Customer Service relay server (self-hosted)
+│   └── wecom-relay/      # WeCom relay server (deprecated — account banned by Tencent)
 ├── packages/
 │   ├── core/             # Shared types & Zod schemas
 │   ├── device-id/        # Machine fingerprinting for device identity
@@ -88,17 +88,15 @@ easyclaw/
 │   ├── telemetry/        # Privacy-first anonymous analytics client
 │   └── policy/           # Policy injector & guard evaluator logic
 ├── extensions/
-│   ├── dingtalk/         # DingTalk channel plugin
 │   ├── easyclaw-policy/  # OpenClaw plugin shell for policy injection
 │   ├── file-permissions/ # OpenClaw plugin for file access control
-│   └── wecom/            # WeCom channel plugin (runs inside gateway)
+│   └── wecom/            # WeCom channel plugin (deprecated)
 ├── scripts/
 │   ├── test-local.sh     # Local test pipeline (build + unit + e2e tests)
 │   ├── publish-release.sh # Publish draft GitHub Release
 │   └── rebuild-native.sh # Prebuild better-sqlite3 for Node.js + Electron
-├── vendor/
-│   └── openclaw/         # Vendored OpenClaw binary (gitignored)
-└── website/              # Static site + nginx/docker for hosting releases
+└── vendor/
+    └── openclaw/         # Vendored OpenClaw binary (gitignored)
 ```
 
 ## Workspaces
@@ -111,14 +109,13 @@ The monorepo uses pnpm workspaces (`apps/*`, `packages/*`, `extensions/*`) with 
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | `@easyclaw/desktop`      | Electron 35 tray app. Manages gateway lifecycle, hosts the panel server on port 3210, stores data in SQLite.           |
 | `@easyclaw/panel`        | React 19 + Vite 6 SPA. Pages for chat, rules, providers, channels, permissions, STT, usage, skills marketplace, and a first-launch onboarding wizard. |
-| `@easyclaw/wecom-relay`  | WeCom Customer Service relay server. Bridges WeChat users to the gateway via WebSocket. Deploy with Docker.            |
+| `@easyclaw/wecom-relay`  | WeCom relay server. *(Deprecated — WeCom account banned by Tencent on 2026-02-26)*            |
 
 ### Extensions
 
 | Package              | Description                                                                                                                    |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| `@easyclaw/wecom`            | WeCom channel plugin. Connects to the relay server via WebSocket, receives/sends messages, and registers as an OpenClaw channel. |
-| `@easyclaw/dingtalk`         | DingTalk channel integration.                                                                                                  |
+| `@easyclaw/wecom`            | WeCom channel plugin. *(Deprecated — WeCom account banned by Tencent on 2026-02-26)* |
 | `@easyclaw/easyclaw-policy`  | Thin OpenClaw plugin shell that wires policy injection into the gateway's `before_agent_start` hook.                           |
 | `@easyclaw/file-permissions` | OpenClaw plugin that enforces file access permissions by intercepting and validating tool calls before execution.               |
 
@@ -341,31 +338,6 @@ pnpm --filter @easyclaw/gateway test
 pnpm lint
 pnpm format       # Check
 pnpm format:fix   # Auto-fix
-```
-
-## Website & Deployment
-
-The `website/` directory contains the static product site hosted at `www.easy-claw.com`:
-
-```
-website/
-├── site/           # Static HTML/CSS/JS (i18n: EN/ZH/JA)
-│   ├── index.html
-│   ├── style.css
-│   ├── i18n.js
-│   ├── update-manifest.json
-│   └── releases/   # Installer binaries (gitignored)
-├── nginx/          # nginx config (HTTPS, redirect, caching)
-├── docker-compose.yml
-└── init-letsencrypt.sh
-```
-
-On the production server:
-
-```bash
-cd website
-./init-letsencrypt.sh   # First-time SSL setup
-docker compose up -d    # Start nginx + certbot
 ```
 
 ## License

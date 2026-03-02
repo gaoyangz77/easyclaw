@@ -1,22 +1,23 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useReducer } from "react";
 import { useTranslation } from "react-i18next";
-import EmojiPicker, { type EmojiClickData } from "emoji-picker-react";
-// Gateway attachment limit is 5 MB (image-only for webchat)
-const MAX_IMAGE_ATTACHMENT_BYTES = 5 * 1000 * 1000;
 import { fetchGatewayInfo, fetchProviderKeys, trackEvent, fetchChatShowAgentEvents, fetchChatPreserveToolEvents } from "../api/index.js";
 import { formatError } from "@easyclaw/core";
 import { configManager } from "../lib/config-manager.js";
 import { Select } from "../components/Select.js";
 import { GatewayChatClient } from "../lib/gateway-client.js";
 import type { ChatMessage, ChatImage, PendingImage } from "./chat/chat-utils.js";
-import { IMAGE_TYPES, DEFAULT_SESSION_KEY, INITIAL_VISIBLE, PAGE_SIZE, FETCH_BATCH, cleanMessageText, formatTimestamp, extractText, localizeError, parseRawMessages } from "./chat/chat-utils.js";
-import { readFileAsPending } from "./chat/chat-image-utils.js";
+import { INITIAL_VISIBLE, PAGE_SIZE, FETCH_BATCH, IMAGE_PLACEHOLDER, cleanMessageText, formatTimestamp, extractText, localizeError, parseRawMessages } from "./chat/chat-utils.js";
+import type { SessionsListResult } from "./chat/chat-utils.js";
 import { MarkdownMessage, CopyButton, CollapsibleContent } from "./chat/ChatMessage.js";
 import type { GatewayEvent, GatewayHelloOk } from "../lib/gateway-client.js";
 import { RunTracker } from "../lib/run-tracker.js";
 import { ChatEventBridge } from "../lib/chat-event-bridge.js";
 import { saveImages, restoreImages, clearImages } from "../lib/image-cache.js";
 import { Modal } from "../components/Modal.js";
+import { useSessionManager } from "./chat/useSessionManager.js";
+import { SessionTabBar } from "./chat/SessionTabBar.js";
+import type { GatewaySessionInfo } from "./chat/SessionTabBar.js";
+import { ChatInputArea } from "./chat/ChatInputArea.js";
 import "./ChatPage.css";
 
 export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: string | null) => void }) {
@@ -52,9 +53,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const clientRef = useRef<GatewayChatClient | null>(null);
   const bridgeRef = useRef<ChatEventBridge | null>(null);
-  const sessionKeyRef = useRef(DEFAULT_SESSION_KEY);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE);
   const prevScrollHeightRef = useRef(0);
@@ -62,12 +61,49 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   const fetchLimitRef = useRef(FETCH_BATCH);
   const isFetchingRef = useRef(false);
   const shouldInstantScrollRef = useRef(true);
-  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const emojiPickerRef = useRef<HTMLDivElement>(null);
   const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const filePathInputRef = useRef<HTMLInputElement>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+
+  // Session manager — polls sessions.list and handles switching + caching
+  const sessionManager = useSessionManager({
+    clientRef,
+    connected: connectionState === "connected",
+    getState: () => ({
+      messages,
+      streaming,
+      runId,
+      draft,
+      pendingImages,
+      visibleCount,
+      allFetched,
+    }),
+    setState: (state) => {
+      setMessages(state.messages);
+      setStreaming(state.streaming);
+      setRunId(state.runId);
+      setDraft(state.draft);
+      setPendingImages(state.pendingImages);
+      setVisibleCount(state.visibleCount);
+      setAllFetched(state.allFetched);
+      shouldInstantScrollRef.current = true;
+      fetchLimitRef.current = FETCH_BATCH;
+      isFetchingRef.current = false;
+      trackerRef.current.reset();
+    },
+  });
+
+  // Keep a ref to the active session key for synchronous reads in event handlers
+  const sessionKeyRef = useRef(sessionManager.activeSessionKey);
+  sessionKeyRef.current = sessionManager.activeSessionKey;
+
+  // Stable refs so handleEvent doesn't depend on the sessionManager object
+  // (which is recreated every render and would cause a connect/disconnect loop).
+  const markUnreadRef = useRef(sessionManager.markUnread);
+  markUnreadRef.current = sessionManager.markUnread;
+  const refreshSessionsRef = useRef(sessionManager.refreshSessions);
+  refreshSessionsRef.current = sessionManager.refreshSessions;
+  const sessionKeysRef = useRef<Set<string>>(new Set());
+  sessionKeysRef.current = new Set(sessionManager.sessions.map((s) => s.key));
 
   // Stable refs so event handler closures always see the latest state
   const runIdRef = useRef(runId);
@@ -218,7 +254,15 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         data?: Record<string, unknown>;
       } | undefined;
       if (!agentPayload) return;
-      if (agentPayload.sessionKey && agentPayload.sessionKey !== sessionKeyRef.current) return;
+      // Events for background sessions: mark tab as unread, don't process
+      if (agentPayload.sessionKey && agentPayload.sessionKey !== sessionKeyRef.current) {
+        markUnreadRef.current(agentPayload.sessionKey);
+        // New session detected — refresh session list so a tab appears
+        if (!sessionKeysRef.current.has(agentPayload.sessionKey)) {
+          refreshSessionsRef.current();
+        }
+        return;
+      }
 
       const agentRunId = agentPayload.runId;
 
@@ -302,6 +346,48 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       return;
     }
 
+    // Heartbeat-triggered agent runs (including main-session cron jobs) bypass
+    // the chat event pipeline — they call getReplyFromConfig directly and store
+    // the result in the session file without emitting chat delta/final events.
+    // Reload history when a heartbeat produces meaningful output so cron results
+    // and other heartbeat-driven responses appear in the chat in real time.
+    //
+    // We delay the reload slightly because the heartbeat event fires before the
+    // transcript is guaranteed to be flushed to disk.  The cron "finished" event
+    // below serves as a more reliable (later) fallback.
+    if (evt.event === "heartbeat") {
+      const hbPayload = evt.payload as { status?: string } | undefined;
+      const st = hbPayload?.status;
+      // "sent" = delivered to channel, "ok-token"/"ok-empty" = agent ran but
+      // no external channel, "skipped" with reason might still mean the agent
+      // ran for panel-only users.  Reload on any non-failed status.
+      if (st && st !== "failed") {
+        setTimeout(() => {
+          const client = clientRef.current;
+          if (client) loadHistory(client);
+        }, 600);
+        // Heartbeat may create new sessions — refresh tab list
+        refreshSessionsRef.current();
+      }
+      return;
+    }
+
+    // Cron "finished" event — a more reliable signal that the agent run is
+    // complete and the transcript is persisted.  Fires after the heartbeat
+    // event, so the assistant's response should be in the session file by now.
+    if (evt.event === "cron") {
+      const cronPayload = evt.payload as { action?: string; status?: string } | undefined;
+      if (cronPayload?.action === "finished" && cronPayload?.status === "ok") {
+        setTimeout(() => {
+          const client = clientRef.current;
+          if (client) loadHistory(client);
+        }, 300);
+        // Cron may create new sessions — refresh tab list
+        refreshSessionsRef.current();
+      }
+      return;
+    }
+
     if (evt.event !== "chat") return;
 
     const payload = evt.payload as {
@@ -314,9 +400,16 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
     if (!payload) return;
 
-    // Filter by sessionKey — only process events for our session
-    // (filters out rule compilation, OpenAI-compat endpoints, etc.)
-    if (payload.sessionKey && payload.sessionKey !== sessionKeyRef.current) return;
+    // Filter by sessionKey — only process events for our active session.
+    // Events for other sessions mark their tab as unread.
+    if (payload.sessionKey && payload.sessionKey !== sessionKeyRef.current) {
+      markUnreadRef.current(payload.sessionKey);
+      // New session detected — refresh session list so a tab appears
+      if (!sessionKeysRef.current.has(payload.sessionKey)) {
+        refreshSessionsRef.current();
+      }
+      return;
+    }
 
     const chatRunId = payload.runId;
     const isOurLocalRun = runIdRef.current && chatRunId === runIdRef.current;
@@ -350,6 +443,8 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         }
         case "final":
           tracker.dispatch({ type: "CHAT_FINAL", runId: chatRunId });
+          // Refresh sessions to pick up derived titles after completion
+          refreshSessionsRef.current();
           break;
         case "error":
           tracker.dispatch({ type: "CHAT_ERROR", runId: chatRunId });
@@ -524,7 +619,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
             if (cancelled) return;
             // Use session key from gateway snapshot if available
             const mainKey = hello.snapshot?.sessionDefaults?.mainSessionKey;
-            if (mainKey) sessionKeyRef.current = mainKey;
+            if (mainKey) sessionManager.setActiveSessionKey(mainKey);
             setConnectionState("connected");
             loadHistory(client).then(() => {
               // Show deferred disconnect error AFTER history is loaded,
@@ -580,6 +675,8 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
               role: "user",
               text: msg.text,
               timestamp: msg.timestamp,
+              isExternal: true,
+              channel: msg.channel,
             }]);
           },
         });
@@ -623,7 +720,6 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         ]);
         setDraft("");
         setPendingImages([]);
-        if (textareaRef.current) textareaRef.current.style.height = "auto";
         return;
       }
     } catch {
@@ -649,11 +745,6 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     trackerRef.current.dispatch({ type: "LOCAL_SEND", runId: idempotencyKey, sessionKey: sessionKeyRef.current });
     sendTimeRef.current = Date.now();
     trackEvent("chat.message_sent", { hasAttachment: files.length > 0 });
-
-    // Reset textarea height
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
 
     // Build RPC params — images sent as base64 attachments.
     const params: Record<string, unknown> = {
@@ -735,110 +826,25 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     });
   }
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      handleSend();
-    }
-  }
-
-  function handleInput(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    setDraft(e.target.value);
-    // Auto-resize
-    const el = e.target;
-    el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 120) + "px";
-  }
-
-  function handleEmojiClick(emojiData: EmojiClickData) {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      const newDraft = draft.slice(0, start) + emojiData.emoji + draft.slice(end);
-      setDraft(newDraft);
-      // Restore cursor position after emoji insertion
-      requestAnimationFrame(() => {
-        const pos = start + emojiData.emoji.length;
-        textarea.selectionStart = pos;
-        textarea.selectionEnd = pos;
-        textarea.focus();
+  // Fetch gateway sessions with previews for archived dropdown content search
+  const fetchGatewaySessions = useCallback(async (): Promise<GatewaySessionInfo[]> => {
+    const client = clientRef.current;
+    if (!client) return [];
+    try {
+      const result = await client.request<SessionsListResult>("sessions.list", {
+        includeDerivedTitles: true,
+        includeLastMessage: true,
       });
-    } else {
-      setDraft((prev) => prev + emojiData.emoji);
+      if (!result?.sessions) return [];
+      return result.sessions.map((s) => ({
+        key: s.key,
+        derivedTitle: s.derivedTitle,
+        lastMessagePreview: s.lastMessagePreview,
+      }));
+    } catch {
+      return [];
     }
-    setShowEmojiPicker(false);
-  }
-
-  // Close emoji picker when clicking outside
-  useEffect(() => {
-    if (!showEmojiPicker) return;
-    function handleClickOutside(e: MouseEvent) {
-      if (emojiPickerRef.current && !emojiPickerRef.current.contains(e.target as Node)) {
-        setShowEmojiPicker(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [showEmojiPicker]);
-
-  async function handleFileSelect(files: FileList | File[]) {
-    const results: PendingImage[] = [];
-    for (const file of Array.from(files)) {
-      if (!IMAGE_TYPES.includes(file.type)) continue;
-      if (file.size > MAX_IMAGE_ATTACHMENT_BYTES) {
-        alert(t("chat.imageTooLarge"));
-        continue;
-      }
-      const pending = await readFileAsPending(file);
-      if (pending) results.push(pending);
-    }
-    if (results.length > 0) {
-      setPendingImages((prev) => [...prev, ...results]);
-    }
-  }
-
-  function handleAttachClick() {
-    fileInputRef.current?.click();
-  }
-
-  function handleFilePathClick() {
-    filePathInputRef.current?.click();
-  }
-
-  function handleFilePathChange(e: React.ChangeEvent<HTMLInputElement>) {
-    if (!e.target.files || e.target.files.length === 0) return;
-    const paths = Array.from(e.target.files).map((f) => (f as File & { path?: string }).path ?? f.name);
-    const snippet = paths.join(" ");
-    // Insert paths at cursor with surrounding spaces to avoid merging with existing text
-    setDraft((prev) => {
-      const before = prev.length > 0 && !prev.endsWith(" ") ? " " : "";
-      return `${prev}${before}${snippet} `;
-    });
-    e.target.value = "";
-  }
-
-  function handleFileInputChange(e: React.ChangeEvent<HTMLInputElement>) {
-    if (e.target.files && e.target.files.length > 0) {
-      handleFileSelect(e.target.files);
-      e.target.value = ""; // reset so same file can be re-selected
-    }
-  }
-
-  function handlePaste(e: React.ClipboardEvent<HTMLTextAreaElement>) {
-    const items = e.clipboardData?.files;
-    if (items && items.length > 0) {
-      const imageFiles = Array.from(items).filter((f) => f.type.startsWith("image/"));
-      if (imageFiles.length > 0) {
-        e.preventDefault();
-        handleFileSelect(imageFiles);
-      }
-    }
-  }
-
-  function removePendingImage(index: number) {
-    setPendingImages((prev) => prev.filter((_, i) => i !== index));
-  }
+  }, []);
 
   const visibleMessages = messages.slice(Math.max(0, messages.length - visibleCount));
   const showHistoryEnd = allFetched && visibleCount >= messages.length && messages.length > 0;
@@ -852,6 +858,18 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
   return (
     <div className="chat-container">
+      <SessionTabBar
+        sessions={sessionManager.sessions}
+        activeSessionKey={sessionManager.activeSessionKey}
+        unreadKeys={sessionManager.unreadKeys}
+        onSwitchSession={sessionManager.switchSession}
+        onNewChat={sessionManager.createNewChat}
+        onArchiveSession={sessionManager.archiveSession}
+        onRenameSession={sessionManager.renameSession}
+        onRestoreSession={sessionManager.restoreSession}
+        onReorderSession={sessionManager.reorderSessions}
+        fetchGatewaySessions={fetchGatewaySessions}
+      />
       {messages.length === 0 && !streaming ? (
         <div className="chat-empty">
           <div>{t("chat.emptyState")}</div>
@@ -870,17 +888,23 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
                 </div>
               ) : null;
             }
-            const cleaned = cleanMessageText(msg.text);
+            const cleaned = cleanMessageText(msg.text).replaceAll(IMAGE_PLACEHOLDER, t("chat.imageAttachment"));
             const hasImages = msg.images && msg.images.length > 0;
             // Skip empty bubbles (text stripped by cleanMessageText and no images)
             if (!cleaned && !hasImages) return null;
+            // External user messages (from Telegram, Chrome, etc.) go on the left
+            const isLocalUser = msg.role === "user" && !msg.isExternal;
+            const wrapClass = isLocalUser ? "chat-bubble-wrap-user" : "chat-bubble-wrap-assistant";
+            const bubbleClass = isLocalUser ? "chat-bubble-user" : msg.isExternal ? "chat-bubble-external" : "chat-bubble-assistant";
             return (
-            <div key={i} className={`chat-bubble-wrap ${msg.role === "user" ? "chat-bubble-wrap-user" : "chat-bubble-wrap-assistant"}`}>
+            <div key={i} className={`chat-bubble-wrap ${wrapClass}`}>
               {msg.timestamp > 0 && (
-                <div className="chat-bubble-timestamp">{formatTimestamp(msg.timestamp, i18n.language)}</div>
+                <div className="chat-bubble-timestamp">
+                  {msg.channel ? `${msg.channel} · ` : ""}{formatTimestamp(msg.timestamp, i18n.language)}
+                </div>
               )}
             <div
-              className={`chat-bubble ${msg.role === "user" ? "chat-bubble-user" : "chat-bubble-assistant"}`}
+              className={`chat-bubble ${bubbleClass}`}
             >
               {hasImages && (
                 <div className="chat-bubble-images">
@@ -935,7 +959,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
               })()}
               <div className="chat-bubble-wrap chat-bubble-wrap-assistant">
                 <div className="chat-bubble chat-bubble-assistant chat-streaming-cursor">
-                  <MarkdownMessage text={cleanMessageText(streaming)} />
+                  <MarkdownMessage text={cleanMessageText(streaming).replaceAll(IMAGE_PLACEHOLDER, t("chat.imageAttachment"))} />
                 </div>
               </div>
             </>
@@ -970,7 +994,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
               <button
                 key={key}
                 className="chat-example-card"
-                onClick={() => { const text = t(`chat.${key}`); setDraft(text); setTimeout(() => { const el = textareaRef.current; if (el) { el.focus(); el.selectionStart = el.selectionEnd = text.length; } }, 0); }}
+                onClick={() => setDraft(t(`chat.${key}`))}
               >
                 {t(`chat.${key}`)}
               </button>
@@ -999,112 +1023,23 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
           className="btn btn-sm btn-secondary"
           onClick={handleReset}
           disabled={connectionState !== "connected"}
+          title={t("chat.resetTooltip")}
         >
           {t("chat.resetCommand")}
         </button>
       </div>
 
-      <div className="chat-input-area">
-        {pendingImages.length > 0 && (
-          <div className="chat-image-preview-strip">
-            {pendingImages.map((img, i) => (
-              <div key={i} className="chat-image-preview">
-                <img src={img.dataUrl} alt="" />
-                <button
-                  className="chat-image-preview-remove"
-                  onClick={() => removePendingImage(i)}
-                  title={t("chat.removeImage")}
-                  type="button"
-                >
-                  &times;
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="chat-input-row">
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={handleInput}
-            onKeyDown={handleKeyDown}
-            onPaste={handlePaste}
-            placeholder={t("chat.placeholder")}
-            rows={1}
-          />
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/gif,image/webp"
-            multiple
-            onChange={handleFileInputChange}
-            className="sr-input"
-          />
-          <input
-            ref={filePathInputRef}
-            type="file"
-            multiple
-            onChange={handleFilePathChange}
-            className="sr-input"
-          />
-          <button
-            className="chat-attach-btn"
-            onClick={handleFilePathClick}
-            title={t("chat.attachFile")}
-            type="button"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" />
-            </svg>
-          </button>
-          <button
-            className="chat-attach-btn"
-            onClick={handleAttachClick}
-            title={t("chat.attachImage")}
-            type="button"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <polyline points="21 15 16 10 5 21" />
-            </svg>
-          </button>
-          <div className="chat-emoji-wrapper" ref={emojiPickerRef}>
-            <button
-              className="chat-emoji-btn"
-              onClick={() => setShowEmojiPicker((v) => !v)}
-              title={t("chat.emoji")}
-              type="button"
-            >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="12" cy="12" r="10" />
-                <path d="M8 14s1.5 2 4 2 4-2 4-2" />
-                <line x1="9" y1="9" x2="9.01" y2="9" />
-                <line x1="15" y1="9" x2="15.01" y2="9" />
-              </svg>
-            </button>
-            {showEmojiPicker && (
-              <div className="chat-emoji-picker">
-                {/* @ts-expect-error emoji-picker-react types not fully compatible with React 19 */}
-                <EmojiPicker onEmojiClick={handleEmojiClick} width={320} height={400} />
-              </div>
-            )}
-          </div>
-          {(isStreaming || trackerRef.current.getView().canAbort) ? (
-            <button className="btn btn-danger" onClick={handleStop}>
-              {t("chat.stop")}
-            </button>
-          ) : (
-            <button
-              className="btn btn-primary"
-              onClick={handleSend}
-              disabled={(!draft.trim() && pendingImages.length === 0) || connectionState !== "connected"}
-            >
-              {t("chat.send")}
-            </button>
-          )}
-        </div>
-      </div>
+      <ChatInputArea
+        draft={draft}
+        pendingImages={pendingImages}
+        isStreaming={isStreaming}
+        canAbort={trackerRef.current.getView().canAbort}
+        connectionState={connectionState}
+        onDraftChange={setDraft}
+        onPendingImagesChange={setPendingImages}
+        onSend={handleSend}
+        onStop={handleStop}
+      />
       <Modal
         isOpen={showResetConfirm}
         onClose={() => setShowResetConfirm(false)}

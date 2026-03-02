@@ -8,9 +8,57 @@ export type ChatMessage = {
   timestamp: number;
   images?: ChatImage[];
   toolName?: string;
+  /** True for user messages from external channels (Telegram, Chrome, etc.), not typed in the panel. */
+  isExternal?: boolean;
+  /** Source channel for external messages (e.g. "telegram", "wechat"). */
+  channel?: string;
 };
 
 export type PendingImage = { dataUrl: string; base64: string; mimeType: string };
+
+/** Metadata for a session tab, sourced from gateway `sessions.list`. */
+export type SessionTabInfo = {
+  key: string;
+  displayName?: string;
+  derivedTitle?: string;
+  channel?: string;
+  updatedAt?: number;
+  kind?: string;
+  pinned?: boolean;
+  /** True for panel-created sessions not yet materialized on the gateway. */
+  isLocal?: boolean;
+};
+
+/** Per-session cached state for tab switching. */
+export type SessionChatState = {
+  messages: ChatMessage[];
+  streaming: string | null;
+  runId: string | null;
+  draft: string;
+  pendingImages: PendingImage[];
+  visibleCount: number;
+  allFetched: boolean;
+  lastAccessed: number;
+};
+
+/** Response from gateway `sessions.list` RPC. */
+export type SessionsListResult = {
+  ts: number;
+  count: number;
+  sessions: Array<{
+    key: string;
+    kind?: string;
+    displayName?: string;
+    derivedTitle?: string;
+    lastMessagePreview?: string;
+    channel?: string;
+    lastChannel?: string;
+    updatedAt?: number;
+    spawnedBy?: string;
+    totalTokens?: number;
+    chatType?: string;
+  }>;
+};
 
 export const IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 export const COMPRESS_MAX_DIMENSION = 1280; // resize longest side to this
@@ -22,6 +70,10 @@ export const DEFAULT_SESSION_KEY = "agent:main:main";
 export const INITIAL_VISIBLE = 50;
 export const PAGE_SIZE = 20;
 export const FETCH_BATCH = 200;
+
+/** Static marker inserted by cleanMessageText for media attachments.
+ *  Replaced with i18n text at render time. */
+export const IMAGE_PLACEHOLDER = "\u200B[__IMAGE__]\u200B";
 
 /**
  * Clean up raw gateway message text:
@@ -52,10 +104,37 @@ export function cleanMessageText(text: string): string {
   // Strip inline timestamp — rendered separately above the bubble
   cleaned = cleaned.replace(/^\[[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})? [A-Z]{2,5}\]\s*/, "");
 
+  // Strip gateway [System Message] blocks (cron delivery, system events).
+  // The entire message is internal scaffolding — the agent's response follows separately.
+  // Must come AFTER timestamp stripping, as gateway may prepend an inline timestamp.
+  cleaned = cleaned.replace(/^\[System Message\][\s\S]*$/, "").trim();
+
   // Strip Feishu/Lark sender open_id prefix (e.g. "ou_04119179e9551e91a9f8af9a09de50e8: Hi")
   // The gateway prepends `{senderName ?? senderOpenId}: ` to messages; when the
   // display name isn't resolved, the raw ou_xxx id leaks into the chat bubble.
   cleaned = cleaned.replace(/^ou_[a-f0-9]+:\s*/, "");
+
+  // Replace [media attached: <path> (<mime>) | <path>] blocks with a placeholder.
+  // The gateway stores inbound images as file paths; the panel cannot display them.
+  cleaned = cleaned.replace(/\[media attached:\s*[^\]]+\]/g, IMAGE_PLACEHOLDER);
+
+  // Strip agent instruction about sending images back (injected by gateway for media messages)
+  cleaned = cleaned.replace(/To send an image back,[\s\S]*?Keep caption in the text body\.\s*/g, "").trim();
+
+  // Strip raw channel-specific image metadata (e.g. Feishu image_key JSON)
+  cleaned = cleaned.replace(/\{"image_key"\s*:\s*"[^"]*"\}/g, "").trim();
+
+  // Strip cron/heartbeat system event wrapper — extract only the reminder content.
+  // Variants: "has been triggered" (with content) / "was triggered" (no-content fallback)
+  // Endings:  "Please relay…" (deliverToUser) / "Handle this…" (!deliverToUser)
+  const cronMatch = cleaned.match(/^A scheduled (?:reminder|cron event) (?:has been|was) triggered\.\s*(?:The reminder content is:\s*\n\n([\s\S]*?)\n\n(?:Please relay|Handle this)|.*$)/);
+  if (cronMatch) {
+    cleaned = (cronMatch[1] ?? "").trim();
+  }
+  // Strip exec completion event wrapper
+  cleaned = cleaned.replace(/^An async command you ran earlier has completed\.\s*The result is shown in the system messages above\.\s*(?:Please relay|Handle)[\s\S]*$/, "").trim();
+  // Strip trailing "Current time: ..." line appended by heartbeat runner
+  cleaned = cleaned.replace(/\nCurrent time: .+$/, "").trim();
 
   // Detect audio transcript pattern:
   //   [Audio] User text: [Telegram ... ] <media:audio>\nTranscript: 实际文本
@@ -100,6 +179,20 @@ export function extractImages(content: unknown): ChatImage[] {
       mimeType: b.mimeType ?? "image/jpeg",
     }))
     .filter((img) => img.data);
+}
+
+/**
+ * Detect heartbeat/cron system-event user messages injected by the gateway.
+ * These are NOT typed by the user — they're system-generated prompts for the agent.
+ */
+const CRON_EVENT_RE = /^A scheduled (?:reminder|cron event) (?:has been|was) triggered/;
+const EXEC_EVENT_RE = /^An async command you ran earlier has completed/;
+const HEARTBEAT_PROMPT_RE = /^(?:Current time:|HEARTBEAT_OK$)/;
+const SYSTEM_MSG_RE = /^\[System Message\]/;
+export function isSystemEventMessage(text: string): boolean {
+  // Strip optional inline timestamp prefix before matching.
+  const trimmed = text.trim().replace(/^\[[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})? [A-Z]{2,5}\]\s*/, "");
+  return CRON_EVENT_RE.test(trimmed) || EXEC_EVENT_RE.test(trimmed) || HEARTBEAT_PROMPT_RE.test(trimmed) || SYSTEM_MSG_RE.test(trimmed);
 }
 
 export const NO_PROVIDER_RE = /no\s+(llm\s+)?provider|no\s+api\s*key|provider\s+not\s+configured|key\s+not\s+(found|configured)/i;
@@ -160,7 +253,14 @@ export function parseRawMessages(
       const text = extractText(msg.content);
       const images = extractImages(msg.content);
       if (text.trim() || images.length > 0) {
-        parsed.push({ role: msg.role, text, timestamp: msg.timestamp ?? 0, images: images.length > 0 ? images : undefined });
+        const entry: ChatMessage = { role: msg.role, text, timestamp: msg.timestamp ?? 0, images: images.length > 0 ? images : undefined };
+        // Mark system-generated user messages (cron events, heartbeat prompts)
+        // as external so they render on the left/agent side.
+        if (msg.role === "user" && isSystemEventMessage(text)) {
+          entry.isExternal = true;
+          entry.channel = "cron";
+        }
+        parsed.push(entry);
       }
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
         for (const block of msg.content) {

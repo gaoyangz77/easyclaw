@@ -20,7 +20,7 @@ EasyClaw 把 OpenClaw 封装成一个**人人都能用的桌面应用**：安装
 - **多服务商 LLM 支持**：支持 20+ 个服务商（OpenAI、Anthropic、Google Gemini、DeepSeek、智谱/Z.ai、Moonshot/Kimi、通义千问、Groq、Mistral、xAI、OpenRouter、MiniMax、Venice AI、小米/MiMo、火山引擎/豆包、Amazon Bedrock、NVIDIA NIM 等），另有订阅/编程计划（Claude、Gemini、智谱编程、通义编程、Kimi Code、MiniMax 编程、火山编程）以及 Ollama 本地模型支持
 - **OAuth 与订阅计划**：使用 Google 账号登录即可免费使用 Gemini，或连接 Claude/Anthropic 订阅——无需 API 密钥。自动检测或安装 CLI 凭据
 - **按服务商配置代理**：为每个 LLM 服务商或 API 密钥配置 HTTP/SOCKS5 代理，支持自动路由和热重载——对受限地区至关重要
-- **微信消息通道（企业微信）**：通过企业微信客服 API 中继服务，直接在微信中与 Agent 对话。开源中继服务器见 `apps/wecom-relay`
+- **微信消息通道（企业微信）** *（已废弃）*：通过企业微信客服 API 中继服务，直接在微信中与 Agent 对话。⚠️ 企业微信账号已于 2026-02-26 被腾讯封禁，该通道不再可用。代码保留在仓库中仅供参考
 - **多账号通道支持**：通过界面配置 Telegram、WhatsApp、Discord、Slack、Google Chat、Signal、iMessage、飞书/Lark、LINE、Matrix、Mattermost、Microsoft Teams 等，密钥安全存储（Keychain/DPAPI）
 - **Token 用量追踪**：按模型和服务商实时统计，自动从 OpenClaw 会话文件刷新
 - **语音消息支持**：根据地区自动选择合适的语音识别服务（Groq / 火山引擎）
@@ -73,7 +73,7 @@ easyclaw/
 ├── apps/
 │   ├── desktop/          # Electron 托盘应用（主进程）
 │   ├── panel/            # React 管理界面（由 desktop 提供服务）
-│   └── wecom-relay/      # 企业微信客服 API 中继服务器（自部署）
+│   └── wecom-relay/      # 企业微信中继服务器（已废弃——账号被腾讯封禁）
 ├── packages/
 │   ├── core/             # 共享类型 & Zod schemas
 │   ├── device-id/        # 设备指纹（用于设备标识）
@@ -88,17 +88,15 @@ easyclaw/
 │   ├── telemetry/        # 隐私优先的匿名分析客户端
 │   └── policy/           # 策略注入器 & 守卫评估器逻辑
 ├── extensions/
-│   ├── dingtalk/         # 钉钉通道插件
 │   ├── easyclaw-policy/  # OpenClaw 策略注入插件壳
 │   ├── file-permissions/ # OpenClaw 文件访问控制插件
-│   └── wecom/            # 企业微信通道插件（运行在网关内）
+│   └── wecom/            # 企业微信通道插件（已废弃）
 ├── scripts/
 │   ├── test-local.sh     # 本地测试流程（构建 + 单元测试 + E2E 测试）
 │   ├── publish-release.sh # 发布 GitHub Release 草稿
 │   └── rebuild-native.sh # 预编译 better-sqlite3（Node.js + Electron）
-├── vendor/
-│   └── openclaw/         # 内置的 OpenClaw（gitignored）
-└── website/              # 静态站点 + nginx/docker 托管发布
+└── vendor/
+    └── openclaw/         # 内置的 OpenClaw（gitignored）
 ```
 
 ## 工作区
@@ -111,14 +109,13 @@ Monorepo 使用 pnpm workspaces（`apps/*`、`packages/*`、`extensions/*`），
 | ------------------------ | -------------------------------------------------------------------------------------- |
 | `@easyclaw/desktop`      | Electron 35 托盘应用。管理网关生命周期，在端口 3210 托管面板服务，数据存储于 SQLite。   |
 | `@easyclaw/panel`        | React 19 + Vite 6 SPA。包含聊天、规则、服务商、通道、权限、语音转文字、用量、技能市场页面，以及首次启动引导向导。  |
-| `@easyclaw/wecom-relay`  | 企业微信客服 API 中继服务器。通过 WebSocket 将微信用户桥接到网关。支持 Docker 部署。    |
+| `@easyclaw/wecom-relay`  | 企业微信中继服务器。*（已废弃——企微账号于 2026-02-26 被腾讯封禁）*    |
 
 ### 扩展
 
 | 包                   | 说明                                                                                         |
 | -------------------- | -------------------------------------------------------------------------------------------- |
-| `@easyclaw/wecom`            | 企业微信通道插件。通过 WebSocket 连接中继服务器，收发消息，注册为 OpenClaw 通道。              |
-| `@easyclaw/dingtalk`         | 钉钉通道插件。                                                                               |
+| `@easyclaw/wecom`            | 企业微信通道插件。*（已废弃——企微账号于 2026-02-26 被腾讯封禁）*              |
 | `@easyclaw/easyclaw-policy`  | 薄 OpenClaw 插件壳，将策略注入接入网关的 `before_agent_start` 钩子。                          |
 | `@easyclaw/file-permissions` | OpenClaw 插件，通过在工具调用执行前拦截和验证来强制执行文件访问权限。                          |
 
@@ -340,31 +337,6 @@ pnpm --filter @easyclaw/gateway test
 pnpm lint
 pnpm format       # 检查
 pnpm format:fix   # 自动修复
-```
-
-## 网站与部署
-
-`website/` 目录包含托管在 `www.easy-claw.com` 的静态产品站点：
-
-```
-website/
-├── site/           # 静态 HTML/CSS/JS（国际化：中/英/日）
-│   ├── index.html
-│   ├── style.css
-│   ├── i18n.js
-│   ├── update-manifest.json
-│   └── releases/   # 安装包（gitignored）
-├── nginx/          # nginx 配置（HTTPS、重定向、缓存）
-├── docker-compose.yml
-└── init-letsencrypt.sh
-```
-
-在生产服务器上：
-
-```bash
-cd website
-./init-letsencrypt.sh   # 首次 SSL 配置
-docker compose up -d    # 启动 nginx + certbot
 ```
 
 ## 许可证

@@ -902,7 +902,7 @@ describe("Database", () => {
       .prepare("SELECT * FROM _migrations")
       .all() as Array<{ id: number; name: string; applied_at: string }>;
 
-    expect(rows).toHaveLength(11);
+    expect(rows).toHaveLength(13);
     expect(rows[0].id).toBe(1);
     expect(rows[0].name).toBe("initial_schema");
     expect(rows[1].id).toBe(2);
@@ -917,6 +917,8 @@ describe("Database", () => {
     expect(rows[8].name).toBe("add_base_url_to_provider_keys");
     expect(rows[9].id).toBe(10);
     expect(rows[9].name).toBe("add_custom_provider_columns");
+    expect(rows[11].id).toBe(12);
+    expect(rows[11].name).toBe("add_chat_sessions_table");
   });
 
   it("should not re-apply migrations on second open", () => {
@@ -928,6 +930,6 @@ describe("Database", () => {
       .prepare("SELECT * FROM _migrations")
       .all() as Array<{ id: number; name: string }>;
 
-    expect(rows).toHaveLength(11);
+    expect(rows).toHaveLength(13);
   });
 });

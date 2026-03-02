@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next";
 import { deleteChannelAccount, unbindWeComAccount, type ChannelAccountSnapshot } from "../api/index.js";
 import { pollGatewayReady } from "../lib/poll-gateway.js";
 import { AddChannelAccountModal } from "../components/AddChannelAccountModal.js";
-import { ManageAllowlistModal } from "../components/ManageAllowlistModal.js";
 import { WeComBindingModal } from "../components/WeComBindingModal.js";
 import { ConfirmDialog } from "../components/ConfirmDialog.js";
 import { Select } from "../components/Select.js";
@@ -27,11 +26,6 @@ export function ChannelsPage() {
   const [selectedChannelId, setSelectedChannelId] = useState<string>("");
   const [selectedChannelLabel, setSelectedChannelLabel] = useState<string>("");
   const [editingAccount, setEditingAccount] = useState<{ accountId: string; name?: string; config: Record<string, unknown> } | undefined>(undefined);
-
-  // Allowlist modal state
-  const [allowlistModalOpen, setAllowlistModalOpen] = useState(false);
-  const [allowlistChannelId, setAllowlistChannelId] = useState<string>("");
-  const [allowlistChannelLabel, setAllowlistChannelLabel] = useState<string>("");
 
   // Delete confirm dialog state
   const [deleteConfirm, setDeleteConfirm] = useState<{ channelId: string; accountId: string; label: string } | null>(null);
@@ -140,15 +134,6 @@ export function ChannelsPage() {
     await pollGatewayReady(() => loadChannelStatus());
   }
 
-  function handleManageAllowlist(channelId: string) {
-    const knownChannel = KNOWN_CHANNELS.find(c => c.id === channelId);
-    const label = knownChannel ? t(knownChannel.labelKey) : snapshot?.channelLabels[channelId] || channelId;
-
-    setAllowlistChannelId(channelId);
-    setAllowlistChannelLabel(label);
-    setAllowlistModalOpen(true);
-  }
-
   if (loading) {
     return (
       <div>
@@ -245,7 +230,7 @@ export function ChannelsPage() {
               onClick={handleAddAccountFromDropdown}
               disabled={!selectedDropdownChannel}
             >
-              {t("channels.addAccount")}
+              {t("channels.connectBtn")}
             </button>
           </div>
 
@@ -290,8 +275,8 @@ export function ChannelsPage() {
         allAccounts={allAccounts}
         deletingKey={deletingKey}
         t={t}
+        i18nLang={i18n.language}
         onEdit={handleEditAccount}
-        onManageAllowlist={handleManageAllowlist}
         onDelete={handleDeleteAccount}
       />
 
@@ -308,14 +293,6 @@ export function ChannelsPage() {
         channelLabel={selectedChannelLabel}
         existingAccount={editingAccount}
         onSuccess={handleModalSuccess}
-      />
-
-      {/* Manage Allowlist Modal */}
-      <ManageAllowlistModal
-        isOpen={allowlistModalOpen}
-        onClose={() => setAllowlistModalOpen(false)}
-        channelId={allowlistChannelId}
-        channelLabel={allowlistChannelLabel}
       />
 
       {/* WeCom Binding Modal */}

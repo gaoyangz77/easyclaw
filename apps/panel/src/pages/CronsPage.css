@@ -1,0 +1,437 @@
+/* ===== Crons Page — List & Toolbar ===== */
+
+.crons-toolbar {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.crons-search-input {
+  flex: 1;
+  min-width: 180px;
+}
+
+.crons-filter-select {
+  min-width: 120px;
+}
+
+/* Status bar — inline badge style */
+.crons-status-bar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-bottom: 20px;
+  padding: 6px 14px;
+  background: var(--color-bg-alt);
+  border-radius: 20px;
+  border: 1px solid var(--color-border-light);
+}
+
+.crons-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.crons-status-dot-connected {
+  background-color: var(--color-success);
+  box-shadow: 0 0 6px rgba(0, 184, 132, 0.4);
+}
+
+.crons-status-dot-disconnected {
+  background-color: var(--color-danger);
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+}
+
+.crons-status-dot-connecting {
+  background-color: var(--color-warning);
+  animation: cron-pulse 1.5s ease-in-out infinite;
+}
+
+/* Table */
+.crons-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.crons-table th {
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-muted);
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border-light);
+  text-align: left;
+}
+
+.crons-table th:nth-child(3),
+.crons-table td:nth-child(3) { text-align: center; }
+
+.crons-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--color-border-light);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.crons-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Actions — 2×2 grid */
+.crons-table .td-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  white-space: normal;
+}
+
+.crons-table .td-actions .btn {
+  text-align: center;
+  justify-content: center;
+}
+
+/* Job name */
+.crons-job-name {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.crons-job-desc {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+/* Schedule — monospace plain text */
+.crons-schedule-text {
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.crons-schedule-tz {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-top: 2px;
+}
+
+/* Time cell */
+.crons-time-cell {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+/* Running indicator */
+.crons-running-indicator {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--color-primary);
+  margin-right: 6px;
+  animation: cron-pulse 1s ease-in-out infinite;
+}
+
+@keyframes cron-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Dark theme — page level */
+[data-theme="dark"] .crons-status-bar {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* ===== Cron Form — Dialog ===== */
+
+/* Section divider between major form areas */
+.cron-form-divider {
+  height: 1px;
+  background: var(--color-border-light);
+}
+
+/* Schedule type — segmented control */
+.crons-schedule-type-row {
+  display: inline-flex;
+}
+
+.crons-schedule-type-btn {
+  padding: 8px 18px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+}
+
+.crons-schedule-type-btn:first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.crons-schedule-type-btn:last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+.crons-schedule-type-btn:not(:first-child):not(:last-child) {
+  border-radius: 0;
+}
+
+.crons-schedule-type-btn:not(:first-child) {
+  margin-left: -1px;
+}
+
+.crons-schedule-type-btn:hover:not(.crons-schedule-type-btn-active) {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  z-index: 1;
+}
+
+.crons-schedule-type-btn-active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  z-index: 2;
+}
+
+/* Preset chips — pill-shaped quick-select */
+.crons-preset-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.crons-preset-chip {
+  padding: 6px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 20px;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.crons-preset-chip:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  background: rgba(91, 127, 255, 0.04);
+}
+
+.crons-preset-chip-active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+  font-weight: 500;
+}
+
+/* Visual cron builder — 5-field grid in a card */
+.crons-builder-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-top: 14px;
+  padding: 14px 12px 12px;
+  background: var(--color-bg-alt);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-light);
+}
+
+.crons-builder-field-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: 6px;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+/* Expression result badge */
+.crons-preset-description {
+  display: inline-block;
+  font-size: 12px;
+  color: var(--color-primary);
+  background: var(--color-primary-light);
+  padding: 4px 12px;
+  border-radius: 6px;
+  margin-top: 10px;
+  font-family: var(--font-mono, monospace);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* Form row (interval input + unit select) */
+.crons-form-row {
+  display: flex;
+  gap: 12px;
+}
+
+.crons-form-row > * {
+  flex: 1;
+}
+
+/* Field errors */
+.crons-field-error {
+  color: var(--color-danger);
+  font-size: 11px;
+  margin-top: 4px;
+}
+
+/* Advanced section — collapsible card */
+.crons-advanced-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 6px 0;
+  transition: color var(--transition-fast);
+}
+
+.crons-advanced-toggle:hover {
+  color: var(--color-primary);
+}
+
+.crons-advanced-content {
+  margin-top: 12px;
+  padding: 14px;
+  background: var(--color-bg-alt);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-light);
+}
+
+/* Options row (checkboxes) */
+.crons-options-row {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.crons-checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+/* Tooltip — trigger icon */
+.crons-tip-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background-color: rgba(91, 127, 255, 0.1);
+  color: var(--color-primary);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: help;
+  margin-left: 6px;
+  vertical-align: middle;
+  transition: background-color var(--transition-fast);
+}
+
+.crons-tip-trigger:hover {
+  background-color: rgba(91, 127, 255, 0.2);
+}
+
+/* Tooltip — fixed-position bubble (rendered via portal) */
+.crons-tip-bubble {
+  position: fixed;
+  z-index: 9999;
+  background: var(--color-text);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.6;
+  max-width: 360px;
+  width: max-content;
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+}
+
+/* ===== Dark Theme ===== */
+
+[data-theme="dark"] .cron-form-divider {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .crons-schedule-type-btn {
+  background: var(--color-bg-alt);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .crons-schedule-type-btn-active {
+  background: linear-gradient(135deg, #6c63ff 0%, #5b7fff 100%);
+  border-color: #6c63ff;
+  color: #fff;
+}
+
+[data-theme="dark"] .crons-preset-chip {
+  background: var(--color-bg-alt);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .crons-preset-chip:hover {
+  background: rgba(108, 99, 255, 0.08);
+}
+
+[data-theme="dark"] .crons-preset-chip-active {
+  background: linear-gradient(135deg, #6c63ff 0%, #5b7fff 100%);
+  border-color: #6c63ff;
+  color: #fff;
+}
+
+[data-theme="dark"] .crons-builder-row {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .crons-preset-description {
+  background: rgba(108, 99, 255, 0.12);
+  color: #818cf8;
+}
+
+[data-theme="dark"] .crons-advanced-content {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .crons-tip-trigger {
+  background-color: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+}
+
+[data-theme="dark"] .crons-tip-bubble {
+  background: #1e2333;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-lg);
+}

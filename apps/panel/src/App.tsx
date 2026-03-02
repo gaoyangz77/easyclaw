@@ -10,6 +10,7 @@ import { PermissionsPage } from "./pages/PermissionsPage.js";
 import { SttPage } from "./pages/SttPage.js";
 import { KeyUsagePage } from "./pages/KeyUsagePage.js";
 import { SkillsPage } from "./pages/SkillsPage.js";
+import { CronsPage } from "./pages/CronsPage.js";
 import { SettingsPage } from "./pages/SettingsPage.js";
 import { AppsPage } from "./pages/AppsPage.js";
 import { OnboardingPage } from "./pages/OnboardingPage.js";
@@ -27,6 +28,7 @@ const PAGES: Record<string, () => ReactNode> = {
   "/stt": SttPage,
   "/usage": KeyUsagePage,
   "/skills": SkillsPage,
+  "/crons": CronsPage,
   "/apps": AppsPage,
   "/settings": SettingsPage,
 };

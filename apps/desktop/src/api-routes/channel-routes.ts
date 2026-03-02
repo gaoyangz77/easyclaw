@@ -348,9 +348,36 @@ export const handleChannelRoutes: RouteHandler = async (req, res, url, pathname,
 
     try {
       const allowlist = await readAllAllowFromLists(channelId);
-      sendJson(res, 200, { allowlist });
+      const labels = storage.channelRecipients.getLabels(channelId);
+      sendJson(res, 200, { allowlist, labels });
     } catch (err) {
       log.error(`Failed to read allowlist for ${channelId}:`, err);
+      sendJson(res, 500, { error: String(err) });
+    }
+    return true;
+  }
+
+  // PUT /api/pairing/allowlist/:channelId/:entry/label
+  if (pathname.match(/^\/api\/pairing\/allowlist\/[^/]+\/[^/]+\/label$/) && req.method === "PUT") {
+    const segments = pathname.slice("/api/pairing/allowlist/".length).split("/");
+    const channelId = decodeURIComponent(segments[0]);
+    const recipientId = decodeURIComponent(segments[1]);
+    const body = (await parseBody(req)) as { label?: string };
+
+    if (typeof body.label !== "string") {
+      sendJson(res, 400, { error: "Missing required field: label" });
+      return true;
+    }
+
+    try {
+      if (body.label.trim()) {
+        storage.channelRecipients.setLabel(channelId, recipientId, body.label.trim());
+      } else {
+        storage.channelRecipients.delete(channelId, recipientId);
+      }
+      sendJson(res, 200, { ok: true });
+    } catch (err) {
+      log.error(`Failed to set recipient label:`, err);
       sendJson(res, 500, { error: String(err) });
     }
     return true;

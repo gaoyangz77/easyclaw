@@ -27,6 +27,7 @@ import { handleChannelRoutes } from "./api-routes/channel-routes.js";
 import { handleUsageRoutes } from "./api-routes/usage-routes.js";
 import { handleWecomRoutes } from "./api-routes/wecom-routes.js";
 import { handleSkillsRoutes } from "./api-routes/skills-routes.js";
+import { handleChatSessionRoutes } from "./api-routes/chat-session-routes.js";
 
 const log = createLogger("panel-server");
 
@@ -215,6 +216,7 @@ const routeHandlers: RouteHandler[] = [
   handleChannelRoutes,
   handleUsageRoutes,
   handleSkillsRoutes,
+  handleChatSessionRoutes,
 ];
 
 /**
