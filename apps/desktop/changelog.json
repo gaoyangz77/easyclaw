@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.5.14",
+    "date": "2026-03-02",
+    "en": [
+      "Cron job management page with visual schedule builder",
+      "Multi-tab chat sessions with tab bar",
+      "Channel recipient management (allowlist per account)",
+      "Fix pairing allowFrom written to wrong path",
+      "Redesigned cron expression UI and Select component portal fix"
+    ],
+    "zh": [
+      "新增定时任务管理页面，支持可视化配置计划",
+      "聊天页面支持多标签会话",
+      "频道账号支持接收人管理（按账号设置白名单）",
+      "修复配对允许列表写入路径错误的问题",
+      "重新设计定时表达式界面，修复下拉组件层级问题"
+    ]
+  },
+  {
     "version": "1.5.13",
     "date": "2026-02-28",
     "en": [
