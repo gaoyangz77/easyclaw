@@ -36,6 +36,27 @@ async function waitForTabBar(window: import("@playwright/test").Page, timeoutMs 
   }
 }
 
+/**
+ * Helper: send a short message and wait for the assistant response + tab bar.
+ * This materializes a session on the gateway so the tab bar becomes visible.
+ */
+async function ensureSessionExists(window: import("@playwright/test").Page): Promise<void> {
+  // If tab bar is already visible, a session exists
+  const tabBar = window.locator(".chat-session-tabs");
+  if (await tabBar.isVisible({ timeout: 1_000 }).catch(() => false)) return;
+
+  const textarea = window.locator(".chat-input-area textarea");
+  await textarea.fill("Say ok.");
+  await window.locator(".chat-input-area .btn-primary").click();
+
+  // Wait for response
+  const bubble = window.locator(".chat-bubble-assistant:not(.chat-thinking):not(.chat-streaming-cursor)");
+  await expect(bubble.last()).toBeVisible({ timeout: 60_000 });
+
+  // Wait for tab bar to appear
+  await expect(tabBar).toBeVisible({ timeout: 20_000 });
+}
+
 test.describe("Chat Page — Comprehensive", () => {
 
   // ──────────────────────────────────────────────────────────────────
@@ -273,7 +294,7 @@ test.describe("Chat Page — Comprehensive", () => {
     await expect(archiveBtn.locator("svg")).toBeVisible();
   });
 
-  test("new chat action button triggers reset confirmation modal", async ({ window }) => {
+  test("new chat button creates a new session tab", async ({ window }) => {
     test.skip(!process.env.E2E_VOLCENGINE_API_KEY, "E2E_VOLCENGINE_API_KEY required");
     await dismissModals(window);
     await expect(window.locator(".chat-status-dot-connected")).toBeVisible({ timeout: 30_000 });
@@ -282,20 +303,24 @@ test.describe("Chat Page — Comprehensive", () => {
     test.skip(!tabBarVisible, "Tab bar not visible (no sessions)");
 
     const tabBar = window.locator(".chat-session-tabs");
+    const scrollArea = tabBar.locator(".chat-session-tabs-scroll");
+    const tabs = scrollArea.locator(".chat-session-tab");
+    const countBefore = await tabs.count();
 
-    // Click the new chat (+) button in the scroll container
+    // Click the new chat (+) button
     const newChatBtn = tabBar.locator(".chat-session-tab-new-btn");
     await newChatBtn.click();
 
-    // Reset confirmation modal should appear
-    const modal = window.locator(".modal-backdrop");
-    await expect(modal).toBeVisible({ timeout: 5_000 });
-    await expect(modal).toContainText(/New Chat|新对话|Reset|重置/);
+    // A new tab should appear
+    await expect(tabs).toHaveCount(countBefore + 1);
 
-    // Dismiss the modal via cancel button
-    const cancelBtn = modal.locator(".btn-secondary");
-    await cancelBtn.click();
-    await expect(modal).not.toBeVisible({ timeout: 3_000 });
+    // The new tab should be active
+    const newTab = tabs.last();
+    await expect(newTab).toHaveClass(/chat-session-tab-active/);
+
+    // The new tab should have a close button (it's not the main tab)
+    const closeBtn = newTab.locator(".chat-session-tab-close");
+    await expect(closeBtn).toBeVisible();
   });
 
   test("main session tab does not show close button", async ({ window }) => {
@@ -709,7 +734,171 @@ test.describe("Chat Page — Comprehensive", () => {
   });
 
   // ──────────────────────────────────────────────────────────────────
-  // 10. Gateway reconnect after model switch
+  // 10. Multi-tab functionality
+  // ──────────────────────────────────────────────────────────────────
+
+  test("switching tabs isolates messages", async ({ window }) => {
+    test.skip(!process.env.E2E_VOLCENGINE_API_KEY, "E2E_VOLCENGINE_API_KEY required");
+    await dismissModals(window);
+    await expect(window.locator(".chat-status-dot-connected")).toBeVisible({ timeout: 30_000 });
+
+    // Materialize a session so the tab bar appears
+    await ensureSessionExists(window);
+
+    const tabBar = window.locator(".chat-session-tabs");
+    const scrollArea = tabBar.locator(".chat-session-tabs-scroll");
+    const tabs = scrollArea.locator(".chat-session-tab");
+
+    // We should have user bubbles from ensureSessionExists
+    const userBubbles = window.locator(".chat-bubble-user");
+    expect(await userBubbles.count()).toBeGreaterThan(0);
+
+    // Create a new tab via + button
+    await tabBar.locator(".chat-session-tab-new-btn").click();
+    const newTabCount = await tabs.count();
+    expect(newTabCount).toBeGreaterThanOrEqual(2);
+
+    // New tab should show empty state (no messages from other session)
+    await expect(window.locator(".chat-empty")).toBeVisible({ timeout: 5_000 });
+
+    // Switch back to the first tab (main)
+    const mainTab = tabs.first();
+    await mainTab.click();
+    await expect(mainTab).toHaveClass(/chat-session-tab-active/);
+
+    // Messages should be restored
+    await expect(userBubbles.first()).toBeVisible({ timeout: 5_000 });
+  });
+
+  test("archiving a tab removes it and switches to main", async ({ window }) => {
+    test.skip(!process.env.E2E_VOLCENGINE_API_KEY, "E2E_VOLCENGINE_API_KEY required");
+    await dismissModals(window);
+    await expect(window.locator(".chat-status-dot-connected")).toBeVisible({ timeout: 30_000 });
+
+    // Materialize a session so the tab bar appears
+    await ensureSessionExists(window);
+
+    const tabBar = window.locator(".chat-session-tabs");
+    const scrollArea = tabBar.locator(".chat-session-tabs-scroll");
+    const tabs = scrollArea.locator(".chat-session-tab");
+
+    // Create a new tab so we have something to archive
+    await tabBar.locator(".chat-session-tab-new-btn").click();
+    const countBefore = await tabs.count();
+    expect(countBefore).toBeGreaterThanOrEqual(2);
+
+    // The new tab (last) should be active and have a close button
+    const newTab = tabs.last();
+    await expect(newTab).toHaveClass(/chat-session-tab-active/);
+
+    // Click the close (archive) button on the new tab
+    const closeBtn = newTab.locator(".chat-session-tab-close");
+    await closeBtn.click();
+
+    // Tab count should decrease
+    await expect(tabs).toHaveCount(countBefore - 1);
+
+    // Main tab should now be active
+    const mainTab = tabs.first();
+    await expect(mainTab).toHaveClass(/chat-session-tab-active/);
+  });
+
+  test("renaming a tab via double-click", async ({ window }) => {
+    test.skip(!process.env.E2E_VOLCENGINE_API_KEY, "E2E_VOLCENGINE_API_KEY required");
+    await dismissModals(window);
+    await expect(window.locator(".chat-status-dot-connected")).toBeVisible({ timeout: 30_000 });
+
+    // Materialize a session so the tab bar appears
+    await ensureSessionExists(window);
+
+    const tabBar = window.locator(".chat-session-tabs");
+    const scrollArea = tabBar.locator(".chat-session-tabs-scroll");
+    const tabs = scrollArea.locator(".chat-session-tab");
+
+    // Remember how many tabs we have before creating a new one
+    const countBefore = await tabs.count();
+
+    // Create a new tab and send a message to materialize it,
+    // so refreshSessions won't remove it
+    await tabBar.locator(".chat-session-tab-new-btn").click();
+    await expect(tabs).toHaveCount(countBefore + 1);
+
+    const textarea = window.locator(".chat-input-area textarea");
+    await textarea.fill("Say ok.");
+    await window.locator(".chat-input-area .btn-primary").click();
+    const assistantBubble = window.locator(".chat-bubble-assistant:not(.chat-thinking):not(.chat-streaming-cursor)");
+    await expect(assistantBubble.last()).toBeVisible({ timeout: 60_000 });
+
+    // The new (non-main) tab should be active — use nth to avoid stale locator
+    const newTab = tabs.nth(countBefore);
+    await expect(newTab).toHaveClass(/chat-session-tab-active/);
+
+    // Double-click to rename
+    await newTab.dblclick();
+
+    // Inline rename input should appear
+    const renameInput = newTab.locator(".chat-tab-rename-input");
+    await expect(renameInput).toBeVisible({ timeout: 3_000 });
+
+    // Type a new name and confirm with Enter
+    await renameInput.fill("E2E Test Tab");
+    await renameInput.press("Enter");
+
+    // Input should disappear, label should show new name
+    await expect(renameInput).not.toBeVisible({ timeout: 3_000 });
+    const label = newTab.locator(".chat-session-tab-label");
+    await expect(label).toContainText("E2E Test Tab");
+
+    // Clean up: archive the tab
+    await newTab.locator(".chat-session-tab-close").click();
+  });
+
+  test("sending a message in a new tab materializes the session", async ({ window }) => {
+    test.skip(!process.env.E2E_VOLCENGINE_API_KEY, "E2E_VOLCENGINE_API_KEY required");
+    await dismissModals(window);
+    await expect(window.locator(".chat-status-dot-connected")).toBeVisible({ timeout: 30_000 });
+
+    // Materialize a session so the tab bar appears
+    await ensureSessionExists(window);
+
+    const tabBar = window.locator(".chat-session-tabs");
+    const scrollArea = tabBar.locator(".chat-session-tabs-scroll");
+    const tabs = scrollArea.locator(".chat-session-tab");
+
+    // Create a new tab
+    await tabBar.locator(".chat-session-tab-new-btn").click();
+    // Use active-class selector — stable even if refreshSessions re-sorts tabs
+    const activeTab = scrollArea.locator(".chat-session-tab.chat-session-tab-active");
+    await expect(activeTab).toBeVisible({ timeout: 3_000 });
+
+    // Send a message in the new tab
+    const textarea = window.locator(".chat-input-area textarea");
+    await textarea.fill("Say ok.");
+    await window.locator(".chat-input-area .btn-primary").click();
+
+    // User bubble should appear in this tab
+    const userBubble = window.locator(".chat-bubble-user");
+    await expect(userBubble.last()).toContainText("Say ok.");
+
+    // Wait for assistant response
+    const assistantBubble = window.locator(".chat-bubble-assistant:not(.chat-thinking):not(.chat-streaming-cursor)");
+    await expect(assistantBubble.last()).toBeVisible({ timeout: 60_000 });
+
+    // The tab should still be active
+    await expect(activeTab).toHaveClass(/chat-session-tab-active/);
+
+    // Switch to main and back — messages should persist
+    const mainTab = tabs.first();
+    await mainTab.click();
+    await expect(mainTab).toHaveClass(/chat-session-tab-active/);
+
+    await activeTab.click();
+    await expect(activeTab).toHaveClass(/chat-session-tab-active/);
+    await expect(userBubble.last()).toContainText("Say ok.");
+  });
+
+  // ──────────────────────────────────────────────────────────────────
+  // 11. Gateway reconnect after model switch
   // ──────────────────────────────────────────────────────────────────
 
   test("gateway reconnects within 10s after model switch", async ({ window }) => {
