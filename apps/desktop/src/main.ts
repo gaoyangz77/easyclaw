@@ -32,7 +32,7 @@ import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 import { createConnection } from "node:net";
-import { existsSync, unlinkSync, readFileSync, statSync } from "node:fs";
+import { existsSync, unlinkSync, readFileSync, writeFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { createTrayIcon } from "./tray-icon.js";
 import { buildTrayMenu } from "./tray-menu.js";
@@ -156,6 +156,38 @@ app.on("activate", () => {
     mainWindow.focus();
   }
 });
+
+/**
+ * Normalize legacy cron store on disk: rename `jobId` → `id`.
+ * The OpenClaw CLI writes jobs with `jobId`, but the gateway's cron service
+ * indexes/finds jobs by `id`. Without this normalization, cron.update / cron.remove
+ * / cron.run all fail with "unknown cron job id".
+ */
+function normalizeCronStoreIds(cronStorePath: string): void {
+  try {
+    const raw = readFileSync(cronStorePath, "utf-8");
+    const store = JSON.parse(raw);
+    if (!Array.isArray(store?.jobs)) return;
+
+    let changed = false;
+    for (const job of store.jobs) {
+      if (job.jobId && !job.id) {
+        job.id = job.jobId;
+        delete job.jobId;
+        changed = true;
+      }
+    }
+
+    if (changed) {
+      writeFileSync(cronStorePath, JSON.stringify(store, null, 2), "utf-8");
+      log.info(`Normalized cron store: renamed jobId → id in ${cronStorePath}`);
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      log.warn("Failed to normalize cron store:", err);
+    }
+  }
+}
 
 app.whenReady().then(async () => {
   // Version mismatch: this is the OLD app launched while the installer is updating.
@@ -343,6 +375,10 @@ app.whenReady().then(async () => {
 
   // Clean up stale gateway lock file (and kill owner) before starting.
   cleanupGatewayLock(configPath);
+
+  // Normalize legacy cron store: rename jobId → id so the gateway's findJobOrThrow works.
+  // The OpenClaw CLI writes "jobId" but the gateway service indexes jobs by "id".
+  normalizeCronStoreIds(join(stateDir, "cron", "jobs.json"));
 
   // In packaged app, vendor lives in Resources/vendor/openclaw (extraResources).
   // In dev, resolveVendorEntryPath() resolves relative to source via import.meta.url.
