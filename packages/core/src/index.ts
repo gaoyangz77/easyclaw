@@ -77,3 +77,15 @@ export { formatError, IMAGE_EXT_TO_MIME, IMAGE_MIME_TO_EXT } from "./error-utils
 
 export { API_BASE_URL, API_BASE_URL_CN, TELEMETRY_URL, TELEMETRY_URL_CN, getApiBaseUrl, getGraphqlUrl, getTelemetryUrl } from "./endpoints.js";
 
+export {
+  DEFAULT_GATEWAY_PORT,
+  CDP_PORT_OFFSET,
+  DEFAULT_PANEL_PORT,
+  DEFAULT_PROXY_ROUTER_PORT,
+  DEFAULT_PANEL_DEV_PORT,
+  resolveGatewayPort,
+  resolvePanelPort,
+  resolveProxyRouterPort,
+} from "./ports.js";
+
+

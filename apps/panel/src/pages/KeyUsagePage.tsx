@@ -94,7 +94,7 @@ export function KeyUsagePage() {
   useEffect(() => {
     (async () => {
       try {
-        const statusRes = await fetch("http://127.0.0.1:3210/api/status");
+        const statusRes = await fetch("/api/status");
         const status = await statusRes.json();
         const deviceId = status.deviceId || "unknown";
         const lang = navigator.language?.slice(0, 2) || "en";

@@ -8,9 +8,9 @@ import {
   unlinkSync,
 } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { resolveLogDir } from "@easyclaw/core/node";
 
-export const LOG_DIR = join(homedir(), ".easyclaw", "logs");
+export const LOG_DIR = resolveLogDir();
 
 const LOG_FILENAME = "easyclaw.log";
 const LOG_FILENAME_PREV = "easyclaw.log.1";

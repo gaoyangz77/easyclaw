@@ -1,6 +1,7 @@
 import { createServer, Socket, type Server as NetServer } from "node:net";
 import { readFileSync, existsSync, watch, type FSWatcher } from "node:fs";
 import { createLogger } from "@easyclaw/logger";
+import { resolveProxyRouterPort } from "@easyclaw/core";
 import type { ProxyRouterConfig, ProxyRouterOptions } from "./types.js";
 
 const log = createLogger("proxy-router");
@@ -18,7 +19,7 @@ export class ProxyRouter {
 
   constructor(options: ProxyRouterOptions) {
     this.options = {
-      port: options.port ?? 9999,
+      port: options.port ?? resolveProxyRouterPort(),
       configPath: options.configPath,
       onConfigReload: options.onConfigReload ?? (() => {}),
     };

@@ -212,20 +212,20 @@
   z-index: 2;
 }
 
-/* Preset chips — pill-shaped quick-select */
+/* Preset chips — compact inline tags */
 .crons-preset-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 5px;
 }
 
 .crons-preset-chip {
-  padding: 6px 14px;
+  padding: 4px 10px;
   border: 1px solid var(--color-border);
-  border-radius: 20px;
+  border-radius: 4px;
   background: var(--color-bg);
-  color: var(--color-text-secondary);
-  font-size: 12px;
+  color: var(--color-text-muted);
+  font-size: 11px;
   cursor: pointer;
   transition: all var(--transition-fast);
 }
@@ -233,7 +233,6 @@
 .crons-preset-chip:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);
-  background: rgba(91, 127, 255, 0.04);
 }
 
 .crons-preset-chip-active {
@@ -243,41 +242,107 @@
   font-weight: 500;
 }
 
-/* Visual cron builder — 5-field grid in a card */
+/* Visual cron builder — compact inline row */
 .crons-builder-row {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
-  margin-top: 14px;
-  padding: 14px 12px 12px;
-  background: var(--color-bg-alt);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--color-border-light);
+  display: flex;
+  gap: 6px;
+  margin-top: 12px;
+  align-items: flex-end;
+}
+
+.crons-builder-row > div {
+  flex: 1;
+  min-width: 0;
 }
 
 .crons-builder-field-label {
   display: block;
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   color: var(--color-text-muted);
-  margin-bottom: 6px;
-  text-align: center;
+  margin-bottom: 4px;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+  opacity: 0.7;
 }
 
-/* Expression result badge */
-.crons-preset-description {
-  display: inline-block;
-  font-size: 12px;
-  color: var(--color-primary);
-  background: var(--color-primary-light);
-  padding: 4px 12px;
-  border-radius: 6px;
+/* Expression bar — unified display with mode toggle */
+.crons-expr-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-top: 10px;
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border-light);
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.crons-expr-value {
+  flex: 1;
+  min-width: 0;
   font-family: var(--font-mono, monospace);
+  font-size: 13px;
   font-weight: 500;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.04em;
+  color: var(--color-text);
+  padding: 4px 8px;
+  line-height: 1.4;
+}
+
+.crons-expr-input {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: var(--color-text);
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 4px 8px;
+  line-height: 1.4;
+  caret-color: var(--color-primary);
+}
+
+.crons-mode-toggle {
+  display: flex;
+  flex-shrink: 0;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+
+.crons-mode-btn {
+  padding: 3px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.crons-mode-btn:not(:first-child) {
+  border-left: 1px solid var(--color-border);
+}
+
+.crons-mode-btn:hover:not(.crons-mode-btn-active) {
+  color: var(--color-text);
+}
+
+.crons-mode-btn-active {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+/* Legacy class kept for e2e test compatibility */
+.crons-preset-description {
+  display: none;
 }
 
 /* Form row (interval input + unit select) */
@@ -396,28 +461,46 @@
 }
 
 [data-theme="dark"] .crons-preset-chip {
-  background: var(--color-bg-alt);
-  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: var(--color-text-muted);
 }
 
 [data-theme="dark"] .crons-preset-chip:hover {
-  background: rgba(108, 99, 255, 0.08);
+  background: rgba(108, 99, 255, 0.1);
+  border-color: rgba(108, 99, 255, 0.3);
 }
 
 [data-theme="dark"] .crons-preset-chip-active {
-  background: linear-gradient(135deg, #6c63ff 0%, #5b7fff 100%);
-  border-color: #6c63ff;
+  background: var(--color-primary);
+  border-color: var(--color-primary);
   color: #fff;
 }
 
-[data-theme="dark"] .crons-builder-row {
+[data-theme="dark"] .crons-expr-bar {
   background: rgba(255, 255, 255, 0.03);
   border-color: rgba(255, 255, 255, 0.06);
 }
 
-[data-theme="dark"] .crons-preset-description {
-  background: rgba(108, 99, 255, 0.12);
-  color: #818cf8;
+[data-theme="dark"] .crons-expr-input {
+  color: var(--color-text);
+}
+
+[data-theme="dark"] .crons-mode-toggle {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .crons-mode-btn {
+  color: var(--color-text-muted);
+}
+
+[data-theme="dark"] .crons-mode-btn:not(:first-child) {
+  border-left-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .crons-mode-btn-active {
+  background: var(--color-primary);
+  color: #fff;
 }
 
 [data-theme="dark"] .crons-advanced-content {

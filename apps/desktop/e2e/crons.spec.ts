@@ -295,8 +295,8 @@ test.describe("Crons Page", () => {
     await preset5min.click();
     await expect(preset5min).toHaveClass(/crons-preset-chip-active/);
 
-    // Verify expression preview shows the cron expression
-    await expect(modal.locator(".crons-preset-description")).toContainText("*/5 * * * *");
+    // Verify expression bar shows the cron expression
+    await expect(modal.locator(".crons-expr-value")).toContainText("*/5 * * * *");
 
     // Verify the visual builder reflects the preset (Select triggers show labels)
     const builderFields = modal.locator(".crons-builder-row .custom-select-trigger");
@@ -312,12 +312,12 @@ test.describe("Crons Page", () => {
     await window.locator(".custom-select-option").getByText("Mon", { exact: true }).click();
 
     // Expression should update to "*/5 * * * 1"
-    await expect(modal.locator(".crons-preset-description")).toContainText("*/5 * * * 1");
+    await expect(modal.locator(".crons-expr-value")).toContainText("*/5 * * * 1");
 
-    // Toggle raw expression editor
-    const rawToggle = modal.locator(".crons-advanced-toggle", { hasText: "Edit expression" });
-    await rawToggle.click();
-    const rawInput = modal.locator(".input-mono");
+    // Switch to raw mode via mode toggle
+    const rawBtn = modal.locator(".crons-mode-btn", { hasText: "Raw" });
+    await rawBtn.click();
+    const rawInput = modal.locator(".crons-expr-input");
     await expect(rawInput).toBeVisible();
     await expect(rawInput).toHaveValue("*/5 * * * 1");
 
@@ -767,8 +767,8 @@ test.describe("Crons Page", () => {
       // Verify active state
       await expect(chip).toHaveClass(/crons-preset-chip-active/);
 
-      // Verify expression preview
-      await expect(modal.locator(".crons-preset-description")).toContainText(expr);
+      // Verify expression bar
+      await expect(modal.locator(".crons-expr-value")).toContainText(expr);
     }
 
     // Close modal without saving
@@ -790,20 +790,31 @@ test.describe("Crons Page", () => {
     const preset = modal.locator(".crons-preset-chip", { hasText: "Every hour" });
     await preset.click();
 
-    // Find the timezone select
+    // Find the timezone select and click to open dropdown
     const tzGroup = modal.locator(".form-group").filter({ hasText: "Timezone" });
     const tzTrigger = tzGroup.locator(".custom-select-trigger");
-    await tzTrigger.click();
 
-    // Dropdown should appear with search input (verifies searchable prop is working)
+    // Click trigger and wait for the portal dropdown to appear
+    await tzTrigger.click();
     const dropdown = window.locator(".custom-select-dropdown");
+
+    // Retry trigger click if dropdown didn't appear (scroll/reposition race)
+    if (!await dropdown.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await tzTrigger.click();
+    }
     await expect(dropdown).toBeVisible({ timeout: 5_000 });
+
+    // Verify search input exists (confirms searchable prop)
     await expect(dropdown.locator(".custom-select-search")).toBeVisible({ timeout: 3_000 });
 
-    // Select Tokyo directly from the full list (force: true bypasses position stability check
-    // since the portal dropdown may still be repositioning)
-    const tokyoOption = dropdown.locator(".custom-select-option", { hasText: "Tokyo" });
-    await tokyoOption.click({ force: true });
+    // Select Tokyo via DOM click (bypasses Playwright's scroll-into-view which
+    // can detach the element when the portal dropdown is repositioning)
+    await window.evaluate(() => {
+      const opts = document.querySelectorAll<HTMLButtonElement>(".custom-select-dropdown .custom-select-option");
+      for (const opt of opts) {
+        if (opt.textContent?.includes("Tokyo")) { opt.click(); break; }
+      }
+    });
 
     // Verify selection
     await expect(tzTrigger).toContainText("Tokyo");

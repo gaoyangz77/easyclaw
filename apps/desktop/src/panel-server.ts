@@ -3,7 +3,7 @@ import type { ServerResponse, Server } from "node:http";
 import { readFileSync, existsSync, statSync, watch } from "node:fs";
 import { join, extname, resolve, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
-import { formatError, IMAGE_EXT_TO_MIME } from "@easyclaw/core";
+import { formatError, IMAGE_EXT_TO_MIME, resolveGatewayPort, resolvePanelPort } from "@easyclaw/core";
 import { createLogger } from "@easyclaw/logger";
 import type { Storage } from "@easyclaw/storage";
 import type { SecretStore } from "@easyclaw/secrets";
@@ -224,7 +224,7 @@ const routeHandlers: RouteHandler[] = [
  * and provides REST API endpoints backed by real storage.
  */
 export function startPanelServer(options: PanelServerOptions): Server {
-  const port = options.port ?? 3210;
+  const port = options.port ?? resolvePanelPort();
   const distDir = resolve(options.panelDistDir);
   const { storage, secretStore, getRpcClient, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onPermissionsChange, onBrowserChange, onAutoLaunchChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onTelemetryTrack, vendorDir, deviceId, getUpdateResult, getGatewayInfo, changelogPath, onUpdateDownload, onUpdateCancel, onUpdateInstall, getUpdateDownloadState } = options;
 
@@ -452,7 +452,7 @@ export function startPanelServer(options: PanelServerOptions): Server {
         relayUrl: savedRelayUrl,
         authToken: savedAuthToken,
         gatewayId: gwId,
-        gatewayWsUrl: gwInfo?.wsUrl ?? "ws://127.0.0.1:28789",
+        gatewayWsUrl: gwInfo?.wsUrl ?? `ws://127.0.0.1:${resolveGatewayPort()}`,
         gatewayToken: gwInfo?.token,
       });
       log.info("WeCom relay: restored from saved credentials");

@@ -6,7 +6,8 @@ import {
   readdirSync,
 } from "node:fs";
 import { join } from "node:path";
-import { homedir, hostname, userInfo } from "node:os";
+import { hostname, userInfo } from "node:os";
+import { resolveSecretsDir } from "@easyclaw/core/node";
 import {
   createCipheriv,
   createDecipheriv,
@@ -19,7 +20,7 @@ import { createLogger } from "@easyclaw/logger";
 const log = createLogger("secrets:file");
 
 /** Directory where encrypted secret files are stored. */
-const DEFAULT_SECRETS_DIR = join(homedir(), ".easyclaw", "secrets");
+const DEFAULT_SECRETS_DIR = resolveSecretsDir();
 
 /** AES-256-GCM encryption parameters. */
 const ALGORITHM = "aes-256-gcm" as const;

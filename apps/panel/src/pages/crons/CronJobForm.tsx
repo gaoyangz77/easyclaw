@@ -343,46 +343,56 @@ export function CronJobForm({ mode, initialData, onSubmit, onCancel }: CronJobFo
                   </button>
                 ))}
               </div>
-              {/* 5-field visual builder */}
-              <div className="crons-builder-row">
-                {cronFieldDefs.map((field, i) => {
-                  const parts = parseCronFields(form.cronExpr || "* * * * *");
-                  const currentVal = parts[i];
-                  // If the current value isn't in predefined options, prepend it
-                  const options = field.options.some((o) => o.value === currentVal)
-                    ? field.options
-                    : [{ value: currentVal, label: currentVal }, ...field.options];
-                  return (
-                    <div key={i}>
-                      <span className="crons-builder-field-label">{field.label}</span>
-                      <Select
-                        value={currentVal}
-                        onChange={(v) => handleCronFieldChange(i, v)}
-                        options={options}
-                      />
-                    </div>
-                  );
-                })}
+              {/* Expression display + mode toggle */}
+              <div className="crons-expr-bar">
+                {showRawCron ? (
+                  <input
+                    className="crons-expr-input input-mono"
+                    value={form.cronExpr}
+                    onChange={(e) => update("cronExpr", e.target.value)}
+                    placeholder="*/5 * * * *"
+                  />
+                ) : (
+                  <code className="crons-expr-value">{form.cronExpr || "* * * * *"}</code>
+                )}
+                <div className="crons-mode-toggle">
+                  <button
+                    type="button"
+                    className={`crons-mode-btn${!showRawCron ? " crons-mode-btn-active" : ""}`}
+                    onClick={() => setShowRawCron(false)}
+                  >
+                    {t("crons.cronModeVisual")}
+                  </button>
+                  <button
+                    type="button"
+                    className={`crons-mode-btn${showRawCron ? " crons-mode-btn-active" : ""}`}
+                    onClick={() => setShowRawCron(true)}
+                  >
+                    {t("crons.cronModeRaw")}
+                  </button>
+                </div>
               </div>
-              {/* Result preview */}
-              {form.cronExpr && (
-                <div className="crons-preset-description">{form.cronExpr}</div>
-              )}
-              {/* Raw expression toggle */}
-              <button
-                type="button"
-                className="crons-advanced-toggle"
-                onClick={() => setShowRawCron((v) => !v)}
-              >
-                {showRawCron ? "▾" : "▸"} {t("crons.cronEditRaw")}
-              </button>
-              {showRawCron && (
-                <input
-                  className="input-full input-mono"
-                  value={form.cronExpr}
-                  onChange={(e) => update("cronExpr", e.target.value)}
-                  placeholder="*/5 * * * *"
-                />
+              {/* Visual builder (hidden in raw mode) */}
+              {!showRawCron && (
+                <div className="crons-builder-row">
+                  {cronFieldDefs.map((field, i) => {
+                    const parts = parseCronFields(form.cronExpr || "* * * * *");
+                    const currentVal = parts[i];
+                    const options = field.options.some((o) => o.value === currentVal)
+                      ? field.options
+                      : [{ value: currentVal, label: currentVal }, ...field.options];
+                    return (
+                      <div key={i}>
+                        <span className="crons-builder-field-label">{field.label}</span>
+                        <Select
+                          value={currentVal}
+                          onChange={(v) => handleCronFieldChange(i, v)}
+                          options={options}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               )}
               {errors.cronExpr && <div className="crons-field-error">{t(`crons.${errors.cronExpr}`)}</div>}
             </div>

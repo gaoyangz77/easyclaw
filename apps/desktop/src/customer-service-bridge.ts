@@ -15,6 +15,7 @@ import { createLogger } from "@easyclaw/logger";
 import type { Storage } from "@easyclaw/storage";
 import type { SecretStore } from "@easyclaw/secrets";
 import type { CustomerServiceConfig, CustomerServiceStatus } from "@easyclaw/core";
+import { resolveGatewayPort } from "@easyclaw/core";
 import { GatewayRpcClient, resolveOpenClawStateDir } from "@easyclaw/gateway";
 import { createCustomerServiceModule, buildCustomerServicePrompt } from "@easyclaw/customer-service";
 import type { CustomerServiceModule } from "@easyclaw/customer-service";
@@ -194,7 +195,7 @@ export function startCS(config: {
 
   // Create a dedicated gateway RPC client for CS
   csGatewayRpc = new GatewayRpcClient({
-    url: gwInfo?.wsUrl ?? "ws://127.0.0.1:28789",
+    url: gwInfo?.wsUrl ?? `ws://127.0.0.1:${resolveGatewayPort()}`,
     token: gwInfo?.token,
     deviceIdentityPath: join(resolveOpenClawStateDir(), "identity", "device.json"),
     onEvent: (evt) => {

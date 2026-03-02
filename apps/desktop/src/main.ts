@@ -12,7 +12,6 @@ import {
   syncAllAuthProfiles,
   syncBackOAuthCredentials,
   clearAllAuthProfiles,
-  DEFAULT_GATEWAY_PORT,
   acquireGeminiOAuthToken,
   saveGeminiOAuthCredentials,
   validateGeminiAccessToken,
@@ -21,7 +20,8 @@ import {
 } from "@easyclaw/gateway";
 import type { OAuthFlowResult, AcquiredOAuthCredentials } from "@easyclaw/gateway";
 import type { GatewayState } from "@easyclaw/gateway";
-import { parseProxyUrl, formatError } from "@easyclaw/core";
+import { parseProxyUrl, formatError, resolveGatewayPort, resolvePanelPort, resolveProxyRouterPort } from "@easyclaw/core";
+import { resolveUpdateMarkerPath } from "@easyclaw/core/node";
 import { createStorage } from "@easyclaw/storage";
 import { createSecretStore } from "@easyclaw/secrets";
 import { ArtifactPipeline, syncSkillsForRule, cleanupSkillsForDeletedRule } from "@easyclaw/rules";
@@ -40,7 +40,7 @@ import { startPanelServer } from "./panel-server.js";
 import { stopCS } from "./customer-service-bridge.js";
 import { SttManager } from "./stt-manager.js";
 import { createCdpManager } from "./cdp-manager.js";
-import { PROXY_ROUTER_PORT, resolveProxyRouterConfigPath, detectSystemProxy, writeProxyRouterConfig, buildProxyEnv, writeProxySetupModule } from "./proxy-manager.js";
+import { resolveProxyRouterConfigPath, detectSystemProxy, writeProxyRouterConfig, buildProxyEnv, writeProxySetupModule } from "./proxy-manager.js";
 import { createAutoUpdater } from "./auto-updater.js";
 import { resetDevicePairing, cleanupGatewayLock, applyAutoLaunch, migrateOldProviderKeys } from "./startup-utils.js";
 import { initTelemetry } from "./telemetry-init.js";
@@ -48,8 +48,7 @@ import { createGatewayConfigBuilder } from "./gateway-config-builder.js";
 
 const log = createLogger("desktop");
 
-const PANEL_PORT = 3210;
-const PANEL_URL = process.env.PANEL_DEV_URL || `http://127.0.0.1:${PANEL_PORT}`;
+const PANEL_URL = process.env.PANEL_DEV_URL || `http://127.0.0.1:${resolvePanelPort()}`;
 // Resolve Volcengine STT CLI script path.
 // In packaged app: bundled into Resources/.
 // In dev: resolve relative to the bundled output (apps/desktop/dist/) → packages/gateway/dist/.
@@ -64,7 +63,7 @@ let lastSystemProxy: string | null = null;
 // It contains the target version (e.g. "1.5.9"). By comparing with app.getVersion()
 // we can determine whether this is the NEW app (install succeeded) or the OLD app
 // (user opened it while the installer is still running).
-const UPDATE_MARKER = join(homedir(), ".easyclaw", "update-installing");
+const UPDATE_MARKER = resolveUpdateMarkerPath();
 const UPDATE_MARKER_MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 let _updateBlocked = false;
 if (existsSync(UPDATE_MARKER)) {
@@ -206,6 +205,37 @@ app.whenReady().then(async () => {
   const locale = app.getLocale().startsWith("zh") ? "zh" : "en";
   const { client: telemetryClient, heartbeatTimer } = initTelemetry(storage, deviceId, locale);
 
+  // --- First-start OpenClaw import ---
+  const importChecked = storage.settings.get("openclaw_import_checked");
+  if (!importChecked) {
+    const standaloneDir = join(homedir(), ".openclaw");
+    const standaloneConfig = join(standaloneDir, "openclaw.json");
+    if (existsSync(standaloneConfig)) {
+      const { response } = await dialog.showMessageBox({
+        type: "question",
+        buttons: [locale === "zh" ? "使用现有数据" : "Use existing data", locale === "zh" ? "全新开始" : "Start fresh"],
+        defaultId: 0,
+        title: "EasyClaw",
+        message: locale === "zh"
+          ? "检测到本地已安装的 OpenClaw"
+          : "Existing OpenClaw installation detected",
+        detail: locale === "zh"
+          ? `发现 ${standaloneDir} 中的 OpenClaw 数据（包括 Agent 记忆和文档）。\n是否让 EasyClaw 直接使用这些数据？`
+          : `Found OpenClaw data at ${standaloneDir} (including agent memory and documents).\nWould you like EasyClaw to use this existing data?`,
+      });
+      if (response === 0) {
+        storage.settings.set("openclaw_state_dir_override", standaloneDir);
+      }
+    }
+    storage.settings.set("openclaw_import_checked", "true");
+  }
+
+  // Apply persisted OpenClaw state dir override before resolving any paths
+  const stateDirOverride = storage.settings.get("openclaw_state_dir_override");
+  if (stateDirOverride) {
+    process.env.OPENCLAW_STATE_DIR = stateDirOverride;
+  }
+
   // --- Auto-updater state (updater instance created after tray) ---
   let currentState: GatewayState = "stopped";
   // updater is initialized after tray creation (search for "createAutoUpdater" below)
@@ -227,7 +257,7 @@ app.whenReady().then(async () => {
 
   // Start proxy router (config is already on disk)
   const proxyRouter = new ProxyRouter({
-    port: PROXY_ROUTER_PORT,
+    port: resolveProxyRouterPort(),
     configPath: resolveProxyRouterConfigPath(),
     onConfigReload: (config) => {
       log.debug(`Proxy router config reloaded: ${Object.keys(config.activeKeys).length} providers`);
@@ -273,20 +303,20 @@ app.whenReady().then(async () => {
   // First do a fast TCP probe (~1ms) to check if the port is in use.
   // Only run the expensive lsof/netstat cleanup when something is actually listening.
   const portInUse = await new Promise<boolean>((resolve) => {
-    const sock = createConnection({ port: DEFAULT_GATEWAY_PORT, host: "127.0.0.1" });
+    const sock = createConnection({ port: resolveGatewayPort(), host: "127.0.0.1" });
     sock.once("connect", () => { sock.destroy(); resolve(true); });
     sock.once("error", () => { resolve(false); });
   });
 
   if (portInUse) {
-    log.info(`Port ${DEFAULT_GATEWAY_PORT} is in use, killing existing openclaw processes`);
+    log.info(`Port ${resolveGatewayPort()} is in use, killing existing openclaw processes`);
     try {
       if (process.platform === "win32") {
         // Find PIDs listening on the gateway port and kill their process trees
         const netstatOut = execSync("netstat -ano", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "cmd.exe" });
         const pids = new Set<string>();
         for (const line of netstatOut.split("\n")) {
-          if (line.includes(`:${DEFAULT_GATEWAY_PORT}`) && line.includes("LISTENING")) {
+          if (line.includes(`:${resolveGatewayPort()}`) && line.includes("LISTENING")) {
             const parts = line.trim().split(/\s+/);
             const pid = parts[parts.length - 1];
             if (pid && /^\d+$/.test(pid)) pids.add(pid);
@@ -298,7 +328,7 @@ app.whenReady().then(async () => {
         // Also try by name as fallback for packaged openclaw binaries
         try { execSync("taskkill /f /im openclaw-gateway.exe 2>nul & taskkill /f /im openclaw.exe 2>nul & exit /b 0", { stdio: "ignore", shell: "cmd.exe" }); } catch {}
       } else {
-        execSync(`lsof -ti :${DEFAULT_GATEWAY_PORT} | xargs kill -9 2>/dev/null || true`, { stdio: "ignore" });
+        execSync(`lsof -ti :${resolveGatewayPort()} | xargs kill -9 2>/dev/null || true`, { stdio: "ignore" });
         // Use killall (~10ms) instead of pkill which can take 20-50s on macOS
         // due to slow proc_info kernel calls when many processes are running.
         execSync("killall -9 openclaw-gateway 2>/dev/null || true; killall -9 openclaw 2>/dev/null || true", { stdio: "ignore" });
@@ -337,7 +367,7 @@ app.whenReady().then(async () => {
 
     const config = readExistingConfig(configPath);
     const gw = config.gateway as Record<string, unknown> | undefined;
-    const port = (gw?.port as number) ?? DEFAULT_GATEWAY_PORT;
+    const port = (gw?.port as number) ?? resolveGatewayPort();
     const auth = gw?.auth as Record<string, unknown> | undefined;
     const token = auth?.token as string | undefined;
 
@@ -373,7 +403,7 @@ app.whenReady().then(async () => {
       const token = auth?.token as string | undefined;
       if (!token) return null;
 
-      const port = (gw?.port as number) ?? DEFAULT_GATEWAY_PORT;
+      const port = (gw?.port as number) ?? resolveGatewayPort();
       return {
         gatewayUrl: `http://127.0.0.1:${port}`,
         authToken: token,
@@ -768,7 +798,7 @@ app.whenReady().then(async () => {
     : resolve(__dirname, "../../panel/dist");
   const changelogPath = resolve(__dirname, "../changelog.json");
   startPanelServer({
-    port: PANEL_PORT,
+    port: resolvePanelPort(),
     panelDistDir,
     changelogPath,
     vendorDir,
@@ -797,7 +827,7 @@ app.whenReady().then(async () => {
     getGatewayInfo: () => {
       const config = readExistingConfig(configPath);
       const gw = config.gateway as Record<string, unknown> | undefined;
-      const port = (gw?.port as number) ?? DEFAULT_GATEWAY_PORT;
+      const port = (gw?.port as number) ?? resolveGatewayPort();
       const auth = gw?.auth as Record<string, unknown> | undefined;
       const token = auth?.token as string | undefined;
       return { wsUrl: `ws://127.0.0.1:${port}`, token };
@@ -854,7 +884,7 @@ app.whenReady().then(async () => {
       applyAutoLaunch(enabled);
     },
     onOAuthAcquire: async (provider: string): Promise<{ email?: string; tokenPreview: string; manualMode?: boolean; authUrl?: string }> => {
-      const proxyRouterUrl = `http://127.0.0.1:${PROXY_ROUTER_PORT}`;
+      const proxyRouterUrl = `http://127.0.0.1:${resolveProxyRouterPort()}`;
       try {
         const acquired = await acquireGeminiOAuthToken({
           openUrl: (url) => shell.openExternal(url),
@@ -885,7 +915,7 @@ app.whenReady().then(async () => {
       if (!verifier) {
         throw new Error("No pending manual OAuth flow. Please start the sign-in process first.");
       }
-      const proxyRouterUrl = `http://127.0.0.1:${PROXY_ROUTER_PORT}`;
+      const proxyRouterUrl = `http://127.0.0.1:${resolveProxyRouterPort()}`;
       const acquired = await completeManualOAuthFlow(callbackUrl, verifier, proxyRouterUrl);
       pendingOAuthCreds = acquired;
       pendingManualOAuthVerifier = null;
@@ -899,7 +929,7 @@ app.whenReady().then(async () => {
       const creds = pendingOAuthCreds;
 
       // Priority: per-key proxy > proxy router (system proxy) > direct
-      const validationProxy = options.proxyUrl?.trim() || `http://127.0.0.1:${PROXY_ROUTER_PORT}`;
+      const validationProxy = options.proxyUrl?.trim() || `http://127.0.0.1:${resolveProxyRouterPort()}`;
       const validation = await validateGeminiAccessToken(creds.credentials.access, validationProxy, creds.credentials.projectId);
       if (!validation.valid) {
         throw new Error(validation.error || "Token validation failed");
@@ -979,7 +1009,7 @@ app.whenReady().then(async () => {
       // Debug: Log which API keys are configured (without showing values)
       const configuredKeys = Object.keys(secretEnv).filter(k => k.endsWith('_API_KEY') || k.endsWith('_OAUTH_TOKEN'));
       log.info(`Initial API keys: ${configuredKeys.join(', ') || '(none)'}`);
-      log.info(`Proxy router: http://127.0.0.1:${PROXY_ROUTER_PORT} (dynamic routing enabled)`);
+      log.info(`Proxy router: http://127.0.0.1:${resolveProxyRouterPort()} (dynamic routing enabled)`);
 
       // Log file permissions status (without showing paths)
       if (secretEnv.EASYCLAW_FILE_PERMISSIONS) {

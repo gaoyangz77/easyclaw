@@ -32,6 +32,7 @@ function stringEnum<T extends readonly string[]>(values: T) {
   return Type.Unsafe<T[number]>({ type: "string", enum: [...values] });
 }
 
+/** Must match DEFAULT_PANEL_PORT in @easyclaw/core (packages/core/src/ports.ts). */
 const PANEL_BASE_URL = "http://127.0.0.1:3210";
 
 const PROVIDER_ACTIONS = ["list", "add", "activate", "remove"] as const;

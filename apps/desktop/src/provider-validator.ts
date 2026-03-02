@@ -1,5 +1,5 @@
 import { createLogger } from "@easyclaw/logger";
-import { getProviderMeta, getDefaultModelForProvider, providerSecretKey, formatError } from "@easyclaw/core";
+import { getProviderMeta, getDefaultModelForProvider, providerSecretKey, formatError, resolveProxyRouterPort } from "@easyclaw/core";
 import type { LLMProvider } from "@easyclaw/core";
 import type { Storage } from "@easyclaw/storage";
 import type { SecretStore } from "@easyclaw/secrets";
@@ -47,7 +47,7 @@ export async function validateProviderApiKey(
 
   // Priority: per-key proxy > proxy router (system proxy) > direct
   const { ProxyAgent } = await import("undici");
-  const dispatcher: any = new ProxyAgent(proxyUrl || "http://127.0.0.1:9999");
+  const dispatcher: any = new ProxyAgent(proxyUrl || `http://127.0.0.1:${resolveProxyRouterPort()}`);
 
   try {
     let res: Response;
@@ -192,7 +192,7 @@ export async function validateCustomProviderApiKey(
   const timeout = setTimeout(() => controller.abort(), 10_000);
 
   const { ProxyAgent } = await import("undici");
-  const dispatcher: any = new ProxyAgent(proxyUrl || "http://127.0.0.1:9999");
+  const dispatcher: any = new ProxyAgent(proxyUrl || `http://127.0.0.1:${resolveProxyRouterPort()}`);
 
   try {
     let res: Response;

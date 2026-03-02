@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { formatError, getGraphqlUrl } from "@easyclaw/core";
+import { formatError, getGraphqlUrl, resolveGatewayPort } from "@easyclaw/core";
 import { createLogger } from "@easyclaw/logger";
 import WebSocket from "ws";
 import type { RouteHandler } from "./api-context.js";
@@ -232,7 +232,7 @@ export const handleWecomRoutes: RouteHandler = async (req, res, _url, pathname, 
         relayUrl,
         authToken,
         gatewayId: gwId,
-        gatewayWsUrl: gwInfo?.wsUrl ?? "ws://127.0.0.1:28789",
+        gatewayWsUrl: gwInfo?.wsUrl ?? `ws://127.0.0.1:${resolveGatewayPort()}`,
         gatewayToken: gwInfo?.token,
       });
 

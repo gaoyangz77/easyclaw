@@ -1,14 +1,14 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { homedir } from "node:os";
 import { createLogger } from "@easyclaw/logger";
-import { resolveOpenClawStateDir } from "@easyclaw/gateway";
+import { resolveProxyRouterPort } from "@easyclaw/core";
+import { resolveUserSkillsDir, resolveOpenClawStateDir } from "@easyclaw/core/node";
 
 const log = createLogger("panel-server");
 
 /** Directory where user-installed skills are stored. */
-export const USER_SKILLS_DIR = join(homedir(), ".easyclaw", "openclaw", "skills");
+export const USER_SKILLS_DIR = resolveUserSkillsDir();
 
 export function sendJson(res: ServerResponse, status: number, data: unknown): void {
   res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
@@ -47,7 +47,7 @@ export function extractIdFromPath(pathname: string, prefix: string): string | nu
  */
 export async function proxiedFetch(url: string | URL, init?: RequestInit): Promise<Response> {
   const { ProxyAgent } = await import("undici");
-  return fetch(url, { ...init, dispatcher: new ProxyAgent("http://127.0.0.1:9999") as any });
+  return fetch(url, { ...init, dispatcher: new ProxyAgent(`http://127.0.0.1:${resolveProxyRouterPort()}`) as any });
 }
 
 /**

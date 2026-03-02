@@ -1,14 +1,11 @@
 import Database from "better-sqlite3";
-import { dirname, join } from "node:path";
-import { homedir } from "node:os";
+import { dirname } from "node:path";
 import { mkdirSync } from "node:fs";
 import { createLogger } from "@easyclaw/logger";
+import { resolveDbPath, resolveEasyClawHome } from "@easyclaw/core/node";
 import { migrations } from "./migrations.js";
 
 const logger = createLogger("storage");
-
-const DEFAULT_DB_DIR = join(homedir(), ".easyclaw");
-const DEFAULT_DB_PATH = join(DEFAULT_DB_DIR, "db.sqlite");
 
 function runMigrations(db: Database.Database): void {
   db.exec(`
@@ -43,12 +40,13 @@ function runMigrations(db: Database.Database): void {
 }
 
 export function openDatabase(dbPath?: string): Database.Database {
-  const resolvedPath = dbPath ?? process.env.EASYCLAW_DB_PATH ?? DEFAULT_DB_PATH;
+  const defaultPath = resolveDbPath();
+  const resolvedPath = dbPath ?? defaultPath;
 
   if (resolvedPath !== ":memory:") {
     const dir =
-      resolvedPath === DEFAULT_DB_PATH
-        ? DEFAULT_DB_DIR
+      resolvedPath === defaultPath
+        ? resolveEasyClawHome()
         : dirname(resolvedPath);
     mkdirSync(dir, { recursive: true });
   }

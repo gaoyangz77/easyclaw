@@ -377,6 +377,9 @@ importers:
 
   packages/logger:
     dependencies:
+      '@easyclaw/core':
+        specifier: workspace:*
+        version: link:../core
       tslog:
         specifier: ^4.10.2
         version: 4.10.2
@@ -412,6 +415,9 @@ importers:
 
   packages/proxy-router:
     dependencies:
+      '@easyclaw/core':
+        specifier: workspace:*
+        version: link:../core
       '@easyclaw/logger':
         specifier: workspace:*
         version: link:../logger
@@ -450,6 +456,9 @@ importers:
 
   packages/secrets:
     dependencies:
+      '@easyclaw/core':
+        specifier: workspace:*
+        version: link:../core
       '@easyclaw/logger':
         specifier: workspace:*
         version: link:../logger

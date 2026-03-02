@@ -4,6 +4,7 @@ import { get as httpGet } from "node:http";
 import { createConnection } from "node:net";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { resolveCdpDataDir } from "@easyclaw/core/node";
 import {
   existsSync, readFileSync, lstatSync, readlinkSync,
   readdirSync, unlinkSync, rmSync, mkdirSync, symlinkSync, copyFileSync,
@@ -90,7 +91,7 @@ function readChromeLastUsedProfile(userDataDir: string): string {
  * On Windows, directory symlinks use junctions (no admin required).
  */
 function prepareCdpUserDataDir(realUserDataDir: string, profileDir: string): string {
-  const cdpDataDir = join(homedir(), ".easyclaw", "chrome-cdp");
+  const cdpDataDir = resolveCdpDataDir();
   const realProfilePath = join(realUserDataDir, profileDir);
   const cdpProfilePath = join(cdpDataDir, profileDir);
 

@@ -19,7 +19,7 @@ export interface ProxyRouterConfig {
  * Options for creating a proxy router.
  */
 export interface ProxyRouterOptions {
-  /** Port to listen on (default: 9999) */
+  /** Port to listen on (default: DEFAULT_PROXY_ROUTER_PORT from @easyclaw/core) */
   port?: number;
   /** Path to the config file to watch */
   configPath: string;

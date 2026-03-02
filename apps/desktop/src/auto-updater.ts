@@ -9,6 +9,7 @@ import { writeFileSync, readFileSync, unlinkSync, existsSync, mkdirSync } from "
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { homedir } from "node:os";
+import { resolveUpdateMarkerPath, resolveEasyClawHome } from "@easyclaw/core/node";
 
 const log = createLogger("auto-updater");
 
@@ -246,9 +247,9 @@ export function createAutoUpdater(deps: AutoUpdaterDeps) {
     // Windows-only: macOS/Linux updates don't use a separate installer process.
     if (process.platform === "win32") {
       try {
-        const markerDir = join(homedir(), ".easyclaw");
-        mkdirSync(markerDir, { recursive: true });
-        writeFileSync(join(markerDir, "update-installing"), latestUpdateInfo?.version ?? "", { flag: "w" });
+        const markerPath = resolveUpdateMarkerPath();
+        mkdirSync(resolveEasyClawHome(), { recursive: true });
+        writeFileSync(markerPath, latestUpdateInfo?.version ?? "", { flag: "w" });
       } catch {}
     }
 

@@ -17,6 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@easyclaw/core": "workspace:*",
     "tslog": "^4.10.2"
   },
   "devDependencies": {

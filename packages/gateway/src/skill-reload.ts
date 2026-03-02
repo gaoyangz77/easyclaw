@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, watch, type FSWatcher } from "node:fs";
 import { join } from "node:path";
-import { homedir } from "node:os";
+import { resolveOpenClawStateDir as _resolveOpenClawStateDir } from "@easyclaw/core/node";
 import { createLogger } from "@easyclaw/logger";
 
 const log = createLogger("gateway:skill-reload");
@@ -12,12 +12,12 @@ const SKILL_FILE_RE = /SKILL\.md$/;
  * Resolve the skills directory path.
  *
  * Uses the provided `stateDir` as the parent, or falls back to
- * `~/.easyclaw/openclaw` when none is given.
+ * `resolveOpenClawStateDir()` when none is given.
  *
  * Returns `{stateDir}/skills`.
  */
 export function resolveSkillsDir(stateDir?: string): string {
-  const base = stateDir ?? join(homedir(), ".easyclaw", "openclaw");
+  const base = stateDir ?? _resolveOpenClawStateDir();
   return join(base, "skills");
 }
 

@@ -1,10 +1,17 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { createLogger } from "@easyclaw/logger";
-import { ALL_PROVIDERS, getProviderMeta, resolveGatewayProvider, type LLMProvider } from "@easyclaw/core";
+import {
+  ALL_PROVIDERS, getProviderMeta, resolveGatewayProvider,
+  DEFAULT_GATEWAY_PORT, CDP_PORT_OFFSET,
+  type LLMProvider,
+} from "@easyclaw/core";
+import {
+  resolveOpenClawStateDir as _resolveOpenClawStateDir,
+  resolveOpenClawConfigPath as _resolveOpenClawConfigPath,
+} from "@easyclaw/core/node";
 import { generateAudioConfig, mergeAudioConfig } from "./audio-config-writer.js";
 
 const log = createLogger("gateway:config");
@@ -220,25 +227,13 @@ export interface OpenClawGatewayConfig {
   };
 }
 
-/** Default OpenClaw gateway port (28789 to avoid collision with standalone OpenClaw on 18789). */
-export const DEFAULT_GATEWAY_PORT = 28789;
+// Re-export from @easyclaw/core for backward compatibility.
+export { DEFAULT_GATEWAY_PORT } from "@easyclaw/core";
+export { resolveOpenClawStateDir, resolveOpenClawConfigPath } from "@easyclaw/core/node";
 
-/** Resolve the OpenClaw state directory, respecting OPENCLAW_STATE_DIR env var. */
-export function resolveOpenClawStateDir(
-  env: Record<string, string | undefined> = process.env,
-): string {
-  return env.OPENCLAW_STATE_DIR?.trim() || join(homedir(), ".easyclaw", "openclaw");
-}
-
-/** Resolve the OpenClaw config path, respecting OPENCLAW_CONFIG_PATH env var. */
-export function resolveOpenClawConfigPath(
-  env: Record<string, string | undefined> = process.env,
-): string {
-  return (
-    env.OPENCLAW_CONFIG_PATH?.trim() ||
-    join(resolveOpenClawStateDir(env), "openclaw.json")
-  );
-}
+// Use the core implementations internally.
+const resolveOpenClawStateDir = _resolveOpenClawStateDir;
+const resolveOpenClawConfigPath = _resolveOpenClawConfigPath;
 
 /**
  * Read existing OpenClaw config from disk.
@@ -804,7 +799,7 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
         defaultProfile: "openclaw",
         profiles: {
           ...cleanProfiles,
-          chrome: { driver: "clawd", cdpPort: (options.gatewayPort ?? DEFAULT_GATEWAY_PORT) + 12, color: "#00AA00" },
+          chrome: { driver: "clawd", cdpPort: (options.gatewayPort ?? DEFAULT_GATEWAY_PORT) + CDP_PORT_OFFSET, color: "#00AA00" },
         },
       };
     }

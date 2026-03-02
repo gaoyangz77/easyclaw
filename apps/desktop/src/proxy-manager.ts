@@ -1,8 +1,8 @@
 import { createLogger } from "@easyclaw/logger";
 import { session } from "electron";
-import { resolveOpenClawStateDir } from "@easyclaw/gateway";
 import type { ProxyRouterConfig } from "@easyclaw/proxy-router";
-import { ALL_PROVIDERS, getProviderMeta, reconstructProxyUrl } from "@easyclaw/core";
+import { ALL_PROVIDERS, getProviderMeta, reconstructProxyUrl, resolveProxyRouterPort } from "@easyclaw/core";
+import { resolveProxyRouterConfigPath } from "@easyclaw/core/node";
 import type { Storage } from "@easyclaw/storage";
 import type { SecretStore } from "@easyclaw/secrets";
 import { join, dirname } from "node:path";
@@ -10,15 +10,8 @@ import { writeFileSync, mkdirSync } from "node:fs";
 
 const log = createLogger("proxy-manager");
 
-export const PROXY_ROUTER_PORT = 9999;
-
-/**
- * Resolve path to the proxy router configuration file.
- */
-export function resolveProxyRouterConfigPath(): string {
-  const stateDir = resolveOpenClawStateDir();
-  return join(stateDir, "proxy-router.json");
-}
+// Re-export from @easyclaw/core for backward compatibility.
+export { resolveProxyRouterConfigPath } from "@easyclaw/core/node";
 
 /**
  * Well-known domain to provider mapping for major LLM APIs.
@@ -144,7 +137,7 @@ export async function writeProxyRouterConfig(
 
 /**
  * Build proxy environment variables pointing to local proxy router.
- * Returns fixed proxy URL (127.0.0.1:9999) regardless of configuration.
+ * Returns fixed proxy URL (127.0.0.1:DEFAULT_PROXY_ROUTER_PORT) regardless of configuration.
  * The router handles dynamic routing based on its config file.
  *
  * Chinese-domestic channel domains (Feishu, WeCom) are excluded via NO_PROXY
@@ -153,7 +146,7 @@ export async function writeProxyRouterConfig(
  * route them out.
  */
 export function buildProxyEnv(): Record<string, string> {
-  const localProxyUrl = `http://127.0.0.1:${PROXY_ROUTER_PORT}`;
+  const localProxyUrl = `http://127.0.0.1:${resolveProxyRouterPort()}`;
   const noProxy = [
     "localhost",
     "127.0.0.1",

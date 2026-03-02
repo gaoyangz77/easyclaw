@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { DEFAULT_PANEL_DEV_PORT, DEFAULT_PANEL_PORT } from "@easyclaw/core";
 
 export default defineConfig({
   plugins: [react()],
@@ -10,10 +11,10 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5180,
+    port: DEFAULT_PANEL_DEV_PORT,
     proxy: {
       "/api": {
-        target: "http://localhost:3210",
+        target: `http://localhost:${DEFAULT_PANEL_PORT}`,
         changeOrigin: true,
       },
     },

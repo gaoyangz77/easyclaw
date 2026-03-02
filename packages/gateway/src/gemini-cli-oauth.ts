@@ -11,7 +11,7 @@ import { existsSync, readFileSync, readdirSync, realpathSync, mkdirSync, writeFi
 import { createServer } from "node:http";
 import { execFile, execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
-import { homedir } from "node:os";
+import { resolveEasyClawHome } from "@easyclaw/core/node";
 import { enrichedPath, findInPath } from "./cli-utils.js";
 
 /** Error that carries a user-friendly message plus technical detail for hover tooltip. */
@@ -186,7 +186,7 @@ function findFile(dir: string, name: string, depth: number): string | null {
 }
 
 /** Default directory for EasyClaw-managed Gemini CLI install. */
-const LOCAL_GEMINI_DIR = join(homedir(), ".easyclaw", "gemini-cli");
+const LOCAL_GEMINI_DIR = join(resolveEasyClawHome(), "gemini-cli");
 
 /**
  * Extract OAuth credentials from the EasyClaw-managed local Gemini CLI install.

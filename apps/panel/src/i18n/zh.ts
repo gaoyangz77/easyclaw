@@ -1186,5 +1186,7 @@ export default {
     cronNov: "11月",
     cronDec: "12月",
     cronEditRaw: "编辑表达式",
+    cronModeVisual: "可视化",
+    cronModeRaw: "表达式",
   },
 } as const;

@@ -1,21 +1,16 @@
 import { mkdirSync, writeFileSync, unlinkSync, readdirSync, rmdirSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
-import { homedir } from "node:os";
+import { resolveUserSkillsDir } from "@easyclaw/core/node";
 import { createLogger } from "@easyclaw/logger";
 
 const log = createLogger("rules:skill-writer");
-
-/**
- * Default directory for managed SKILL.md files.
- */
-const DEFAULT_SKILLS_DIR = join(homedir(), ".easyclaw", "openclaw", "skills");
 
 /**
  * Resolve the skills directory path.
  * Returns the custom directory if provided, otherwise the default (~/.easyclaw/openclaw/skills/).
  */
 export function resolveSkillsDir(customDir?: string): string {
-  return customDir ?? DEFAULT_SKILLS_DIR;
+  return customDir ?? resolveUserSkillsDir();
 }
 
 /**

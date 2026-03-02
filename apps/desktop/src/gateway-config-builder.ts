@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import type { LLMProvider } from "@easyclaw/core";
-import { resolveModelConfig, LOCAL_PROVIDER_IDS, getProviderMeta } from "@easyclaw/core";
-import { buildExtraProviderConfigs, DEFAULT_GATEWAY_PORT, writeGatewayConfig } from "@easyclaw/gateway";
+import { resolveModelConfig, LOCAL_PROVIDER_IDS, getProviderMeta, resolveGatewayPort } from "@easyclaw/core";
+import { buildExtraProviderConfigs, writeGatewayConfig } from "@easyclaw/gateway";
 import type { Storage } from "@easyclaw/storage";
 
 export interface GatewayConfigDeps {
@@ -92,7 +92,7 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
 
     return {
       configPath,
-      gatewayPort: DEFAULT_GATEWAY_PORT,
+      gatewayPort: resolveGatewayPort(),
       enableChatCompletions: true,
       commandsRestart: true,
       enableFilePermissions: true,

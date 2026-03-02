@@ -1,5 +1,6 @@
 import { writeFileSync } from "node:fs";
 import { createLogger } from "@easyclaw/logger";
+import { resolveGatewayPort } from "@easyclaw/core";
 import { resolveOpenClawConfigPath, readExistingConfig, resolveOpenClawStateDir, syncPermissions } from "@easyclaw/gateway";
 import type { RouteHandler } from "./api-context.js";
 import { sendJson, parseBody } from "./route-utils.js";
@@ -33,7 +34,7 @@ export const handleSettingsRoutes: RouteHandler = async (req, res, url, pathname
   // --- Gateway Info ---
   if (pathname === "/api/app/gateway-info" && req.method === "GET") {
     const info = getGatewayInfo?.();
-    sendJson(res, 200, info ?? { wsUrl: "ws://127.0.0.1:28789" });
+    sendJson(res, 200, info ?? { wsUrl: `ws://127.0.0.1:${resolveGatewayPort()}` });
     return true;
   }
 

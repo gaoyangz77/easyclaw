@@ -1186,5 +1186,7 @@ export default {
     cronNov: "Nov",
     cronDec: "Dec",
     cronEditRaw: "Edit expression",
+    cronModeVisual: "Visual",
+    cronModeRaw: "Raw",
   },
 } as const;
