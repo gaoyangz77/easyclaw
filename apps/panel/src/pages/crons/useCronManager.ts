@@ -29,6 +29,15 @@ export interface CronManager {
   fetchStatus: () => Promise<CronStatus>;
 }
 
+/** Normalize a job object from the gateway: older configs use `jobId` instead of `id`. */
+function normalizeJob(raw: Record<string, unknown>): CronJob {
+  const job = raw as unknown as CronJob & { jobId?: string };
+  if (!job.id && job.jobId) {
+    job.id = job.jobId;
+  }
+  return job;
+}
+
 export function useCronManager(): CronManager {
   const clientRef = useRef<GatewayChatClient | null>(null);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
@@ -42,7 +51,7 @@ export function useCronManager(): CronManager {
     try {
       setLoading(true);
       const result = await client.request<CronListResult>("cron.list", listParamsRef.current);
-      setJobs(result.jobs);
+      setJobs(result.jobs.map((j) => normalizeJob(j as unknown as Record<string, unknown>)));
       setTotal(result.total);
       setError(null);
     } catch (err) {
