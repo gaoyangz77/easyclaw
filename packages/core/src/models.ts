@@ -1,6 +1,7 @@
 /** Supported LLM providers (cloud APIs, subscriptions, and local servers). */
 export type LLMProvider =
   | "openai"
+  | "openai-codex"
   | "anthropic"
   | "google"
   | "deepseek"
@@ -32,7 +33,7 @@ export type LLMProvider =
   | "ollama";
 
 /** Root provider IDs (excludes subscription plan IDs). */
-export type RootProvider = Exclude<LLMProvider, "zhipu-coding" | "moonshot-coding" | "minimax-coding" | "volcengine-coding" | "qwen-coding" | "modelscope" | "nvidia-nim" | "gemini" | "claude">;
+export type RootProvider = Exclude<LLMProvider, "openai-codex" | "zhipu-coding" | "moonshot-coding" | "minimax-coding" | "volcengine-coding" | "qwen-coding" | "modelscope" | "nvidia-nim" | "gemini" | "claude">;
 
 /** Per-million-token cost in USD for OpenClaw usage tracking. */
 export interface ModelCost {
@@ -153,6 +154,20 @@ export const PROVIDERS: Record<RootProvider, ProviderMeta> = {
     url: "https://openai.com/api/pricing/",
     apiKeyUrl: "https://platform.openai.com/api-keys",
     envVar: "OPENAI_API_KEY",
+    subscriptionPlans: [
+      {
+        id: "openai-codex",
+        label: "OpenAI Codex (Subscription)",
+        baseUrl: "https://api.openai.com/v1",
+        subscriptionUrl: "https://chatgpt.com/#pricing",
+        apiKeyUrl: "https://platform.openai.com/api-keys",
+        envVar: "OPENAI_CODEX_API_KEY",
+        oauth: true,
+        catalogProvider: "openai-codex",
+        api: "openai-codex-responses",
+        preferredModel: "gpt-5.3-codex",
+      },
+    ],
   },
   anthropic: {
     label: "Anthropic",
@@ -984,6 +999,7 @@ export function getProvidersForRegion(region: string): LLMProvider[] {
       "xiaomi",
       "nvidia-nim",
       "openai",
+      "openai-codex",
       "anthropic",
       "claude",
       "google",
@@ -992,6 +1008,7 @@ export function getProvidersForRegion(region: string): LLMProvider[] {
   }
   return [
     "openai",
+    "openai-codex",
     "anthropic",
     "claude",
     "google",

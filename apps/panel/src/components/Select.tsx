@@ -132,7 +132,7 @@ export function Select({ value, onChange, options, placeholder, disabled, classN
         <span className="custom-select-chevron">{open ? "\u25B2" : "\u25BC"}</span>
       </button>
       {open && createPortal(
-        <div ref={dropdownRef} className="custom-select-dropdown" style={dropdownStyle}>
+        <div ref={dropdownRef} className={`custom-select-dropdown${className ? ` ${className}` : ""}`} style={dropdownStyle}>
           {searchable && (
             <div className="custom-select-search-wrap">
               <input

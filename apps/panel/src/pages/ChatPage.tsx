@@ -44,6 +44,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   const [agentName, setAgentName] = useState<string | null>(null);
   const [activeModel, setActiveModel] = useState<{ keyId: string; provider: string; model: string } | null>(null);
   const [modelOptions, setModelOptions] = useState<{ value: string; label: string }[]>([]);
+  const [thinkingLevel, setThinkingLevel] = useState("");
   const [allFetched, setAllFetched] = useState(false);
   const [, forceUpdate] = useReducer((x: number) => x + 1, 0);
   const trackerRef = useRef(new RunTracker(forceUpdate));
@@ -759,6 +760,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         content: f.base64,
       }));
     }
+    if (thinkingLevel) params.thinking = thinkingLevel;
 
     clientRef.current.request("chat.send", params).catch((err) => {
       // RPC-level failure — clear runId so UI doesn't get stuck in streaming mode
@@ -1017,6 +1019,19 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
               options={modelOptions}
             />
           </>
+        )}
+        {connectionState === "connected" && (
+          <Select
+            className="chat-thinking-select"
+            value={thinkingLevel}
+            onChange={setThinkingLevel}
+            options={[
+              { value: "", label: t("chat.thinkingNone") },
+              { value: "low", label: t("chat.thinkingLow") },
+              { value: "medium", label: t("chat.thinkingMedium") },
+              { value: "high", label: t("chat.thinkingHigh") },
+            ]}
+          />
         )}
         <span className="chat-status-spacer" />
         <button
