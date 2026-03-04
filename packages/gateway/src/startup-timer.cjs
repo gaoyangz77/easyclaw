@@ -28,12 +28,70 @@ logPhase("preload executing");
 const Module = require("module");
 const origLoad = Module._load;
 
+// ── Fix: Redirect openclaw/plugin-sdk to the already-loaded module ──
+// Extensions use require("openclaw/plugin-sdk") as an external dependency.
+// Without this hook, Node.js native require fails (no node_modules/openclaw/),
+// causing jiti to fall back to its babel-transform pipeline. jiti's nested
+// requires are NOT cached to disk, so the 17 MB plugin-sdk gets babel-
+// transformed on EVERY startup (~12 s macOS, ~22 s Windows).
+//
+// This hook captures the absolute path of plugin-sdk when entry.js first
+// loads it via require("./plugin-sdk/index.js"), then redirects all future
+// require("openclaw/plugin-sdk") calls to that path. Since the module is
+// already in Node's module cache, the redirect is free. jiti's native
+// require succeeds → no fallback → no babel → instant extension loading.
+let pluginSdkResolvedPath = null;
+let pluginSdkDir = null;
+
+const origResolveFilename = Module._resolveFilename;
+Module._resolveFilename = function resolveWithPluginSdk(
+  request,
+  parent,
+  isMain,
+  options,
+) {
+  if (pluginSdkResolvedPath) {
+    if (request === "openclaw/plugin-sdk") {
+      return pluginSdkResolvedPath;
+    }
+    if (request.startsWith("openclaw/plugin-sdk/")) {
+      // e.g. "openclaw/plugin-sdk/account-id" → "<sdk-dir>/account-id"
+      const subpath = request.slice("openclaw/plugin-sdk/".length);
+      return origResolveFilename.call(
+        this,
+        path.join(pluginSdkDir, subpath),
+        parent,
+        isMain,
+        options,
+      );
+    }
+  }
+  return origResolveFilename.call(this, request, parent, isMain, options);
+};
+
 Module._load = function timedLoad(request, parent, isMain) {
   requireCount++;
   const start = performance.now();
   const result = origLoad.call(this, request, parent, isMain);
   const dur = performance.now() - start;
   requireTotalMs += dur;
+
+  // Capture plugin-sdk absolute path on first load
+  if (!pluginSdkResolvedPath && /plugin-sdk[/\\]index\.js$/.test(request)) {
+    try {
+      pluginSdkResolvedPath = origResolveFilename.call(
+        Module,
+        request,
+        parent,
+        isMain,
+      );
+      pluginSdkDir = path.dirname(pluginSdkResolvedPath);
+      logPhase(`plugin-sdk alias active: ${pluginSdkResolvedPath}`);
+    } catch {
+      // Non-critical — extensions will still load via jiti fallback
+    }
+  }
+
   if (dur > 100) {
     const shortReq =
       request.length > 60 ? "..." + request.slice(-57) : request;

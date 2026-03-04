@@ -254,13 +254,19 @@ export class GatewayLauncher extends EventEmitter<GatewayEvents> {
         if (existsSync(srcPreload)) {
           writeFileSync(preloadPath, readFileSync(srcPreload));
         } else {
-          // Fallback: write a minimal inline version
+          // Fallback: write a minimal inline version with the plugin-sdk
+          // resolution fix. Without this, jiti babel-transforms the 17 MB
+          // plugin-sdk on every startup because native require can't find
+          // "openclaw/plugin-sdk" and jiti's nested-require cache misses.
           writeFileSync(
             preloadPath,
             `"use strict";
-const t0=performance.now();
-const Module=require("module"),origLoad=Module._load;
-Module._load=function(r,p,m){const s=performance.now();const res=origLoad.call(this,r,p,m);const d=performance.now()-s;if(d>50)process.stderr.write("[startup-timer] +"+((performance.now()-t0)|0)+"ms require(\\""+r+"\\") took "+(d|0)+"ms\\n");return res};
+const t0=performance.now(),path=require("path"),Module=require("module");
+let sdkPath=null,sdkDir=null;
+const origRes=Module._resolveFilename;
+Module._resolveFilename=function(r,p,m,o){if(sdkPath){if(r==="openclaw/plugin-sdk")return sdkPath;if(r.startsWith("openclaw/plugin-sdk/"))return origRes.call(this,path.join(sdkDir,r.slice(20)),p,m,o)}return origRes.call(this,r,p,m,o)};
+const origLoad=Module._load;
+Module._load=function(r,p,m){const s=performance.now();const res=origLoad.call(this,r,p,m);const d=performance.now()-s;if(!sdkPath&&/plugin-sdk[/\\\\]index\\.js$/.test(r)){try{sdkPath=origRes.call(Module,r,p,m);sdkDir=path.dirname(sdkPath);process.stderr.write("[startup-timer] plugin-sdk alias: "+sdkPath+"\\n")}catch{}}if(d>50)process.stderr.write("[startup-timer] +"+((performance.now()-t0)|0)+"ms require(\\""+r+"\\") took "+(d|0)+"ms\\n");return res};
 process.stderr.write("[startup-timer] +0ms preload executing\\n");
 setImmediate(()=>process.stderr.write("[startup-timer] +"+(performance.now()-t0|0)+"ms event loop started\\n"));
 const ow=process.stdout.write;process.stdout.write=function(c,...a){if(String(c).includes("listening on"))process.stderr.write("[startup-timer] +"+(performance.now()-t0|0)+"ms gateway listening\\n");return ow.call(this,c,...a)};
