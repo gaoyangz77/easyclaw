@@ -3,10 +3,20 @@
     "version": "1.5.16",
     "date": "2026-03-03",
     "en": [
-      "Fix channel config binding for non-default accounts"
+      "Add OpenAI Codex as OAuth provider",
+      "Add thinking level selector to chat page",
+      "Fix channel config binding for non-default accounts",
+      "Disable automatic daily session reset for desktop app",
+      "Fix Windows drive-letter path handling in Docker bind mounts",
+      "Improve gateway startup performance"
     ],
     "zh": [
-      "修复多账号场景下频道配置绑定错误的问题"
+      "新增 OpenAI Codex OAuth 登录方式",
+      "聊天页面新增思考深度选择器",
+      "修复多账号场景下频道配置绑定错误的问题",
+      "关闭桌面端每日自动重置会话",
+      "修复 Windows 盘符路径在 Docker 挂载中的处理",
+      "优化网关启动速度"
     ]
   },
   {
