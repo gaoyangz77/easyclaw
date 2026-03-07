@@ -11,6 +11,7 @@
 // Exit code 0 = clean, 1 = leaked externals found.
 
 import { readdirSync, readFileSync, existsSync, statSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { join, resolve, dirname } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "..");
@@ -129,4 +130,26 @@ if (failed) {
   process.exit(1);
 } else {
   console.log("OK  All extension bundles have no leaked external imports.");
+}
+
+// ─── Check 2: pnpm-lock.yaml is up to date ───
+// Catches the case where package.json dependencies were changed but
+// `pnpm install` was not run to update the lockfile.
+console.log("");
+try {
+  execSync("pnpm install --frozen-lockfile --ignore-scripts", {
+    cwd: ROOT,
+    stdio: "pipe",
+  });
+  console.log("OK  pnpm-lock.yaml is up to date.");
+} catch (err) {
+  const stderr = err.stderr?.toString() ?? "";
+  // Extract the useful pnpm error message
+  const match = stderr.match(/ERR_PNPM_OUTDATED_LOCKFILE.*?\n([\s\S]*?)(?:\n\n|$)/);
+  console.error("FAIL  pnpm-lock.yaml is out of date with package.json");
+  if (match) {
+    console.error(match[0].trim());
+  }
+  console.error("\nFix: run `pnpm install` and commit the updated pnpm-lock.yaml.\n");
+  process.exit(1);
 }
