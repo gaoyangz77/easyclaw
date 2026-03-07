@@ -18,7 +18,6 @@
     },
     "dependencies": {
         "@easyclaw/logger": "workspace:*",
-        "@easyclaw/core": "workspace:*",
         "ws": "^8.18.0"
     },
     "openclaw": {

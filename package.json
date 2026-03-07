@@ -11,7 +11,8 @@
     "format": "oxfmt --check",
     "format:fix": "oxfmt --write",
     "postinstall": "bash scripts/fix-vendor-hardlinks.sh && bash scripts/rebuild-native.sh",
-    "verify-proxy": "node scripts/verify-proxy-domains.mjs"
+    "verify-proxy": "node scripts/verify-proxy-domains.mjs",
+    "check:ext-externals": "node scripts/check-extension-externals.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
