@@ -52,6 +52,7 @@ const EXTERNAL_PACKAGES = [
   "@lancedb/lancedb-*",
 
   // Complex dynamic loading patterns (runtime fs access, .proto files, etc.)
+  "ajv",
   "protobufjs",
   "protobufjs/*",
   "playwright-core",
@@ -328,6 +329,59 @@ async function extractVendorModelCatalog() {
   );
 }
 
+// ─── Helpers: resolve scoped plugin-sdk subpath files ───
+// v2026.3.7 added scoped plugin-sdk subpath exports (openclaw/plugin-sdk/core,
+// openclaw/plugin-sdk/telegram, etc.).  We read them dynamically from the
+// vendor package.json exports map so this script stays forward-compatible.
+
+/**
+ * Returns the list of scoped plugin-sdk .js filenames (e.g. ["core.js", "telegram.js", ...])
+ * by reading the vendor package.json exports map.  Excludes the root "plugin-sdk" and
+ * "plugin-sdk/account-id" entries which are handled separately.
+ */
+function resolvePluginSdkSubpathFiles() {
+  const pkg = JSON.parse(fs.readFileSync(path.join(vendorDir, "package.json"), "utf-8"));
+  const files = [];
+  for (const key of Object.keys(pkg.exports || {})) {
+    if (!key.startsWith("./plugin-sdk/")) continue;
+    const subpath = key.replace("./plugin-sdk/", "");
+    if (subpath === "account-id") continue; // handled separately
+    files.push(subpath + ".js");
+  }
+  return files;
+}
+
+/**
+ * Builds the full plugin-sdk alias map (import specifier -> file path)
+ * and externals list for esbuild.
+ *
+ * All scoped subpath aliases (openclaw/plugin-sdk/acpx, etc.) must be
+ * present in the alias map so esbuild matches them before falling through
+ * to the general openclaw/plugin-sdk alias.
+ */
+function resolvePluginSdkAliasAndExternals() {
+  const pluginSdkDir = path.join(distDir, "plugin-sdk");
+  // Build scoped aliases first so they appear before the root entry.
+  // esbuild matches aliases by longest prefix first, but being explicit
+  // about every subpath import ensures correct resolution.
+  const alias = {};
+  const externals = [];
+  // Add all scoped subpath aliases first
+  for (const subFile of resolvePluginSdkSubpathFiles()) {
+    const subpath = subFile.replace(".js", "");
+    const importSpec = `openclaw/plugin-sdk/${subpath}`;
+    alias[importSpec] = path.join(pluginSdkDir, subFile);
+    externals.push(importSpec);
+  }
+  // Add account-id
+  alias["openclaw/plugin-sdk/account-id"] = path.join(pluginSdkDir, "account-id.js");
+  externals.push("openclaw/plugin-sdk/account-id");
+  // Add root alias last
+  alias["openclaw/plugin-sdk"] = path.join(pluginSdkDir, "index.js");
+  externals.push("openclaw/plugin-sdk");
+  return { alias, externals };
+}
+
 // ─── Phase 0.5a: Bundle plugin-sdk into a single file ───
 // dist/plugin-sdk/ contains index.js + ~90 chunk files.  Vendor extensions
 // now inline plugin-sdk at build time (Phase 0.5b), but user-installed /
@@ -394,8 +448,36 @@ function bundlePluginSdk() {
     fs.renameSync(accountIdTmp, accountIdPath);
   }
 
-  // Delete chunk files and subdirs (keep only index.js and account-id.js)
+  // Bundle all scoped plugin-sdk subpath files as CJS.
+  // These are new in v2026.3.7: openclaw/plugin-sdk/core, /compat, /telegram, etc.
+  const scopedSubpathFiles = resolvePluginSdkSubpathFiles();
   const keepFiles = new Set(["index.js", "account-id.js", "package.json"]);
+  for (const subFile of scopedSubpathFiles) {
+    keepFiles.add(subFile);
+    const subPath = path.join(pluginSdkDir, subFile);
+    if (fs.existsSync(subPath)) {
+      const subTmp = path.join(pluginSdkDir, subFile.replace(".js", ".bundled.cjs"));
+      esbuild.buildSync({
+        entryPoints: [subPath],
+        outfile: subTmp,
+        bundle: true,
+        format: "cjs",
+        platform: "node",
+        target: "node22",
+        define: { "import.meta.url": "__import_meta_url" },
+        banner: {
+          js: 'var __import_meta_url = require("url").pathToFileURL(__filename).href;',
+        },
+        external: EXTERNAL_PACKAGES,
+        minify: true,
+        logLevel: "warning",
+      });
+      fs.unlinkSync(subPath);
+      fs.renameSync(subTmp, subPath);
+    }
+  }
+
+  // Delete chunk files and subdirs (keep bundled files)
   let deleted = 0;
   for (const entry of fs.readdirSync(pluginSdkDir, { withFileTypes: true })) {
     if (keepFiles.has(entry.name)) continue;
@@ -466,16 +548,12 @@ function prebundleExtensions() {
   const INLINE_SIZE_LIMIT = 2 * 1024 * 1024; // 2 MB
 
   const extExternalsBase = [...EXTERNAL_PACKAGES];
+  const { alias: pluginSdkAlias, externals: pluginSdkExternals } = resolvePluginSdkAliasAndExternals();
   const extExternalsWithSdk = [
     ...extExternalsBase,
-    "openclaw/plugin-sdk",
-    "openclaw/plugin-sdk/account-id",
+    ...pluginSdkExternals,
   ];
   const pluginSdkDir = path.join(distDir, "plugin-sdk");
-  const pluginSdkAlias = {
-    "openclaw/plugin-sdk": path.join(pluginSdkDir, "index.js"),
-    "openclaw/plugin-sdk/account-id": path.join(pluginSdkDir, "account-id.js"),
-  };
   // Mark plugin-sdk chunks as side-effect-free for esbuild tree-shaking.
   const pluginSdkPkg = path.join(pluginSdkDir, "package.json");
   const hadPkgJson = fs.existsSync(pluginSdkPkg);
@@ -756,12 +834,11 @@ function patchVendorConstants() {
   }
 
   if (totalOccurrences === 0) {
-    console.error(
-      `\n[bundle-vendor-deps] ✗ PATCH FAILED: Could not find "${VENDOR_HEALTH_INTERVAL_ORIGINAL}" in any dist/ file.\n` +
-        `\n  The vendor may have renamed or removed HEALTH_REFRESH_INTERVAL_MS.\n` +
-        `  Check vendor/openclaw/src/gateway/server-constants.ts and update this patch.\n`,
+    throw new Error(
+      `Could not find "${VENDOR_HEALTH_INTERVAL_ORIGINAL}" in any dist/ file. ` +
+        `The vendor build may have inlined or renamed this constant. ` +
+        `Check vendor/openclaw/src/gateway/server-constants.ts and update the patch.`,
     );
-    process.exit(1);
   }
 
   console.log(

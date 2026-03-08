@@ -7,10 +7,10 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "test": "turbo run test",
-    "dev": "bash scripts/fix-vendor-hardlinks.sh && turbo run dev",
+    "dev": "turbo run dev",
     "format": "oxfmt --check",
     "format:fix": "oxfmt --write",
-    "postinstall": "bash scripts/fix-vendor-hardlinks.sh && bash scripts/rebuild-native.sh",
+    "postinstall": "bash scripts/rebuild-native.sh",
     "verify-proxy": "node scripts/verify-proxy-domains.mjs",
     "check:ext-externals": "node scripts/check-extension-externals.mjs"
   },
