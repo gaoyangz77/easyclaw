@@ -262,4 +262,11 @@ export const migrations: Migration[] = [
       ALTER TABLE mobile_pairings ADD COLUMN status TEXT DEFAULT 'active';
     `,
   },
+  {
+    id: 19,
+    name: "add_input_modalities_to_provider_keys",
+    sql: `
+      ALTER TABLE provider_keys ADD COLUMN input_modalities_json TEXT DEFAULT NULL;
+    `,
+  },
 ];

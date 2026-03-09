@@ -3452,6 +3452,12 @@ tbody td {
   align-items: center;
 }
 
+.form-checkbox-group {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
 .form-checkbox-row {
   display: flex;
   align-items: center;

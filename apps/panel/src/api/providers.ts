@@ -34,6 +34,7 @@ export async function createProviderKey(data: {
   baseUrl?: string;
   customProtocol?: "openai" | "anthropic";
   customModelsJson?: string;
+  inputModalities?: string[];
 }): Promise<ProviderKeyEntry> {
   const result = await fetchJson<ProviderKeyEntry>("/provider-keys", {
     method: "POST",
@@ -45,7 +46,7 @@ export async function createProviderKey(data: {
 
 export async function updateProviderKey(
   id: string,
-  fields: { label?: string; model?: string; proxyUrl?: string; baseUrl?: string },
+  fields: { label?: string; model?: string; proxyUrl?: string; baseUrl?: string; inputModalities?: string[] },
 ): Promise<ProviderKeyEntry> {
   const result = await fetchJson<ProviderKeyEntry>("/provider-keys/" + id, {
     method: "PUT",

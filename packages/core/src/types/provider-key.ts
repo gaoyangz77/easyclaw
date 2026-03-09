@@ -15,6 +15,9 @@ export interface ProviderKeyEntry {
   customProtocol?: string | null;
   /** JSON-encoded array of model IDs for custom providers. NULL for built-in providers. */
   customModelsJson?: string | null;
+  /** Supported input modalities for the model (e.g. ["text"] or ["text", "image"]).
+   *  NULL/undefined defaults to ["text"]. Primarily used by local providers. */
+  inputModalities?: string[] | null;
   createdAt: string;
   updatedAt: string;
 }

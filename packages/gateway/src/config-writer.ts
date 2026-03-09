@@ -385,7 +385,7 @@ export interface WriteGatewayConfigOptions {
   /** Override base URLs and models for local providers (e.g. Ollama with user-configured endpoint). */
   localProviderOverrides?: Record<string, {
     baseUrl: string;
-    models: Array<{ id: string; name: string }>;
+    models: Array<{ id: string; name: string; inputModalities?: string[] }>;
   }>;
 }
 
@@ -801,7 +801,7 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
           id: m.id,
           name: m.name,
           reasoning: false,
-          input: ["text"],
+          input: (m.inputModalities ?? ["text"]) as Array<"text" | "image">,
           cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
           contextWindow: 128000,
           maxTokens: 8192,

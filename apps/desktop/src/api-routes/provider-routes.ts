@@ -42,6 +42,7 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
       baseUrl?: string;
       customProtocol?: "openai" | "anthropic";
       customModelsJson?: string;
+      inputModalities?: string[];
     };
 
     const isLocal = body.authType === "local";
@@ -117,6 +118,7 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
       baseUrl: (isLocal || isCustom) ? (body.baseUrl || null) : null,
       customProtocol: isCustom ? (body.customProtocol || null) : null,
       customModelsJson: isCustom ? (body.customModelsJson || null) : null,
+      inputModalities: body.inputModalities ?? undefined,
       createdAt: "",
       updatedAt: "",
     });
@@ -182,7 +184,7 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
     const id = pathname.slice("/api/provider-keys/".length);
     if (!id.includes("/")) {
       if (req.method === "PUT") {
-        const body = (await parseBody(req)) as { label?: string; model?: string; proxyUrl?: string; baseUrl?: string };
+        const body = (await parseBody(req)) as { label?: string; model?: string; proxyUrl?: string; baseUrl?: string; inputModalities?: string[] };
         const existing = storage.providerKeys.getById(id);
         if (!existing) {
           sendJson(res, 404, { error: "Key not found" });
@@ -220,6 +222,7 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
           model: body.model,
           proxyBaseUrl,
           baseUrl: body.baseUrl,
+          inputModalities: body.inputModalities,
         });
 
         if (modelChanging && existing.isDefault && snapshotEngine && body.model) {

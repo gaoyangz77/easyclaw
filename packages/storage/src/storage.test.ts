@@ -902,7 +902,7 @@ describe("Database", () => {
       .prepare("SELECT * FROM _migrations")
       .all() as Array<{ id: number; name: string; applied_at: string }>;
 
-    expect(rows).toHaveLength(18);
+    expect(rows).toHaveLength(19);
     expect(rows[0].id).toBe(1);
     expect(rows[0].name).toBe("initial_schema");
     expect(rows[1].id).toBe(2);
@@ -938,7 +938,7 @@ describe("Database", () => {
       .prepare("SELECT * FROM _migrations")
       .all() as Array<{ id: number; name: string }>;
 
-    expect(rows).toHaveLength(18);
+    expect(rows).toHaveLength(19);
   });
 });
 

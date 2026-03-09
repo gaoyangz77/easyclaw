@@ -34,8 +34,8 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
     return { provider: "google-gemini-cli", modelId };
   }
 
-  function buildLocalProviderOverrides(): Record<string, { baseUrl: string; models: Array<{ id: string; name: string }> }> {
-    const overrides: Record<string, { baseUrl: string; models: Array<{ id: string; name: string }> }> = {};
+  function buildLocalProviderOverrides(): Record<string, { baseUrl: string; models: Array<{ id: string; name: string; inputModalities?: string[] }> }> {
+    const overrides: Record<string, { baseUrl: string; models: Array<{ id: string; name: string; inputModalities?: string[] }> }> = {};
     for (const localProvider of LOCAL_PROVIDER_IDS) {
       const activeKey = storage.providerKeys.getByProvider(localProvider)[0];
       if (!activeKey) continue;
@@ -48,15 +48,15 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
       if (modelId) {
         overrides[localProvider] = {
           baseUrl,
-          models: [{ id: modelId, name: modelId }],
+          models: [{ id: modelId, name: modelId, inputModalities: activeKey.inputModalities ?? undefined }],
         };
       }
     }
     return overrides;
   }
 
-  function buildCustomProviderOverrides(): Record<string, { baseUrl: string; api: string; models: Array<{ id: string; name: string }> }> {
-    const overrides: Record<string, { baseUrl: string; api: string; models: Array<{ id: string; name: string }> }> = {};
+  function buildCustomProviderOverrides(): Record<string, { baseUrl: string; api: string; models: Array<{ id: string; name: string; input?: Array<"text" | "image"> }> }> {
+    const overrides: Record<string, { baseUrl: string; api: string; models: Array<{ id: string; name: string; input?: Array<"text" | "image"> }> }> = {};
     const allKeys = storage.providerKeys.getAll();
     const customKeys = allKeys.filter((k) => k.authType === "custom");
 
@@ -65,10 +65,11 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
       let models: string[];
       try { models = JSON.parse(key.customModelsJson); } catch { continue; }
       const api = key.customProtocol === "anthropic" ? "anthropic-messages" : "openai-completions";
+      const input = (key.inputModalities ?? ["text"]) as Array<"text" | "image">;
       overrides[key.provider] = {
         baseUrl: key.baseUrl,
         api,
-        models: models.map((m) => ({ id: m, name: m })),
+        models: models.map((m) => ({ id: m, name: m, input })),
       };
     }
     return overrides;

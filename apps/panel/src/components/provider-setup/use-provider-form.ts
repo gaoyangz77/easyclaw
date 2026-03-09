@@ -42,6 +42,7 @@ export function useProviderForm(onSave: (provider: string) => void) {
   const [localModels, setLocalModels] = useState<Array<{ id: string; name: string }>>([]);
   const [loadingModels, setLoadingModels] = useState(false);
   const [healthStatus, setHealthStatus] = useState<{ ok: boolean; version?: string } | null>(null);
+  const [inputModalities, setInputModalities] = useState<string[]>(["text"]);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [saving, setSaving] = useState(false);
   const [validating, setValidating] = useState(false);
@@ -153,6 +154,7 @@ export function useProviderForm(onSave: (provider: string) => void) {
       setCustomEndpoint("");
       setApiKey("");
       setCustomModels([]);
+      setInputModalities(["text"]);
       return;
     }
     const prov = newTab === "local"
@@ -166,6 +168,7 @@ export function useProviderForm(onSave: (provider: string) => void) {
       setBaseUrlTouched(false);
       setModelName("");
       setHealthStatus(null);
+      setInputModalities(["text"]);
     }
   }
 
@@ -182,6 +185,7 @@ export function useProviderForm(onSave: (provider: string) => void) {
         apiKey: apiKey.trim() || undefined,
         authType: "local",
         baseUrl: url,
+        inputModalities,
       });
 
       if (existingKeyCount === 0) {
@@ -192,6 +196,7 @@ export function useProviderForm(onSave: (provider: string) => void) {
       setModelName("");
       setApiKey("");
       setLabel("");
+      setInputModalities(["text"]);
       setShowAdvanced(false);
       setExistingKeyCount((c) => (c ?? 0) + 1);
       trackEvent("provider.key_added", { provider: "ollama" });
@@ -343,6 +348,7 @@ export function useProviderForm(onSave: (provider: string) => void) {
         baseUrl: customEndpoint.trim(),
         customProtocol,
         customModelsJson: JSON.stringify(customModels),
+        inputModalities,
       });
 
       if (existingKeyCount === 0) {
@@ -354,6 +360,7 @@ export function useProviderForm(onSave: (provider: string) => void) {
       setCustomEndpoint("");
       setApiKey("");
       setCustomModels([]);
+      setInputModalities(["text"]);
       setExistingKeyCount((c) => (c ?? 0) + 1);
       trackEvent("provider.key_added", { provider: providerSlug });
       onSave(providerSlug);
@@ -377,6 +384,7 @@ export function useProviderForm(onSave: (provider: string) => void) {
     baseUrl, setBaseUrl, baseUrlTouched, setBaseUrlTouched,
     modelName, setModelName, detectedServer,
     detecting, localModels, loadingModels, healthStatus,
+    inputModalities, setInputModalities,
     // Custom provider state
     customName, setCustomName, customProtocol, setCustomProtocol,
     customEndpoint, setCustomEndpoint, customModels, setCustomModels,
