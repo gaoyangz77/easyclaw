@@ -3,4 +3,3 @@ packages:
   - "packages/*"
   - "packages/apps/*"
   - "extensions/*"
-  - "client/*"
