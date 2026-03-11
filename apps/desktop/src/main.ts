@@ -1063,7 +1063,7 @@ app.whenReady().then(async () => {
           openUrl: (url) => shell.openExternal(url),
           onStatusUpdate: (msg) => log.info(`OAuth: ${msg}`),
           proxyUrl: proxyRouterUrl,
-        });
+        }, vendorDir);
         pendingOAuthCreds = acquired;
         pendingOAuthProvider = provider;
         log.info(`Codex OAuth acquired for ${provider}`);
