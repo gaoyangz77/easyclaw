@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.6.7",
+    "date": "2026-03-11",
+    "en": [
+      "Fix vendor runtime dependency packaging for extensions",
+      "Fix mobile chat channel media send errors",
+      "Fix Feishu SDK packaging in desktop builds",
+      "Refine provider fallback model handling and refresh model defaults",
+      "Stabilize desktop e2e test selectors"
+    ],
+    "zh": [
+      "修复扩展插件运行时依赖打包问题",
+      "修复移动聊天频道发送媒体文件失败的问题",
+      "修复飞书 SDK 未正确打包的问题",
+      "优化模型回退逻辑和默认模型配置",
+      "提升桌面端自动化测试稳定性"
+    ]
+  },
+  {
     "version": "1.6.6",
     "date": "2026-03-11",
     "en": [
