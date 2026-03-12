@@ -51,6 +51,8 @@ const EXTERNAL_PACKAGES = [
   "ffmpeg-static", "authenticate-pam", "esbuild", "node-llama-cpp",
   // Proxy dependency
   "undici",
+  // Feishu SDK is resolved from the app workspace at runtime.
+  "@larksuiteoapi/node-sdk",
   // Schema library shared with plugins
   "@sinclair/typebox", "@sinclair/typebox/*",
 ];

@@ -28,6 +28,7 @@
   },
   "packageManager": "pnpm@10.6.2",
   "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.59.0",
     "@rolldown/binding-darwin-arm64": "1.0.0-rc.3"
   },
   "pnpm": {
