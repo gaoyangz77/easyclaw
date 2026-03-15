@@ -352,6 +352,11 @@ exports.default = async function copyVendorDeps(context) {
         fs.unlinkSync(indexTs);
         cleanedFiles++;
       }
+      const pluginTs = path.join(extDir, "plugin.ts");
+      if (fs.existsSync(pluginTs)) {
+        fs.unlinkSync(pluginTs);
+        cleanedFiles++;
+      }
       const srcDir = path.join(extDir, "src");
       if (fs.existsSync(srcDir)) {
         const count = countFiles(srcDir);
@@ -373,6 +378,10 @@ exports.default = async function copyVendorDeps(context) {
           const raw = JSON.stringify(pkgJson);
           if (raw.includes("./index.ts")) {
             Object.assign(pkgJson, JSON.parse(raw.replace(/\.\/index\.ts/g, "./index.js")));
+            changed = true;
+          }
+          if (raw.includes("./plugin.ts")) {
+            Object.assign(pkgJson, JSON.parse(raw.replace(/\.\/plugin\.ts/g, "./index.js")));
             changed = true;
           }
           if (pkgJson.type === "module") {

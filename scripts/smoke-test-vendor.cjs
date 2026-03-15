@@ -20,6 +20,31 @@ const os = require("os");
 
 const vendorDir = path.resolve(__dirname, "..", "vendor", "openclaw");
 const openclawMjs = path.join(vendorDir, "openclaw.mjs");
+const startupTimerPath = path.resolve(__dirname, "..", "packages", "gateway", "src", "startup-timer.cjs");
+
+// ── Startup budget thresholds (ms) ──
+const BUDGETS = {
+  "event loop started": 8000,
+  "gateway listening": 12000,
+};
+// Required milestones — success is only declared after ALL of these appear.
+const REQUIRED_MILESTONES = ["gateway listening"];
+
+const STARTUP_TIMER_RE = /\[startup-timer\] \+(\d+)ms (event loop started|gateway listening)/g;
+
+function parseStartupMilestones(output) {
+  const milestones = {};
+  let match;
+  const re = new RegExp(STARTUP_TIMER_RE.source, STARTUP_TIMER_RE.flags);
+  while ((match = re.exec(output)) !== null) {
+    milestones[match[2]] = parseInt(match[1], 10);
+  }
+  return milestones;
+}
+
+function hasRequiredMilestones(milestones) {
+  return REQUIRED_MILESTONES.every((m) => m in milestones);
+}
 
 // ── Guard: skip if vendor is not provisioned ──
 if (!fs.existsSync(openclawMjs)) {
@@ -57,6 +82,17 @@ fs.writeFileSync(
   "utf-8",
 );
 
+// startup-timer.cjs is a required dependency — it lives in our repo.
+if (!fs.existsSync(startupTimerPath)) {
+  console.error(
+    `\n[smoke-test-vendor] FAILED: startup-timer.cjs not found at ${startupTimerPath}\n` +
+      `  Budget guard cannot function. Ensure packages/gateway/src/startup-timer.cjs exists.\n`,
+  );
+  process.exit(1);
+}
+const existingNodeOptions = process.env.NODE_OPTIONS || "";
+const nodeOptions = `${existingNodeOptions} --require ${startupTimerPath}`.trim();
+
 const child = spawn(process.execPath, [openclawMjs, "gateway"], {
   cwd: tmpDir,
   env: {
@@ -64,6 +100,7 @@ const child = spawn(process.execPath, [openclawMjs, "gateway"], {
     OPENCLAW_CONFIG_PATH: path.join(tmpDir, "openclaw.json"),
     OPENCLAW_STATE_DIR: tmpDir,
     NODE_COMPILE_CACHE: undefined,
+    NODE_OPTIONS: nodeOptions,
   },
   stdio: ["ignore", "pipe", "pipe"],
 });
@@ -98,27 +135,7 @@ child.stderr.on("data", (chunk) => {
 function checkOutput() {
   if (settled) return;
 
-  // Gateway started — check for runtime errors
-  if (allOutput.includes("[gateway]")) {
-    if (allOutput.includes("Cannot find module")) {
-      const matches = allOutput.match(/Cannot find module '([^']+)'/g) || [];
-      const modules = matches.map(
-        (m) => m.match(/Cannot find module '([^']+)'/)?.[1] || "?",
-      );
-      const unique = [...new Set(modules)];
-      console.error(
-        `\n[smoke-test-vendor] FAILED: Gateway started but ${unique.length} module(s) missing:\n` +
-          `  ${unique.join(", ")}\n`,
-      );
-      settle(1);
-      return;
-    }
-    console.log("[smoke-test-vendor] Passed: gateway started successfully.");
-    settle(0);
-    return;
-  }
-
-  // Early failure detection
+  // ── Early failure detection (crash / missing module) ──
   if (allOutput.includes("Dynamic require of")) {
     const match = allOutput.match(
       /Dynamic require of "([^"]+)" is not supported/,
@@ -143,6 +160,60 @@ function checkOutput() {
     settle(1);
     return;
   }
+
+  // ── Success requires all required milestones from startup-timer ──
+  const milestones = parseStartupMilestones(allOutput);
+  if (!hasRequiredMilestones(milestones)) {
+    // Not ready yet — keep waiting for more output
+    return;
+  }
+
+  // All required milestones present — check for runtime errors
+  if (allOutput.includes("Cannot find module")) {
+    const matches = allOutput.match(/Cannot find module '([^']+)'/g) || [];
+    const modules = matches.map(
+      (m) => m.match(/Cannot find module '([^']+)'/)?.[1] || "?",
+    );
+    const unique = [...new Set(modules)];
+    console.error(
+      `\n[smoke-test-vendor] FAILED: Gateway started but ${unique.length} module(s) missing:\n` +
+        `  ${unique.join(", ")}\n`,
+    );
+    settle(1);
+    return;
+  }
+
+  // Print actual timing values
+  for (const [label, ms] of Object.entries(milestones)) {
+    const budget = BUDGETS[label];
+    if (budget) {
+      console.log(`[smoke-test-vendor] Startup timing: "${label}" = ${ms}ms (budget: ${budget}ms)`);
+    } else {
+      console.log(`[smoke-test-vendor] Startup timing: "${label}" = ${ms}ms`);
+    }
+  }
+
+  // Check budgets
+  const violations = [];
+  for (const [label, budget] of Object.entries(BUDGETS)) {
+    const actual = milestones[label];
+    if (actual !== undefined && actual > budget) {
+      violations.push({ label, actual, budget });
+    }
+  }
+
+  if (violations.length > 0) {
+    for (const v of violations) {
+      console.error(
+        `[smoke-test-vendor] BUDGET EXCEEDED: "${v.label}" took ${v.actual}ms (budget: ${v.budget}ms)`,
+      );
+    }
+    settle(1);
+    return;
+  }
+
+  console.log("[smoke-test-vendor] Passed: gateway started successfully.");
+  settle(0);
 }
 
 // Strip Node.js warnings that flood output and hide real errors.
@@ -166,6 +237,44 @@ child.on("close", (code) => {
     return;
   }
 
+  // Gateway exited before required milestones appeared.
+  // Detect whether startup-timer produced any parseable milestone record
+  // (not just a raw substring — partial/malformed lines don't count).
+  const milestones = parseStartupMilestones(allOutput);
+  const parsedAny = Object.keys(milestones).length > 0;
+  const missingLabels = REQUIRED_MILESTONES.filter((m) => !(m in milestones));
+
+  if (!parsedAny) {
+    // Distinguish "timer preload ran but gateway crashed before any milestone"
+    // from "timer never executed at all".
+    const timerPreloadRan = allOutput.includes("[startup-timer] +");
+    if (timerPreloadRan) {
+      console.error(
+        `\n[smoke-test-vendor] FAILED: Gateway crashed (code ${code}) before any startup milestone fired.\n` +
+          `  Timer preload executed, but the process exited before "event loop started".\n`,
+      );
+    } else {
+      console.error(
+        `\n[smoke-test-vendor] FAILED: Gateway exited (code ${code}) and startup-timer produced no output.\n` +
+          `  Timer injection failed — budget guard is non-functional.\n`,
+      );
+    }
+    const filtered = filterWarnings(allOutput) || "(empty)";
+    console.error(`  Output (first 3000 chars):\n  ${filtered.substring(0, 3000)}\n`);
+    settle(1);
+    return;
+  }
+
+  if (missingLabels.length > 0) {
+    console.error(
+      `\n[smoke-test-vendor] FAILED: Gateway exited (code ${code}) before required milestone(s): ${missingLabels.join(", ")}.\n`,
+    );
+    const filtered = filterWarnings(allOutput) || "(empty)";
+    console.error(`  Output (first 3000 chars):\n  ${filtered.substring(0, 3000)}\n`);
+    settle(1);
+    return;
+  }
+
   const filtered = filterWarnings(allOutput) || "(empty)";
   console.error(
     `\n[smoke-test-vendor] FAILED: Gateway exited with code ${code}.\n` +
@@ -177,11 +286,20 @@ child.on("close", (code) => {
 // Hard timeout: 90 seconds (macOS CI VMs are slow)
 const timeout = setTimeout(() => {
   if (settled) return;
+  const milestones = parseStartupMilestones(allOutput);
+  const missingLabels = REQUIRED_MILESTONES.filter((m) => !(m in milestones));
   const filtered = filterWarnings(allOutput) || "(empty)";
-  console.error(
-    `\n[smoke-test-vendor] FAILED: Gateway timed out (90s) with no "[gateway]" output.\n` +
-      `  Output (first 3000 chars):\n  ${filtered.substring(0, 3000)}\n`,
-  );
+  if (missingLabels.length > 0) {
+    console.error(
+      `\n[smoke-test-vendor] FAILED: Gateway timed out (90s). Required milestone(s) never appeared: ${missingLabels.join(", ")}.\n` +
+        `  Output (first 3000 chars):\n  ${filtered.substring(0, 3000)}\n`,
+    );
+  } else {
+    console.error(
+      `\n[smoke-test-vendor] FAILED: Gateway timed out (90s).\n` +
+        `  Output (first 3000 chars):\n  ${filtered.substring(0, 3000)}\n`,
+    );
+  }
   settle(1);
 }, 90_000);
 

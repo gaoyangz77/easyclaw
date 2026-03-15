@@ -37,6 +37,13 @@ jobs:
           # Code signing will be handled by SignPath
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
+      - name: Verify Windows packaged startup and model switch
+        run: |
+          node apps/desktop/scripts/prod-model-switch-check.mjs apps/desktop/release/win-unpacked/EasyClaw.exe
+        env:
+          EASYCLAW_PROD_CHECK_INITIAL_BUDGET_SECONDS: 12
+          EASYCLAW_PROD_CHECK_SWITCH_BUDGET_SECONDS: 8
+
       - name: Upload unsigned installer for signing
         uses: actions/upload-artifact@v6
         with:

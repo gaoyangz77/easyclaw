@@ -12,6 +12,7 @@
 // copying 1.3GB of node_modules.
 //
 // Phases verified:
+//   0.6   Feishu import guard (prevents heavy deps in light entry points)
 //   0.5b  Pre-bundle vendor extensions (dry-run: catches build errors)
 //   0.5a  Bundle plugin-sdk (dry-run: catches bundling failures)
 //   1     Bundle dist/entry.js with esbuild (dry-run: catches EXTERNAL_PACKAGES gaps)
@@ -66,15 +67,8 @@ if (!fs.existsSync(vendorDir)) {
 }
 
 const ENTRY_FILE = path.join(distDir, "entry.js");
-if (!fs.existsSync(ENTRY_FILE)) {
-  console.log(`${TAG} dist/entry.js not found, skipping.`);
-  process.exit(0);
-}
-
-if (!fs.existsSync(nmDir)) {
-  console.log(`${TAG} vendor/openclaw/node_modules not found, skipping.`);
-  process.exit(0);
-}
+const hasEntryFile = fs.existsSync(ENTRY_FILE);
+const hasNodeModules = fs.existsSync(nmDir);
 
 // ─── Results tracking ───
 
@@ -232,6 +226,144 @@ function extractCreateRequireAliases(/** @type {string} */ code) {
     aliases.add(match[1]);
   }
   return [...aliases];
+}
+
+// ─── Phase 0.6: Feishu import guard (light entry points must stay light) ───
+
+function verifyFeishuImportGuard() {
+  const phase = "Phase 0.6 (feishu import guard)";
+
+  const feishuEntryPoints = [
+    path.join(vendorDir, "src", "plugin-sdk", "feishu.ts"),
+    path.join(vendorDir, "extensions", "feishu", "src", "channel.ts"),
+    path.join(vendorDir, "extensions", "feishu", "plugin.ts"),
+  ];
+
+  // Skip if any entry point is missing (vendor may not be provisioned)
+  const missingEntries = feishuEntryPoints.filter((ep) => !fs.existsSync(ep));
+  if (missingEntries.length > 0) {
+    skip(phase, `${missingEntries.length} feishu entry point(s) not found (vendor not provisioned?)`);
+    return;
+  }
+
+  // Forbidden internal file path patterns (matched against metafile input keys)
+  const FORBIDDEN_INTERNAL_PATTERNS = [
+    /src[\\/]agents[\\/]model-auth\.[jt]s/,
+    /src[\\/]agents[\\/]models-config\.providers\.[jt]s/,
+    /src[\\/]agents[\\/]bedrock-discovery\.[jt]s/,
+  ];
+
+  // Forbidden npm packages
+  const FORBIDDEN_NPM_PACKAGES = new Set([
+    "@aws-sdk/client-bedrock",
+    "openai",
+    "@google/genai",
+  ]);
+
+  const esbuild = loadEsbuild();
+  // Build alias map pointing to source .ts files (dist/ may not be built).
+  // Resolve against src/plugin-sdk/ so esbuild can trace the full dep graph.
+  const pluginSdkSrcDir = path.join(vendorDir, "src", "plugin-sdk");
+  const feishuAlias = {};
+  const { externals: pluginSdkExternals } = resolvePluginSdkAliasAndExternals();
+  for (const ext of pluginSdkExternals) {
+    const subpath = ext.replace("openclaw/plugin-sdk", "");
+    const tsFile = subpath
+      ? path.join(pluginSdkSrcDir, subpath.slice(1) + ".ts")
+      : path.join(pluginSdkSrcDir, "index.ts");
+    if (fs.existsSync(tsFile)) {
+      feishuAlias[ext] = tsFile;
+    }
+  }
+
+  // Build a filtered externals list that does NOT externalize forbidden npm
+  // packages.  When a forbidden package IS in the dependency graph, esbuild
+  // will resolve it into metafile.inputs — making detection reliable.
+  // The normal EXTERNAL_PACKAGES list externalizes them, which hides the edge.
+  const guardExternals = EXTERNAL_PACKAGES.filter((pattern) => {
+    for (const forbidden of FORBIDDEN_NPM_PACKAGES) {
+      // Match exact name or wildcard pattern (e.g. "@aws-sdk/*")
+      if (pattern === forbidden) return false;
+      if (pattern.endsWith("/*")) {
+        const scope = pattern.slice(0, -2);
+        if (forbidden.startsWith(scope + "/")) return false;
+      }
+      if (pattern.endsWith("-*")) {
+        const prefix = pattern.slice(0, -1);
+        if (forbidden.startsWith(prefix)) return false;
+      }
+    }
+    return true;
+  });
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "eclaw-verify-feishu-"));
+
+  /** @type {string[]} */
+  const violations = [];
+
+  try {
+    for (const entryPoint of feishuEntryPoints) {
+      const entryLabel = path.relative(vendorDir, entryPoint);
+
+      /** @type {import("esbuild").BuildResult & { metafile: import("esbuild").Metafile }} */
+      let result;
+      try {
+        result = esbuild.buildSync({
+          entryPoints: [entryPoint],
+          outdir: tmpDir,
+          bundle: true,
+          format: "cjs",
+          platform: "node",
+          target: "node22",
+          define: { "import.meta.url": "__import_meta_url" },
+          banner: {
+            js: 'var __import_meta_url = require("url").pathToFileURL(__filename).href;',
+          },
+          // Use guardExternals: forbidden npm packages are NOT externalized,
+          // so esbuild resolves them into metafile.inputs if reachable.
+          external: guardExternals,
+          alias: feishuAlias,
+          metafile: true,
+          write: false,
+          logLevel: "warning",
+        });
+      } catch (err) {
+        // The analysis build itself broke — this means the guard cannot verify
+        // the light-entry contract.  Fail hard so a broken guard is never silent.
+        fail(phase, `analysis build failed for ${entryLabel} (guard non-functional): ${/** @type {Error} */ (err).message.substring(0, 300)}`);
+        return;
+      }
+
+      // Analyze metafile.inputs for forbidden dependencies.
+      // Because forbidden npm packages are not externalized, they appear in
+      // inputs if (and only if) the entry point transitively imports them.
+      const inputPaths = Object.keys(result.metafile.inputs);
+
+      for (const inputPath of inputPaths) {
+        // Check internal file path patterns
+        for (const pattern of FORBIDDEN_INTERNAL_PATTERNS) {
+          if (pattern.test(inputPath)) {
+            violations.push(`${entryLabel} -> ${inputPath}`);
+          }
+        }
+
+        // Check npm package imports — now reliably in inputs since not externalized
+        const pkgName = extractPkgName(inputPath);
+        if (FORBIDDEN_NPM_PACKAGES.has(pkgName)) {
+          violations.push(`${entryLabel} -> npm:${pkgName} (via ${inputPath})`);
+        }
+      }
+    }
+
+    if (violations.length > 0) {
+      fail(phase, `${violations.length} forbidden import(s) found in feishu light entries:\n` +
+        violations.map((v) => `    ${v}`).join("\n"));
+    } else {
+      pass(phase, `${feishuEntryPoints.length} feishu entry points verified — no forbidden heavy dependencies`);
+    }
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  }
 }
 
 // ─── Phase 0.5b: Dry-run extension pre-bundling ───
@@ -458,6 +590,11 @@ function verifyPluginSdkBundle() {
 function verifyEntryBundle() {
   const phase = "Phase 1 (entry.js bundle)";
 
+  if (!hasEntryFile) {
+    skip(phase, "dist/entry.js not found");
+    return new Set();
+  }
+
   const esbuild = loadEsbuild();
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "eclaw-verify-entry-"));
 
@@ -522,6 +659,11 @@ function verifyEntryBundle() {
 
 function verifyKeepSet() {
   const phase = "Phase 4 (keep-set)";
+
+  if (!hasNodeModules) {
+    skip(phase, "vendor/openclaw/node_modules not found");
+    return new Set();
+  }
 
   const keepSet = buildKeepSet();
 
@@ -674,6 +816,67 @@ function verifyVendorRuntimeLoaderAllowlist() {
   );
 }
 
+// ─── Startup budget enforcement ───
+
+const startupTimerPath = path.resolve(__dirname, "..", "packages", "gateway", "src", "startup-timer.cjs");
+const BUDGETS = {
+  "event loop started": 8000,
+  "gateway listening": 12000,
+};
+// Required milestones — success is only declared after ALL of these appear.
+const REQUIRED_MILESTONES = ["gateway listening"];
+const STARTUP_TIMER_RE = /\[startup-timer\] \+(\d+)ms (event loop started|gateway listening)/g;
+
+/** Parse startup-timer milestones from combined output. */
+function parseStartupMilestones(/** @type {string} */ output) {
+  /** @type {Record<string, number>} */
+  const milestones = {};
+  let match;
+  const re = new RegExp(STARTUP_TIMER_RE.source, STARTUP_TIMER_RE.flags);
+  while ((match = re.exec(output)) !== null) {
+    milestones[match[2]] = parseInt(match[1], 10);
+  }
+  return milestones;
+}
+
+/** Check whether all required milestones are present. */
+function hasRequiredMilestones(/** @type {Record<string, number>} */ milestones) {
+  return REQUIRED_MILESTONES.every((m) => m in milestones);
+}
+
+/**
+ * Validate milestones against budgets.
+ * Returns { violations, missing } where missing lists milestones we expected
+ * but never saw.
+ */
+function validateStartupBudgets(
+  /** @type {Record<string, number>} */ milestones,
+  /** @type {boolean} */ timerInjected,
+) {
+  // Print actual values for monitoring
+  for (const [label, ms] of Object.entries(milestones)) {
+    const budget = BUDGETS[label];
+    if (budget) {
+      console.log(`${TAG} Startup timing: "${label}" = ${ms}ms (budget: ${budget}ms)`);
+    } else {
+      console.log(`${TAG} Startup timing: "${label}" = ${ms}ms`);
+    }
+  }
+
+  /** @type {Array<{label: string, actual: number, budget: number}>} */
+  const violations = [];
+  for (const [label, budget] of Object.entries(BUDGETS)) {
+    const actual = milestones[label];
+    if (actual !== undefined && actual > budget) {
+      violations.push({ label, actual, budget });
+    }
+  }
+
+  const missing = REQUIRED_MILESTONES.filter((m) => !(m in milestones));
+
+  return { violations, missing };
+}
+
 // ─── Phase 5: Smoke test gateway startup ───
 
 function smokeTestGateway() {
@@ -699,6 +902,17 @@ function smokeTestGateway() {
     "utf-8",
   );
 
+  // startup-timer.cjs is a required dependency for budget enforcement.
+  // It lives in our repo — if missing, something is wrong.
+  const timerExists = fs.existsSync(startupTimerPath);
+  if (!timerExists) {
+    fail(phase, `startup-timer.cjs not found at ${startupTimerPath} — budget guard cannot function`);
+    return Promise.resolve();
+  }
+
+  const existingNodeOptions = process.env.NODE_OPTIONS || "";
+  const nodeOptions = `${existingNodeOptions} --require ${startupTimerPath}`.trim();
+
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [openclawMjs, "gateway"], {
       cwd: tmpDir,
@@ -707,6 +921,7 @@ function smokeTestGateway() {
         OPENCLAW_CONFIG_PATH: path.join(tmpDir, "openclaw.json"),
         OPENCLAW_STATE_DIR: tmpDir,
         NODE_COMPILE_CACHE: undefined,
+        NODE_OPTIONS: nodeOptions,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -734,31 +949,60 @@ function smokeTestGateway() {
     function checkOutput() {
       if (settled) return;
 
-      if (allOutput.includes("[gateway]")) {
-        if (allOutput.includes("Cannot find module")) {
-          const matches = allOutput.match(/Cannot find module '([^']+)'/g) || [];
-          const modules = matches.map(
-            (m) => m.match(/Cannot find module '([^']+)'/)?.[1] || "?",
-          );
-          const unique = [...new Set(modules)];
-          settle(false, `Gateway started but ${unique.length} module(s) missing: ${unique.join(", ")}`);
-          return;
-        }
-        settle(true, "Gateway started successfully");
-        return;
-      }
-
+      // ── Early failure detection (crash / missing module) ──
       if (allOutput.includes("Dynamic require of")) {
         const match = allOutput.match(/Dynamic require of "([^"]+)" is not supported/);
         settle(false, `Dynamic require of "${match ? match[1] : "(unknown)"}" is not supported`);
         return;
       }
 
-      if (allOutput.includes("Cannot find module")) {
-        const match = allOutput.match(/Cannot find module '([^']+)'/);
-        settle(false, `Cannot find module '${match ? match[1] : "(unknown)"}'`);
+      if (allOutput.includes("Cannot find module") && !allOutput.includes("gateway listening")) {
+        // If gateway is still starting up, a missing module is fatal
+        if (!allOutput.includes("[gateway]") || allOutput.includes("Cannot find module")) {
+          const matches = allOutput.match(/Cannot find module '([^']+)'/g) || [];
+          const modules = matches.map(
+            (m) => m.match(/Cannot find module '([^']+)'/)?.[1] || "?",
+          );
+          const unique = [...new Set(modules)];
+          // Only settle if gateway has exited or we see the error before gateway logs
+          if (!allOutput.includes("[gateway]")) {
+            settle(false, `Cannot find module: ${unique.join(", ")}`);
+            return;
+          }
+        }
+      }
+
+      // ── Success requires all required milestones from startup-timer ──
+      const milestones = parseStartupMilestones(allOutput);
+      if (!hasRequiredMilestones(milestones)) {
+        // Not ready yet — keep waiting for more output
         return;
       }
+
+      // All required milestones present — check for runtime errors first
+      if (allOutput.includes("Cannot find module")) {
+        const matches = allOutput.match(/Cannot find module '([^']+)'/g) || [];
+        const modules = matches.map(
+          (m) => m.match(/Cannot find module '([^']+)'/)?.[1] || "?",
+        );
+        const unique = [...new Set(modules)];
+        settle(false, `Gateway started but ${unique.length} module(s) missing: ${unique.join(", ")}`);
+        return;
+      }
+
+      // Validate budgets
+      const budgetResult = validateStartupBudgets(milestones, true);
+      if (budgetResult.violations.length > 0) {
+        for (const v of budgetResult.violations) {
+          console.error(
+            `${TAG} BUDGET EXCEEDED: "${v.label}" took ${v.actual}ms (budget: ${v.budget}ms)`,
+          );
+        }
+        settle(false, `Startup budget exceeded: ${budgetResult.violations.map((v) => `"${v.label}" ${v.actual}ms>${v.budget}ms`).join(", ")}`);
+        return;
+      }
+
+      settle(true, "Gateway started successfully");
     }
 
     child.stdout.on("data", (chunk) => {
@@ -779,12 +1023,41 @@ function smokeTestGateway() {
         return;
       }
 
+      // Gateway exited before required milestones appeared.
+      // Detect whether startup-timer produced any parseable milestone record
+      // (not just a raw substring — partial/malformed lines don't count).
+      const milestones = parseStartupMilestones(allOutput);
+      const parsedAny = Object.keys(milestones).length > 0;
+
+      if (!parsedAny) {
+        // Distinguish "timer preload ran but gateway crashed before any milestone"
+        // from "timer never executed at all".
+        const timerPreloadRan = allOutput.includes("[startup-timer] +");
+        if (timerPreloadRan) {
+          settle(false, `Gateway crashed (code ${code}) before any startup milestone fired — timer preload ran but process exited before "event loop started"`);
+        } else {
+          settle(false, `Gateway exited (code ${code}) and startup-timer produced no output — timer injection failed`);
+        }
+        return;
+      }
+
+      const missingLabels = REQUIRED_MILESTONES.filter((m) => !(m in milestones));
+      if (missingLabels.length > 0) {
+        settle(false, `Gateway exited (code ${code}) before required milestone(s): ${missingLabels.join(", ")}`);
+        return;
+      }
+
       settle(false, `Gateway exited with code ${code}. Output: ${(allOutput || "(empty)").substring(0, 500)}`);
     });
 
     const timeout = setTimeout(() => {
-      if (!settled) {
-        settle(false, `Gateway timed out (30s) with no "[gateway]" output. Output: ${(allOutput || "(empty)").substring(0, 500)}`);
+      if (settled) return;
+      const milestones = parseStartupMilestones(allOutput);
+      const missingLabels = REQUIRED_MILESTONES.filter((m) => !(m in milestones));
+      if (missingLabels.length > 0) {
+        settle(false, `Gateway timed out (30s). Required milestone(s) never appeared: ${missingLabels.join(", ")}. Output: ${(allOutput || "(empty)").substring(0, 500)}`);
+      } else {
+        settle(false, `Gateway timed out (30s). Output: ${(allOutput || "(empty)").substring(0, 500)}`);
       }
     }, 30_000);
     timeout.unref();
@@ -796,6 +1069,9 @@ function smokeTestGateway() {
 (async () => {
   const t0 = Date.now();
   console.log(`${TAG} Starting dry-run bundle verification...\n`);
+
+  // Phase 0.6: Feishu import guard (dry-run, reads from vendor)
+  verifyFeishuImportGuard();
 
   // Phase 0.5b: Extensions (writes to temp dir, reads from vendor)
   const { externals: extExternals } = verifyExtensionBundling();

@@ -71,6 +71,24 @@ const KEEP_DIST_DIRS = new Set([
 
 // ─── Helpers ───
 
+function ensureVendorDepsReady() {
+  const typescriptDir = path.join(nmDir, "typescript");
+  const keepSetPath = path.join(nmDir, ".bundle-keepset.json");
+  const looksPruned = !fs.existsSync(typescriptDir) || fs.existsSync(keepSetPath);
+  if (!looksPruned) return;
+
+  const restoreScript = path.join(__dirname, "restore-vendor-deps.cjs");
+  if (!fs.existsSync(restoreScript)) {
+    throw new Error(
+      "vendor/openclaw/node_modules looks pruned but restore-vendor-deps.cjs is missing",
+    );
+  }
+
+  const { execFileSync } = require("child_process");
+  console.log("[bundle-vendor-deps] vendor deps look pruned, restoring full dependencies...");
+  execFileSync(process.execPath, [restoreScript], { stdio: "inherit" });
+}
+
 /** Count files + symlinks in a directory recursively. */
 function countFiles(dir) {
   let count = 0;
@@ -625,9 +643,33 @@ function prebundleExtensions() {
     });
   }
 
+  function resolveExtensionEntryTs(extDir) {
+    const pkgPath = path.join(extDir, "package.json");
+    if (fs.existsSync(pkgPath)) {
+      try {
+        const pkgJson = JSON.parse(fs.readFileSync(pkgPath, "utf-8"));
+        const entries = pkgJson?.openclaw?.extensions;
+        if (Array.isArray(entries)) {
+          for (const entry of entries) {
+            if (typeof entry !== "string") continue;
+            const trimmed = entry.trim();
+            if (!trimmed) continue;
+            const candidate = path.resolve(extDir, trimmed);
+            if (candidate.startsWith(extDir) && fs.existsSync(candidate) && candidate.endsWith(".ts")) {
+              return candidate;
+            }
+          }
+        }
+      } catch {}
+    }
+
+    const indexTs = path.join(extDir, "index.ts");
+    return fs.existsSync(indexTs) ? indexTs : null;
+  }
+
   for (const ext of extDirs) {
-    const indexTs = path.join(ext.dir, "index.ts");
-    if (!fs.existsSync(indexTs)) {
+    const entryTs = resolveExtensionEntryTs(ext.dir);
+    if (!entryTs) {
       skipped++;
       continue;
     }
@@ -639,14 +681,14 @@ function prebundleExtensions() {
 
     try {
       // First attempt: inline plugin-sdk (tree-shaken).
-      let result = buildExtension(indexTs, indexJs, { inline: true });
+      let result = buildExtension(entryTs, indexJs, { inline: true });
 
       // If the output exceeds the threshold, the extension uses too many
       // plugin-sdk internals — rebuild with plugin-sdk as external to
       // avoid inflating the installer.
       const outSize = fs.statSync(indexJs).size;
       if (outSize > INLINE_SIZE_LIMIT) {
-        result = buildExtension(indexTs, indexJs, { inline: false });
+        result = buildExtension(entryTs, indexJs, { inline: false });
       } else {
         inlinedCount++;
       }
@@ -677,6 +719,9 @@ function prebundleExtensions() {
         if (raw.includes("./index.ts")) {
           Object.assign(pkgJson, JSON.parse(raw.replace(/\.\/index\.ts/g, "./index.js")));
         }
+        if (raw.includes("./plugin.ts")) {
+          Object.assign(pkgJson, JSON.parse(raw.replace(/\.\/plugin\.ts/g, "./index.js")));
+        }
         if (pkgJson.type === "module") {
           delete pkgJson.type;
         }
@@ -706,7 +751,7 @@ function prebundleExtensions() {
   console.log(
     `[bundle-vendor-deps] Pre-bundled ${bundled} extensions` +
       ` (${inlinedCount} with plugin-sdk inlined)` +
-      (skipped > 0 ? ` (${skipped} skipped — no index.ts)` : ""),
+      (skipped > 0 ? ` (${skipped} skipped — no extension .ts entry)` : ""),
   );
 
   // Clean up the temporary package.json so it doesn't interfere with
@@ -736,7 +781,7 @@ function prebundleExtensions() {
 // Output: dist/_bundled/entry.js + dist/_bundled/chunk-*.js
 // Phase 2 moves these into dist/.
 
-function bundleWithEsbuild() {
+async function bundleWithEsbuild() {
   console.log("[bundle-vendor-deps] Phase 1: Bundling dist/entry.js with code splitting...");
 
   const esbuild = loadEsbuild();
@@ -748,7 +793,7 @@ function bundleWithEsbuild() {
   fs.mkdirSync(BUNDLE_TEMP_DIR, { recursive: true });
 
   const t0 = Date.now();
-  const result = esbuild.buildSync({
+  const result = await esbuild.build({
     entryPoints: [ENTRY_FILE],
     bundle: true,
     outdir: BUNDLE_TEMP_DIR,
@@ -762,6 +807,7 @@ function bundleWithEsbuild() {
     metafile: true,
     sourcemap: false,
     minify: true,
+    plugins: [createVendorHealthIntervalPatchPlugin()],
     // Some bundled packages (e.g. @smithy/*) use CJS require() for Node.js
     // builtins like "buffer". esbuild's ESM output wraps these in a
     // __require() shim that throws "Dynamic require of X is not supported".
@@ -808,60 +854,94 @@ function bundleWithEsbuild() {
   return usedExternals;
 }
 
-// ─── Phase 1.5: Patch vendor constants in the bundle ───
-// The vendor hardcodes HEALTH_REFRESH_INTERVAL_MS = 60s which probes all
-// channel APIs every minute — too aggressive and triggers rate limits for
-// users with multiple channels.  We replace it with 5 minutes (300s) in
-// the bundled output.  This avoids modifying vendor source while keeping
-// the fix inside EasyClaw's own build pipeline.
+// ─── Phase 0.9: Patch the health cache interval during bundling ───
+// The vendor gateway caches health snapshots for 60s before launching a
+// background refresh. In EasyClaw that probe cadence is too aggressive for
+// multi-channel users and has caused rate-limiting. We keep the fix in the
+// desktop build pipeline instead of modifying vendor sources.
 //
-// If a future vendor update renames or removes the constant, the assertion
-// below will fail the build loudly so we notice immediately.
+// The original implementation patched a minified dist string literal
+// ("HEALTH_REFRESH_INTERVAL_MS = 6e4"), but that proved brittle across fresh
+// vendor rebuilds. The dist chunk names and formatting can change without the
+// underlying behavior changing. Instead, we patch the specific health handler
+// code path in-memory as esbuild loads vendor dist files.
 
-const VENDOR_HEALTH_INTERVAL_ORIGINAL = "HEALTH_REFRESH_INTERVAL_MS = 6e4";
-const VENDOR_HEALTH_INTERVAL_PATCHED  = "HEALTH_REFRESH_INTERVAL_MS = 3e5";
+const VENDOR_HEALTH_HANDLER_MARKER = "background health refresh failed";
+const VENDOR_HEALTH_INTERVAL_60S_RE =
+  /(\b[a-zA-Z_$][\w$]*-[a-zA-Z_$][\w$]*\.ts<)6e4(\)\{[^\n]{0,240}background health refresh failed)/g;
+const VENDOR_HEALTH_INTERVAL_300S_RE =
+  /\b[a-zA-Z_$][\w$]*-[a-zA-Z_$][\w$]*\.ts<3e5\)\{[^\n]{0,240}background health refresh failed/g;
 
-function patchVendorConstants() {
-  console.log("[bundle-vendor-deps] Phase 0.9: Patching vendor constants...");
+function createVendorHealthIntervalPatchPlugin() {
+  return {
+    name: "easyclaw-vendor-health-interval-patch",
+    setup(build) {
+      let patchedFiles = 0;
+      let totalOccurrences = 0;
+      let alreadyPatchedFiles = 0;
+      let alreadyPatchedOccurrences = 0;
 
-  // Patch the vendor dist chunk files BEFORE bundling, not after.
-  // esbuild's minifier inlines constant values and removes variable names,
-  // so string-patching the bundled output would fail.  By patching the source
-  // chunks, esbuild bundles the already-patched values.
-  let totalOccurrences = 0;
-  let patchedFiles = 0;
+      build.onLoad({ filter: /\.js$/ }, (args) => {
+        if (!args.path.startsWith(distDir)) return null;
 
-  for (const file of fs.readdirSync(distDir)) {
-    const filePath = path.join(distDir, file);
-    try {
-      if (!fs.statSync(filePath).isFile()) continue;
-    } catch { continue; }
+        let contents = fs.readFileSync(args.path, "utf-8");
+        if (!contents.includes(VENDOR_HEALTH_HANDLER_MARKER)) {
+          return null;
+        }
 
-    const content = fs.readFileSync(filePath, "utf-8");
-    const occurrences = content.split(VENDOR_HEALTH_INTERVAL_ORIGINAL).length - 1;
-    if (occurrences === 0) continue;
+        const occurrences = [...contents.matchAll(VENDOR_HEALTH_INTERVAL_60S_RE)].length;
+        const alreadyPatched = [...contents.matchAll(VENDOR_HEALTH_INTERVAL_300S_RE)].length;
+        if (occurrences === 0) {
+          if (alreadyPatched > 0) {
+            alreadyPatchedFiles++;
+            alreadyPatchedOccurrences += alreadyPatched;
+            return null;
+          }
 
-    const patched = content.replaceAll(
-      VENDOR_HEALTH_INTERVAL_ORIGINAL,
-      VENDOR_HEALTH_INTERVAL_PATCHED,
-    );
-    fs.writeFileSync(filePath, patched, "utf-8");
-    totalOccurrences += occurrences;
-    patchedFiles++;
-    console.log(`  patched ${file} (${occurrences} occurrence(s))`);
-  }
+          throw new Error(
+            `Found health handler marker in ${path.basename(args.path)} but could not match either ` +
+              `the 60s or 300s cache interval form. Check vendor/openclaw gateway health handler ` +
+              `output and update the EasyClaw build patch.`,
+          );
+        }
 
-  if (totalOccurrences === 0) {
-    throw new Error(
-      `Could not find "${VENDOR_HEALTH_INTERVAL_ORIGINAL}" in any dist/ file. ` +
-        `The vendor build may have inlined or renamed this constant. ` +
-        `Check vendor/openclaw/src/gateway/server-constants.ts and update the patch.`,
-    );
-  }
+        contents = contents.replace(
+          VENDOR_HEALTH_INTERVAL_60S_RE,
+          "$13e5$2",
+        );
+        patchedFiles++;
+        totalOccurrences += occurrences;
 
-  console.log(
-    `[bundle-vendor-deps] Patched HEALTH_REFRESH_INTERVAL_MS: 60s → 300s (${totalOccurrences} occurrence(s) in ${patchedFiles} file(s))`,
-  );
+        return {
+          contents,
+          loader: "js",
+        };
+      });
+
+      build.onEnd((result) => {
+        if (result.errors.length > 0) return;
+        if (totalOccurrences === 0 && alreadyPatchedOccurrences === 0) {
+          throw new Error(
+            `Could not find the vendor health handler marker "${VENDOR_HEALTH_HANDLER_MARKER}" ` +
+              `during bundling. Check vendor/openclaw gateway health handler output and update ` +
+              `the EasyClaw build patch.`,
+          );
+        }
+
+        if (totalOccurrences > 0) {
+          console.log(
+            `[bundle-vendor-deps] Patched health cache interval: 60s -> 300s ` +
+              `(${totalOccurrences} occurrence(s) in ${patchedFiles} file(s))`,
+          );
+        } else {
+          console.log(
+            `[bundle-vendor-deps] Health cache interval already at 300s ` +
+              `(${alreadyPatchedOccurrences} occurrence(s) in ${alreadyPatchedFiles} file(s))`,
+          );
+        }
+      });
+    },
+  };
 }
 
 // ─── Phase 2: Replace dist/ with split bundle output ───
@@ -931,7 +1011,17 @@ function replaceEntryWithBundle() {
 function patchIsMainModule() {
   console.log("[bundle-vendor-deps] Phase 2.5: Patching isMainModule for code splitting...");
 
-  const PAIRS_PATTERN = '[{wrapperBasename:"openclaw.mjs",entryBasename:"entry.js"},{wrapperBasename:"openclaw.js",entryBasename:"entry.js"}]';
+  const PAIRS_RE =
+    /\[\{wrapperBasename:"openclaw\.mjs",entryBasename:"entry\.js"\},\{wrapperBasename:"openclaw\.js",entryBasename:"entry\.js"\}(?:,\{wrapperBasename:"(?:openclaw\.mjs|openclaw\.js|entry\.js)",entryBasename:"chunk-[A-Z0-9]+\.js"\})*\]/;
+  const entryJsPath = path.join(distDir, "entry.js");
+  const entryJs = fs.readFileSync(entryJsPath, "utf-8");
+  const entryChunkMatch = entryJs.match(/from"\.\/(chunk-[A-Z0-9]+\.js)"/);
+  const entryChunkFile = entryChunkMatch?.[1] ?? null;
+
+  if (!entryChunkFile) {
+    console.warn("[bundle-vendor-deps] WARNING: Could not resolve entry chunk from entry.js — isMainModule may fail at runtime");
+    return;
+  }
 
   // Find the chunk that contains the wrapperEntryPairs table
   const chunkFiles = fs.readdirSync(distDir).filter(
@@ -942,25 +1032,29 @@ function patchIsMainModule() {
   for (const chunkFile of chunkFiles) {
     const chunkPath = path.join(distDir, chunkFile);
     const content = fs.readFileSync(chunkPath, "utf-8");
-    if (!content.includes(PAIRS_PATTERN)) continue;
+    if (!content.includes('wrapperBasename:"openclaw.mjs"')) continue;
+    const matchedPairs = content.match(PAIRS_RE)?.[0];
+    if (!matchedPairs) continue;
 
-    // Add the chunk's own basename as a valid entry for both wrappers.
+    // Add the entry chunk basename as a valid entry for both wrappers.
     // Also add entry.js as wrapper so the chain openclaw.mjs→entry.js→chunk works.
     const patchedPairs =
       '[{wrapperBasename:"openclaw.mjs",entryBasename:"entry.js"},' +
       '{wrapperBasename:"openclaw.js",entryBasename:"entry.js"},' +
-      `{wrapperBasename:"openclaw.mjs",entryBasename:"${chunkFile}"},` +
-      `{wrapperBasename:"openclaw.js",entryBasename:"${chunkFile}"},` +
-      `{wrapperBasename:"entry.js",entryBasename:"${chunkFile}"}]`;
+      `{wrapperBasename:"openclaw.mjs",entryBasename:"${entryChunkFile}"},` +
+      `{wrapperBasename:"openclaw.js",entryBasename:"${entryChunkFile}"},` +
+      `{wrapperBasename:"entry.js",entryBasename:"${entryChunkFile}"}]`;
 
-    const patched = content.replace(PAIRS_PATTERN, patchedPairs);
+    const patched = content.replace(matchedPairs, patchedPairs);
     fs.writeFileSync(chunkPath, patched, "utf-8");
     patchedFile = chunkFile;
     break;
   }
 
   if (patchedFile) {
-    console.log(`[bundle-vendor-deps] Patched wrapperEntryPairs in ${patchedFile}`);
+    console.log(
+      `[bundle-vendor-deps] Patched wrapperEntryPairs in ${patchedFile} for entry chunk ${entryChunkFile}`,
+    );
   } else {
     console.warn("[bundle-vendor-deps] WARNING: Could not find wrapperEntryPairs in any chunk — isMainModule may fail at runtime");
   }
@@ -1468,24 +1562,22 @@ function generateCompileCache() {
   }
   fs.mkdirSync(cacheDir, { recursive: true });
 
-  // Create a temporary warm-up script that imports entry.js, triggering V8
-  // compilation. The compile cache (NODE_COMPILE_CACHE) captures the bytecode.
-  // CJS format so it works regardless of package.json "type" field.
-  const warmUpScript = path.join(distDir, "_warmup.cjs");
-  fs.writeFileSync(
-    warmUpScript,
-    [
-      "'use strict';",
-      "const { pathToFileURL } = require('url');",
-      "const entryPath = process.argv[2];",
-      "import(pathToFileURL(entryPath).href)",
-      "  .then(() => setTimeout(() => process.exit(0), 1000))",
-      "  .catch(() => setTimeout(() => process.exit(0), 1000));",
-      "// Hard timeout in case import() hangs",
-      "setTimeout(() => process.exit(0), 25000);",
-    ].join("\n"),
-    "utf-8",
+  // Prefer real gateway startup via openclaw.mjs to exercise the full startup
+  // path (command parsing, config loading, HTTP server binding). Fall back to
+  // the old import()-based approach if openclaw.mjs is not available.
+  const openclawMjs = path.join(vendorDir, "openclaw.mjs");
+  const useRealGateway = fs.existsSync(openclawMjs);
+
+  if (!useRealGateway) {
+    console.log("[bundle-vendor-deps] openclaw.mjs not found, falling back to import() warm-up.");
+  }
+
+  // Inject startup-timer.cjs via NODE_OPTIONS so that Module._load hooks and
+  // the plugin-sdk alias are also exercised and their bytecode is cached.
+  const startupTimerPath = path.resolve(
+    __dirname, "..", "..", "..", "packages", "gateway", "src", "startup-timer.cjs",
   );
+  const hasStartupTimer = fs.existsSync(startupTimerPath);
 
   // Write a minimal config so the gateway can start (same as smoke test)
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "easyclaw-compile-cache-"));
@@ -1502,33 +1594,75 @@ function generateCompileCache() {
 
   const t0 = Date.now();
 
-  try {
-    execFileSync(electronPath, [warmUpScript, ENTRY_FILE], {
-      cwd: tmpDir,
-      timeout: 30_000,
-      env: {
-        ...process.env,
-        ELECTRON_RUN_AS_NODE: "1",
-        NODE_COMPILE_CACHE: cacheDir,
-        OPENCLAW_CONFIG_PATH: path.join(tmpDir, "openclaw.json"),
-        OPENCLAW_STATE_DIR: tmpDir,
-        OPENCLAW_BUNDLED_PLUGINS_DIR: extStagingDir,
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-      killSignal: "SIGTERM",
-    });
-  } catch (err) {
-    // Process may be killed by timeout or exit non-zero — the cache is still
-    // generated as long as V8 had time to compile and flush. Only warn if the
-    // process was killed before it could compile (very short timeout).
-    const killed = /** @type {any} */ (err).killed ?? false;
-    if (killed) {
-      console.log("[bundle-vendor-deps] Compile cache warm-up timed out (cache may be incomplete).");
+  // Build environment variables
+  const childEnv = Object.assign({}, process.env, {
+    ELECTRON_RUN_AS_NODE: "1",
+    NODE_COMPILE_CACHE: cacheDir,
+    OPENCLAW_CONFIG_PATH: path.join(tmpDir, "openclaw.json"),
+    OPENCLAW_STATE_DIR: tmpDir,
+    OPENCLAW_BUNDLED_PLUGINS_DIR: extStagingDir,
+  });
+
+  if (useRealGateway) {
+    // Delegate to a standalone script that spawns the gateway asynchronously,
+    // watches stderr for the milestone, then exits. This avoids the deadlock
+    // that occurs when trying to spin-wait in the same event loop.
+    const warmupScript = path.join(__dirname, "compile-cache-warmup.cjs");
+    const args = [warmupScript, electronPath, openclawMjs];
+    if (hasStartupTimer) {
+      args.push("--startup-timer", startupTimerPath);
     }
+
+    try {
+      execFileSync(process.execPath, args, {
+        cwd: tmpDir,
+        timeout: 65_000, // slightly above warmup script's internal 60s timeout
+        env: childEnv,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+    } catch (err) {
+      const killed = /** @type {any} */ (err).killed ?? false;
+      if (killed) {
+        console.log("[bundle-vendor-deps] Compile cache warm-up timed out (cache may be incomplete).");
+      }
+    }
+  } else {
+    // Fallback: simple import() warm-up for when openclaw.mjs is unavailable
+    const warmUpScript = path.join(distDir, "_warmup.cjs");
+    fs.writeFileSync(
+      warmUpScript,
+      [
+        "'use strict';",
+        "const { pathToFileURL } = require('url');",
+        "const entryPath = process.argv[2];",
+        "import(pathToFileURL(entryPath).href)",
+        "  .then(() => setTimeout(() => process.exit(0), 1000))",
+        "  .catch(() => setTimeout(() => process.exit(0), 1000));",
+        "// Hard timeout in case import() hangs",
+        "setTimeout(() => process.exit(0), 25000);",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    try {
+      execFileSync(electronPath, [warmUpScript, ENTRY_FILE], {
+        cwd: tmpDir,
+        timeout: 30_000,
+        env: childEnv,
+        stdio: ["ignore", "pipe", "pipe"],
+        killSignal: "SIGTERM",
+      });
+    } catch (err) {
+      const killed = /** @type {any} */ (err).killed ?? false;
+      if (killed) {
+        console.log("[bundle-vendor-deps] Compile cache warm-up timed out (cache may be incomplete).");
+      }
+    }
+
+    fs.unlinkSync(warmUpScript);
   }
 
-  // Clean up temp files
-  fs.unlinkSync(warmUpScript);
+  // Clean up temp dir
   try {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   } catch {}
@@ -1679,14 +1813,15 @@ if (!fs.existsSync(nmDir)) {
   process.exit(0);
 }
 
+ensureVendorDepsReady();
+
 (async () => {
   const t0 = Date.now();
   await extractVendorModelCatalog();
   extractVendorCodexOAuthHelper();
   const { externals: extExternals, inlinedCount } = prebundleExtensions();
   bundlePluginSdk();
-  patchVendorConstants();
-  const bundleExternals = bundleWithEsbuild();
+  const bundleExternals = await bundleWithEsbuild();
   replaceEntryWithBundle();
   patchIsMainModule();
   patchPluginSdkPreload();
