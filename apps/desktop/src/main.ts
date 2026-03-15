@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, Tray, shell, dialog } from "electron";
+import { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage } from "electron";
 import { createLogger, enableFileLogging } from "@easyclaw/logger";
 import {
   GatewayLauncher,
@@ -51,6 +51,14 @@ import { initTelemetry } from "./telemetry-init.js";
 import { createGatewayConfigBuilder } from "./gateway-config-builder.js";
 
 const log = createLogger("desktop");
+
+function setDockIcon(): void {
+  const iconPath = resolve(dirname(fileURLToPath(import.meta.url)), "../build/icon.png");
+  const icon = nativeImage.createFromPath(iconPath);
+  if (!icon.isEmpty()) {
+    app.dock?.setIcon(icon);
+  }
+}
 
 const PANEL_URL = process.env.PANEL_DEV_URL || `http://127.0.0.1:${resolvePanelPort()}`;
 // Resolve Volcengine STT CLI script path.
@@ -218,6 +226,7 @@ app.whenReady().then(async () => {
   // (which also prevents child processes like the gateway from showing dock icons).
   // We explicitly show it for the main process here.
   app.dock?.show();
+  setDockIcon();
 
   // --- Device ID ---
   let deviceId: string;

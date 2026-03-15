@@ -1,10 +1,12 @@
-import { nativeImage } from "electron";
+import { app, nativeImage } from "electron";
 import type { NativeImage } from "electron";
 import type { GatewayState } from "@easyclaw/gateway";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const PACKAGED_TRAY_ICON_PATH = resolve(__dirname, "../build/trayIcon@2x.png");
+const TRAY_ICON_SIZE = 44;
 
 /**
  * Color palette for state indicator dot.
@@ -18,14 +20,13 @@ const STATE_COLORS: Record<GatewayState, [number, number, number]> = {
 };
 
 /**
- * Create a tray icon from the app logo PNG with a colored status dot overlay.
- *
- * Uses build/trayIcon@2x.png (64x64) as base, displayed at 32x32 on retina.
+ * Create a tray icon from the packaged PNG with a colored status dot overlay.
+ * Uses the bundled tray icon regardless of dev/packaged mode.
  * Overlays a small colored circle in the bottom-right corner to indicate gateway state.
  */
 export function createTrayIcon(state: GatewayState): NativeImage {
-  const iconPath = resolve(__dirname, "../build/trayIcon@2x.png");
-  const base = nativeImage.createFromPath(iconPath);
+  const source = nativeImage.createFromPath(PACKAGED_TRAY_ICON_PATH);
+  const base = source.resize({ width: TRAY_ICON_SIZE, height: TRAY_ICON_SIZE });
 
   // Get the raw RGBA bitmap
   const size = base.getSize();
@@ -36,7 +37,7 @@ export function createTrayIcon(state: GatewayState): NativeImage {
 
   // Draw a state indicator dot in the bottom-right corner
   const [r, g, b] = STATE_COLORS[state];
-  const dotRadius = Math.round(w * 0.18); // ~18% of icon size
+  const dotRadius = Math.round(TRAY_ICON_SIZE * 0.18); // ~18% of the visible icon size
   const cx = w - dotRadius - 1;
   const cy = h - dotRadius - 1;
 
