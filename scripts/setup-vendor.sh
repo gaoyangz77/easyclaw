@@ -8,7 +8,7 @@ PROD="${1:-}"
 echo "Setting up OpenClaw vendor @ $HASH"
 git clone https://github.com/openclaw/openclaw.git "$REPO_ROOT/vendor/openclaw"
 cd "$REPO_ROOT/vendor/openclaw"
-git checkout "$HASH"
+git checkout -B main "$HASH"
 echo 'node-linker=hoisted' > .npmrc
 pnpm install --no-frozen-lockfile
 pnpm run build

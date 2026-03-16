@@ -76,10 +76,9 @@ if [[ "$ACTUAL_HASH" != "$EXPECTED_HASH"* ]]; then
   exit 1
 fi
 
-# Allow detached HEAD (CI does `git checkout <hash>`) or main branch.
 BRANCH="$(git -C "$VENDOR_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
-if [ "$BRANCH" != "main" ] && [ "$BRANCH" != "HEAD" ]; then
-  echo "FAIL: vendor/openclaw must be on main (or detached HEAD) before provisioning a patched workspace." >&2
+if [ "$BRANCH" != "main" ]; then
+  echo "FAIL: vendor/openclaw must be on main before provisioning a patched workspace." >&2
   exit 1
 fi
 
