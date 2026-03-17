@@ -257,6 +257,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
   // Handle chat events from gateway
   const handleEvent = useCallback((evt: GatewayEvent) => {
+    lastActivityRef.current = Date.now();
     const tracker = trackerRef.current;
 
     // Process agent events — dispatch to RunTracker for phase tracking
@@ -561,19 +562,37 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       }
       if (payload.state === "final" || payload.state === "error" || payload.state === "aborted") {
         tracker.cleanup();
+        // Clear externalPending so the thinking bubble disappears even if
+        // the SSE mirror lifecycle-end event is late or missing.
+        if (externalPendingRef.current) {
+          setExternalPending(false); externalPendingRef.current = false;
+        }
       }
     }
   }, [loadHistory, t]);
 
-  // Stall detection: periodically check if events have stopped arriving.
-  // Unlike a one-shot timeout, this catches stalls that happen mid-run
-  // (e.g. after a memory compaction delta, the LLM request fails silently).
-  // Reset activity tracking refs when a new run starts.
-  // Stall detection removed — the real-time agent phase indicator
-  // (tool events, "waiting for LLM", etc.) gives users enough feedback.
-  // The old 30s timeout would wrongly abort long-running tool calls
-  // and blame slow LLM providers, which isn't actionable.
-  // Activity tracking reset moved to handleSend (imperative, after LOCAL_SEND dispatch).
+  // Watchdog: if no gateway events arrive for 5 minutes while a run
+  // appears active, force-reset to clear a permanently stuck indicator.
+  // Active runs always produce periodic events (tool, delta, lifecycle),
+  // so 5 min of silence means the run is genuinely stuck or the gateway
+  // crashed.  This replaces the old 30s stall timer which was too aggressive.
+  useEffect(() => {
+    const WATCHDOG_INTERVAL = 30_000;   // check every 30s
+    const WATCHDOG_TIMEOUT = 5 * 60_000; // 5 minutes of silence
+    const timer = setInterval(() => {
+      const tracker = trackerRef.current;
+      const view = tracker.getView();
+      const stuck = view.isActive || externalPendingRef.current || runId !== null;
+      if (stuck && Date.now() - lastActivityRef.current > WATCHDOG_TIMEOUT) {
+        console.warn("[chat] watchdog: no events for 5 min — force-resetting run state");
+        tracker.cleanup();
+        if (externalPendingRef.current) {
+          setExternalPending(false); externalPendingRef.current = false;
+        }
+      }
+    }, WATCHDOG_INTERVAL);
+    return () => clearInterval(timer);
+  }, [runId]);
 
   // Re-fetch chat display settings when changed in SettingsPage.
   // ChatPage stays mounted (display:none) so the init effect won't re-run.
