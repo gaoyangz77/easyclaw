@@ -24,6 +24,8 @@ import "./chat/ChatPage.css";
 
 export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: string | null) => void }) {
   const { t, i18n } = useTranslation();
+  const tRef = useRef(t);
+  tRef.current = t;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [connectionState, setConnectionState] = useState<"connecting" | "connected" | "disconnected">("connecting");
@@ -257,11 +259,11 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
   // Handle chat events from gateway
   const handleEvent = useCallback((evt: GatewayEvent) => {
-    lastActivityRef.current = Date.now();
     const tracker = trackerRef.current;
 
     // Process agent events — dispatch to RunTracker for phase tracking
     if (evt.event === "agent") {
+      lastActivityRef.current = Date.now();
       const agentPayload = evt.payload as {
         runId?: string;
         stream?: string;
@@ -459,9 +461,9 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
 
     // Dispatch chat events to RunTracker
     if (chatRunId) {
+      lastActivityRef.current = Date.now();
       switch (payload.state) {
         case "delta": {
-          lastActivityRef.current = Date.now();
           const text = extractText(payload.message?.content);
           if (text) {
             tracker.dispatch({ type: "CHAT_DELTA", runId: chatRunId, text });
@@ -509,8 +511,8 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         }
         case "error": {
           console.error("[chat] error event:", payload.errorMessage ?? "unknown error", "runId:", chatRunId);
-          const raw = payload.errorMessage ?? t("chat.unknownError");
-          const errText = localizeError(raw, t);
+          const raw = payload.errorMessage ?? tRef.current("chat.unknownError");
+          const errText = localizeError(raw, tRef.current);
           setMessages((prev) => [...prev, { role: "assistant", text: `⚠ ${errText}`, timestamp: Date.now() }]);
           lastAgentStreamRef.current = null;
           tracker.cleanup();
@@ -569,7 +571,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         }
       }
     }
-  }, [loadHistory, t]);
+  }, [loadHistory]);
 
   // Watchdog: if no gateway events arrive for 5 minutes while a run
   // appears active, force-reset to clear a permanently stuck indicator.
@@ -585,7 +587,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       const stuck = view.isActive || externalPendingRef.current || runId !== null;
       if (stuck && Date.now() - lastActivityRef.current > WATCHDOG_TIMEOUT) {
         console.warn("[chat] watchdog: no events for 5 min — force-resetting run state");
-        tracker.cleanup();
+        tracker.reset();
         if (externalPendingRef.current) {
           setExternalPending(false); externalPendingRef.current = false;
         }
@@ -691,7 +693,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
                 needsDisconnectErrorRef.current = false;
                 setMessages((prev) => [...prev, {
                   role: "assistant",
-                  text: `⚠ ${t("chat.disconnectedError")}`,
+                  text: `⚠ ${tRef.current("chat.disconnectedError")}`,
                   timestamp: Date.now(),
                 }]);
               }
@@ -750,7 +752,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
           onSessionReset: (sessionKey) => {
             if (cancelled) return;
             if (sessionKey !== sessionKeyRef.current) return;
-            setMessages([{ role: "assistant", text: `🔄 ${t("chat.resetCommandFeedback")}`, timestamp: Date.now() }]);
+            setMessages([{ role: "assistant", text: `🔄 ${tRef.current("chat.resetCommandFeedback")}`, timestamp: Date.now() }]);
             clearImages(sessionKeyRef.current).catch(() => {});
             trackerRef.current.reset();
             lastAgentStreamRef.current = null;
