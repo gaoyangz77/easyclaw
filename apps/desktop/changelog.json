@@ -1,22 +1,26 @@
 [
   {
     "version": "1.7.0",
-    "date": "2026-03-16",
+    "date": "2026-03-17",
     "en": [
+      "Rebrand to RivonClaw with automatic data migration from EasyClaw",
+      "First-launch system dependencies provisioner with China mirror support",
       "Hybrid OAuth flow for Gemini and OpenAI Codex subscriptions",
+      "Display tool call arguments in collapsible chat panels",
       "Unified prompt injection and tool registry with browser profiles extension",
       "Redesigned Extra Features page layout with improved i18n",
-      "Replaced vendor bundle with runtime archive for smaller installs",
-      "Improved ARM packaging pipeline and bootstrap UX",
-      "Numerous CI and vendor boundary stability fixes"
+      "New app icons across all platforms",
+      "Numerous CI, packaging, and stability fixes"
     ],
     "zh": [
+      "品牌升级为 RivonClaw，自动迁移 EasyClaw 数据",
+      "首次启动自动安装系统依赖，支持国内镜像加速",
       "新增 Gemini 和 OpenAI Codex 订阅的混合 OAuth 登录",
+      "聊天中可展开查看工具调用参数",
       "统一提示词注入和工具注册系统，新增浏览器配置扩展",
       "重新设计「更多功能」页面布局，优化多语言支持",
-      "重构供应商依赖为运行时归档，减小安装包体积",
-      "改进 ARM 打包流程和首次启动体验",
-      "大量 CI 和供应商边界稳定性修复"
+      "全平台新图标",
+      "大量 CI、打包和稳定性修复"
     ]
   },
   {

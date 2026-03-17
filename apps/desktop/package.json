@@ -1,6 +1,6 @@
 {
   "name": "@rivonclaw/desktop",
-  "version": "1.6.8",
+  "version": "1.7.0",
   "private": true,
   "type": "module",
   "main": "dist/main.cjs",
