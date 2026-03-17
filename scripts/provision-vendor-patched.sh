@@ -23,7 +23,7 @@ PATCH_DIR="$REPO_ROOT/vendor-patches/openclaw"
 TARGET_DIR="$REPO_ROOT/tmp/vendor-patched/openclaw"
 SKIP_BUILD=0
 PROD_ONLY=0
-PATCH_BRANCH="easyclaw-patched"
+PATCH_BRANCH="rivonclaw-patched"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -123,10 +123,10 @@ while IFS= read -r patch_file; do
 done < <(find "$PATCH_DIR" -maxdepth 1 -type f -name '*.patch' | sort)
 
 if ! git -C "$TARGET_DIR" config user.name >/dev/null; then
-  git -C "$TARGET_DIR" config user.name "EasyClaw Vendor Replay"
+  git -C "$TARGET_DIR" config user.name "RivonClaw Vendor Replay"
 fi
 if ! git -C "$TARGET_DIR" config user.email >/dev/null; then
-  git -C "$TARGET_DIR" config user.email "vendor-replay@easyclaw.invalid"
+  git -C "$TARGET_DIR" config user.email "vendor-replay@rivonclaw.invalid"
 fi
 
 if [ "$PATCH_COUNT" -gt 0 ]; then

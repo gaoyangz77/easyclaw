@@ -1,5 +1,5 @@
-import { createLogger } from "@easyclaw/logger";
-import type { SessionStateRuntimeTarget } from "@easyclaw/core";
+import { createLogger } from "@rivonclaw/logger";
+import type { SessionStateRuntimeTarget } from "@rivonclaw/core";
 import { BrowserProfileRuntimeService } from "./runtime-service.js";
 import type { BrowserSessionAdapter } from "./session-state/index.js";
 

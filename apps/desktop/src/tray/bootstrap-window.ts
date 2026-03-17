@@ -7,7 +7,7 @@ const i18n = {
   en: {
     initializing: "Initializing...",
     preparing: "Preparing to configure...",
-    extracting: "Configuring EasyClaw...",
+    extracting: "Configuring RivonClaw...",
     verifying: "Verifying...",
     almostReady: "Almost ready...",
     retry: "Retry",

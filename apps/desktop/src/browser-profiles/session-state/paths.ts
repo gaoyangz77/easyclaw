@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { SessionStateRuntimeTarget } from "@easyclaw/core";
+import type { SessionStateRuntimeTarget } from "@rivonclaw/core";
 
 /** Root session-state directory for a profile, namespaced by runtime target. */
 export function sessionStateDirPath(

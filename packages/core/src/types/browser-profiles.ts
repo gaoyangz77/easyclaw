@@ -136,7 +136,7 @@ export interface BrowserProfilesToolResponse {
  * Session-state persistence is a shared foundation. The runtime target
  * identifies which browser runtime a session operates against:
  *
- * - `managed_profile` — PRIMARY target: EasyClaw-managed multi-profile browser.
+ * - `managed_profile` — PRIMARY target: RivonClaw-managed multi-profile browser.
  *   Each profile gets its own Chrome instance with a dedicated CDP port.
  * - `cdp` — COMPATIBILITY target: User's existing Chrome via CDP debug port.
  *   Single browser, single session (profile key: "__cdp__").

@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { homedir, arch } from "node:os";
 import { join } from "node:path";
-import { createLogger } from "@easyclaw/logger";
+import { createLogger } from "@rivonclaw/logger";
 import type { DepName } from "./types.js";
 import { getAugmentedPath } from "./dep-detector.js";
 import { getMirrorEnv } from "./mirror-config.js";
@@ -128,7 +128,7 @@ async function injectBrewMirrorToProfile(
     .map(([key, val]) => `export ${key}="${val}"`)
     .join("\n");
 
-  const marker = "# EasyClaw Homebrew mirrors";
+  const marker = "# RivonClaw Homebrew mirrors";
   const block = `\n${marker}\n${exportLines}\n`;
 
   try {

@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { ToolScopeType, ToolSelection } from "@easyclaw/core";
+import type { ToolScopeType, ToolSelection } from "@rivonclaw/core";
 
 interface ToolSelectionRow {
   scope_type: string;

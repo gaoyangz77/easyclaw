@@ -75,7 +75,7 @@ export function resolveProxyRouterConfigPath(
 export function resolveHeartbeatPath(
   env: Record<string, string | undefined> = process.env,
 ): string {
-  return join(resolveEasyClawHome(env), "heartbeat.json");
+  return join(resolveRivonClawHome(env), "heartbeat.json");
 }
 
 /** Resolve the user-installed skills directory. */

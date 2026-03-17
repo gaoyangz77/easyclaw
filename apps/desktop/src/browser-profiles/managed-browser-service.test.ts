@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { ManagedBrowserService } from "./managed-browser-service.js";
 import { createSessionStateStack } from "./session-state-wiring.js";
-import { MemorySecretStore } from "@easyclaw/secrets";
+import { MemorySecretStore } from "@rivonclaw/secrets";
 
 describe("ManagedBrowserService", () => {
   let dir: string;

@@ -1,8 +1,8 @@
 import { spawn, execSync } from "node:child_process";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
-import { createLogger } from "@easyclaw/logger";
-import { resolveOpenClawStateDir, resolveOpenClawConfigPath } from "@easyclaw/core/node";
+import { createLogger } from "@rivonclaw/logger";
+import { resolveOpenClawStateDir, resolveOpenClawConfigPath } from "@rivonclaw/core/node";
 import type { RouteHandler } from "./api-context.js";
 
 const log = createLogger("doctor");

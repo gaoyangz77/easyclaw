@@ -1,4 +1,4 @@
-import { createLogger } from "@easyclaw/logger";
+import { createLogger } from "@rivonclaw/logger";
 import type { AuthSessionManager } from "../../auth/auth-session.js";
 import type { SnapshotManifest } from "./store.js";
 

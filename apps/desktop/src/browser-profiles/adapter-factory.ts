@@ -1,4 +1,4 @@
-import type { SessionStateRuntimeTarget } from "@easyclaw/core";
+import type { SessionStateRuntimeTarget } from "@rivonclaw/core";
 import type { BrowserSessionAdapter } from "./session-state/index.js";
 import { CdpCookieAdapter } from "./cdp-cookie-adapter.js";
 import { ManagedProfileCookieAdapter } from "./managed-profile-cookie-adapter.js";

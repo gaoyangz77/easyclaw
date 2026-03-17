@@ -1,4 +1,4 @@
-import { createLogger } from "@easyclaw/logger";
+import { createLogger } from "@rivonclaw/logger";
 import type { BrowserCookie, BrowserSessionAdapter } from "./session-state/index.js";
 import { fetchDebuggerUrl, sendCdpCommand } from "./cdp-transport.js";
 
@@ -13,7 +13,7 @@ function mapSameSite(value?: string): "Strict" | "Lax" | "None" | undefined {
 }
 
 /**
- * ManagedProfileCookieAdapter — BrowserSessionAdapter for EasyClaw-managed
+ * ManagedProfileCookieAdapter — BrowserSessionAdapter for RivonClaw-managed
  * multi-profile browsers.
  *
  * This is the PRIMARY runtime target. Each managed profile runs its own

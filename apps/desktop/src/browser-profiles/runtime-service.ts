@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
-import type { BrowserProfileSessionStatePolicy, SessionStateRuntimeTarget } from "@easyclaw/core";
-import { DEFAULT_SESSION_STATE_POLICY } from "@easyclaw/core";
-import { createLogger } from "@easyclaw/logger";
+import type { BrowserProfileSessionStatePolicy, SessionStateRuntimeTarget } from "@rivonclaw/core";
+import { DEFAULT_SESSION_STATE_POLICY } from "@rivonclaw/core";
+import { createLogger } from "@rivonclaw/logger";
 import { SessionSnapshotStore, createNoopBackupProvider } from "./session-state/index.js";
 import type { SnapshotManifest } from "./session-state/index.js";
 import type { BrowserSessionAdapter, BrowserCookie, SessionStateBackupProvider } from "./session-state/index.js";
@@ -75,7 +75,7 @@ export function computeCookieHash(cookies: BrowserCookie[]): string {
  *
  * Policy resolution order (first non-null wins):
  * 1. profileResolver callback (reads from profile model / storage)
- * 2. DEFAULT_SESSION_STATE_POLICY from @easyclaw/core
+ * 2. DEFAULT_SESSION_STATE_POLICY from @rivonclaw/core
  *
  * Storage modes:
  * - storage="local": Local is the sole authority. No cloud interaction.

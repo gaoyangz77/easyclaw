@@ -2,7 +2,7 @@ import { ApolloClient, InMemoryCache, createHttpLink, Observable } from "@apollo
 import { SetContextLink } from "@apollo/client/link/context";
 import { ErrorLink } from "@apollo/client/link/error";
 import { CombinedGraphQLErrors } from "@apollo/client/errors";
-import { getGraphqlUrl } from "@easyclaw/core";
+import { getGraphqlUrl } from "@rivonclaw/core";
 
 let _loadingCallbacks: { start: () => void; stop: () => void } | null = null;
 

@@ -1,5 +1,5 @@
 import { platform } from "node:os";
-import { createLogger } from "@easyclaw/logger";
+import { createLogger } from "@rivonclaw/logger";
 import type { DepName, DepStatus, ProvisionResult } from "./types.js";
 import { detectDeps } from "./dep-detector.js";
 import { installDep } from "./dep-installer.js";

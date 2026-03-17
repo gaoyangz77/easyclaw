@@ -12,8 +12,8 @@
  * in SQLite (desktop-side), while entitlements and presets are
  * managed by the cloud backend.
  */
-import type { ToolScopeType, AgentRunToolContext } from "@easyclaw/core";
-import type { Storage } from "@easyclaw/storage";
+import type { ToolScopeType, AgentRunToolContext } from "@rivonclaw/core";
+import type { Storage } from "@rivonclaw/storage";
 import type { AuthSessionManager } from "../auth/auth-session.js";
 
 const RUN_CAPABILITY_CONTEXT_QUERY = `

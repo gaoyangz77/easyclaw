@@ -277,7 +277,7 @@ export const handleBrowserProfilesRoutes: RouteHandler = async (req, res, _url, 
       await ctx.sessionLifecycleManager.endSession(profileId);
     }
 
-    const basePath = process.env.EASYCLAW_DATA_DIR ?? "/tmp/easyclaw";
+    const basePath = process.env.RIVONCLAW_DATA_DIR ?? "/tmp/rivonclaw";
     try {
       await deleteMaterialized(profileId, basePath);
 

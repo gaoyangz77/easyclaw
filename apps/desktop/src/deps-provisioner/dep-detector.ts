@@ -2,7 +2,7 @@ import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
-import { createLogger } from "@easyclaw/logger";
+import { createLogger } from "@rivonclaw/logger";
 import type { DepName, DepStatus } from "./types.js";
 
 const log = createLogger("deps-provisioner");

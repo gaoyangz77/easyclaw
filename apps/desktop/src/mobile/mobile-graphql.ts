@@ -3,13 +3,13 @@ import type {
   MobileGraphQLResponse,
   RegisterPairingInput,
   RegisterPairingResult,
-} from "@easyclaw/core";
+} from "@rivonclaw/core";
 import type { ApiContext } from "../api-routes/api-context.js";
 import {
   readMobileAllowlist,
   writeMobileAllowlist,
 } from "../api-routes/mobile-chat-routes.js";
-import { resolveOpenClawConfigPath } from "@easyclaw/gateway";
+import { resolveOpenClawConfigPath } from "@rivonclaw/gateway";
 import { syncOwnerAllowFrom } from "../auth/owner-sync.js";
 
 interface RegisterPairingData extends Record<string, unknown> {

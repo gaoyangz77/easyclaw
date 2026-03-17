@@ -82,8 +82,8 @@ function formatHashFailureMessage(actualHash: string): string {
 The upstream OpenClaw browser tool description has changed.
 File: vendor/openclaw/src/agents/tools/browser-tool.ts
 
-EasyClaw overrides this description via prependContext in:
-  extensions/easyclaw-tools/src/browser-mode-context.ts
+RivonClaw overrides this description via prependContext in:
+  extensions/rivonclaw-tools/src/browser-mode-context.ts
 
 Upstream PR tracking this issue:
   https://github.com/openclaw/openclaw/pull/40350
@@ -114,8 +114,8 @@ function formatSentinelMessage(
 ${reason}
 File: vendor/openclaw/src/agents/tools/browser-tool.ts
 
-EasyClaw overrides this description via prependContext in:
-  extensions/easyclaw-tools/src/browser-mode-context.ts
+RivonClaw overrides this description via prependContext in:
+  extensions/rivonclaw-tools/src/browser-mode-context.ts
 
 Upstream PR tracking this issue:
   https://github.com/openclaw/openclaw/pull/40350

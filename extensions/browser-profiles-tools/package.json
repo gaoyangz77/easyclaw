@@ -1,5 +1,5 @@
 {
-  "name": "@easyclaw/browser-profiles-tools",
+  "name": "@rivonclaw/browser-profiles-tools",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -22,7 +22,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@easyclaw/core": "workspace:*",
+    "@rivonclaw/core": "workspace:*",
     "@sinclair/typebox": "^0.34.0",
     "@types/ws": "^8.18.1",
     "oxlint": "^1.43.0",

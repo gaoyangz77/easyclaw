@@ -9,7 +9,7 @@
       "browserMode": {
         "type": "string",
         "enum": ["standalone", "cdp"],
-        "description": "Current browser mode configured in EasyClaw settings"
+        "description": "Current browser mode configured in RivonClaw settings"
       }
     }
   }

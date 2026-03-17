@@ -1,6 +1,6 @@
 # OpenClaw Patch Stack
 
-This directory stores EasyClaw-owned source patches for `vendor/openclaw/`.
+This directory stores RivonClaw-owned source patches for `vendor/openclaw/`.
 
 The source of truth is the patch stack in this directory, not the live state of
 `vendor/openclaw/`. The pinned upstream base remains `.openclaw-version`.
@@ -21,12 +21,12 @@ Do not store:
 - Keep the patch count as low as possible.
 - One patch must cover exactly one feature, one fix, or one upstream gap.
 - Touch the fewest files that can solve the problem.
-- Every patch must come with at least one EasyClaw test that would fail without
+- Every patch must come with at least one RivonClaw test that would fail without
   the patch.
 - Prefer upstreamable patches. If upstream already fixed the problem, remove the
   local patch instead of carrying it forward.
 - If a patch can be replaced by a plugin, extension hook, config override, or
-  EasyClaw-side adaptation, prefer that over patching vendor code.
+  RivonClaw-side adaptation, prefer that over patching vendor code.
 
 ## Format
 
@@ -44,7 +44,7 @@ Each patch commit message should use this structure:
 vendor(openclaw): short imperative summary
 
 Why:
-- why EasyClaw still needs this patch
+- why RivonClaw still needs this patch
 
 Removal:
 - exact upstream condition, PR, or release that lets us drop it

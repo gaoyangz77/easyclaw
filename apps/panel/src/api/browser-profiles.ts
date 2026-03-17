@@ -1,4 +1,4 @@
-import type { BrowserProfileProxyTestResult } from "@easyclaw/core";
+import type { BrowserProfileProxyTestResult } from "@rivonclaw/core";
 import { getClient, trackedQuery } from "./apollo-client.js";
 import {
   BROWSER_PROFILES_QUERY,

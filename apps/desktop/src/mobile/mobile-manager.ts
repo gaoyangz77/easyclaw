@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
-import type { Storage, MobilePairing } from "@easyclaw/storage";
-import { createLogger } from "@easyclaw/logger";
+import type { Storage, MobilePairing } from "@rivonclaw/storage";
+import { createLogger } from "@rivonclaw/logger";
 
 const log = createLogger("mobile-manager");
 

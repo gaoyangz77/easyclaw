@@ -1,6 +1,6 @@
 import { randomBytes, createCipheriv, createDecipheriv } from "node:crypto";
-import { createLogger } from "@easyclaw/logger";
-import type { SecretStore } from "@easyclaw/secrets";
+import { createLogger } from "@rivonclaw/logger";
+import type { SecretStore } from "@rivonclaw/secrets";
 
 const log = createLogger("session-state:crypto");
 

@@ -3,7 +3,7 @@ import { get as httpGet } from "node:http";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { mkdirSync } from "node:fs";
-import { createLogger } from "@easyclaw/logger";
+import { createLogger } from "@rivonclaw/logger";
 import type { SessionLifecycleManager } from "./session-lifecycle-manager.js";
 import { ManagedProfileCookieAdapter } from "./managed-profile-cookie-adapter.js";
 
@@ -22,7 +22,7 @@ export interface ManagedBrowserEntry {
 }
 
 /**
- * ManagedBrowserService — desktop-side coordinator for EasyClaw-managed
+ * ManagedBrowserService — desktop-side coordinator for RivonClaw-managed
  * multi-profile browser instances.
  *
  * This is the PRIMARY runtime target for session-state persistence.

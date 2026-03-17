@@ -7,7 +7,7 @@ import { SessionLifecycleManager } from "./session-lifecycle-manager.js";
 import { BrowserProfileRuntimeService } from "./runtime-service.js";
 import { SessionSnapshotStore, cookieSnapshotPath } from "./session-state/index.js";
 import type { BrowserSessionAdapter, BrowserCookie } from "./session-state/index.js";
-import { MemorySecretStore } from "@easyclaw/secrets";
+import { MemorySecretStore } from "@rivonclaw/secrets";
 
 function createMockAdapter(cookies: BrowserCookie[] = []): BrowserSessionAdapter {
   return {

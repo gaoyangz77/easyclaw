@@ -283,7 +283,7 @@ Files:
 - vendor/openclaw/src/plugins/hooks.ts
 - vendor/openclaw/src/agents/tools/browser-tool.ts
 
-EasyClaw requires 4 browser lifecycle hooks patched into the vendor:
+RivonClaw requires 4 browser lifecycle hooks patched into the vendor:
   - browser_session_start
   - browser_session_end
   - before_browser_action
@@ -306,7 +306,7 @@ function formatMissingTypeMessage(typeName: string): string {
 Missing type export: "${typeName}"
 File: vendor/openclaw/src/plugins/types.ts
 
-EasyClaw requires browser hook types patched into the vendor:
+RivonClaw requires browser hook types patched into the vendor:
   - PluginHookBrowserContext
   - PluginHookBrowserSessionStartEvent
   - PluginHookBrowserSessionEndEvent

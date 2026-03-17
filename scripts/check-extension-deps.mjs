@@ -37,7 +37,7 @@ if (missing.length > 0) {
   for (const name of missing) {
     console.error(`  - ${name}`);
   }
-  console.error("\nAdd them with: pnpm --filter @easyclaw/desktop add -D " + missing.join(" "));
+  console.error("\nAdd them with: pnpm --filter @rivonclaw/desktop add -D " + missing.join(" "));
   process.exit(1);
 }
 

@@ -1,5 +1,5 @@
-import type { ToolScopeType, ToolSelection } from "@easyclaw/core";
-import { createLogger } from "@easyclaw/logger";
+import type { ToolScopeType, ToolSelection } from "@rivonclaw/core";
+import { createLogger } from "@rivonclaw/logger";
 import type { RouteHandler } from "./api-context.js";
 import { parseBody, sendJson } from "./route-utils.js";
 import { buildToolContext } from "../utils/tool-context-builder.js";

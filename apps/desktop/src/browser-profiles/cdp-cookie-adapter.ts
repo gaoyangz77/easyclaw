@@ -1,4 +1,4 @@
-import { createLogger } from "@easyclaw/logger";
+import { createLogger } from "@rivonclaw/logger";
 import type { BrowserCookie, BrowserSessionAdapter } from "./session-state/index.js";
 import { fetchDebuggerUrl, sendCdpCommand } from "./cdp-transport.js";
 

@@ -64,7 +64,7 @@ async function ensurePortFree(port: number): Promise<void> {
  * Compute unique ports for a Playwright worker based on its index.
  *
  * Workers start at offset 100 (not 0) so worker-0 never collides with a
- * running production EasyClaw instance that uses the same default ports.
+ * running production RivonClaw instance that uses the same default ports.
  * The vendor derives its browser CDP port from the gateway port
  * (gateway + 2 + 9 = gateway + 11), so matching gateway ports would cause
  * the test to connect to the production Chrome instead of launching its own.

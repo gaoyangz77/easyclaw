@@ -14,16 +14,16 @@ const STATIC_SECRET_ENV_MAP: Record<string, string> = {
   "stt-volcengine-appkey": "VOLCENGINE_APP_KEY",
   "stt-volcengine-accesskey": "VOLCENGINE_ACCESS_KEY",
   // Web search — unique env vars to avoid conflict with LLM provider keys
-  "websearch-brave-apikey": "EASYCLAW_WS_BRAVE_APIKEY",
-  "websearch-perplexity-apikey": "EASYCLAW_WS_PERPLEXITY_APIKEY",
-  "websearch-grok-apikey": "EASYCLAW_WS_GROK_APIKEY",
-  "websearch-gemini-apikey": "EASYCLAW_WS_GEMINI_APIKEY",
-  "websearch-kimi-apikey": "EASYCLAW_WS_KIMI_APIKEY",
+  "websearch-brave-apikey": "RIVONCLAW_WS_BRAVE_APIKEY",
+  "websearch-perplexity-apikey": "RIVONCLAW_WS_PERPLEXITY_APIKEY",
+  "websearch-grok-apikey": "RIVONCLAW_WS_GROK_APIKEY",
+  "websearch-gemini-apikey": "RIVONCLAW_WS_GEMINI_APIKEY",
+  "websearch-kimi-apikey": "RIVONCLAW_WS_KIMI_APIKEY",
   // Embedding — unique env vars to avoid conflict with LLM provider keys
-  "embedding-openai-apikey": "EASYCLAW_EMB_OPENAI_APIKEY",
-  "embedding-gemini-apikey": "EASYCLAW_EMB_GEMINI_APIKEY",
-  "embedding-voyage-apikey": "EASYCLAW_EMB_VOYAGE_APIKEY",
-  "embedding-mistral-apikey": "EASYCLAW_EMB_MISTRAL_APIKEY",
+  "embedding-openai-apikey": "RIVONCLAW_EMB_OPENAI_APIKEY",
+  "embedding-gemini-apikey": "RIVONCLAW_EMB_GEMINI_APIKEY",
+  "embedding-voyage-apikey": "RIVONCLAW_EMB_VOYAGE_APIKEY",
+  "embedding-mistral-apikey": "RIVONCLAW_EMB_MISTRAL_APIKEY",
 };
 
 /**

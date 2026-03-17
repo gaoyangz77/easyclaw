@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { createLogger } from "@easyclaw/logger";
+import { createLogger } from "@rivonclaw/logger";
 import type { Region } from "./region-detector.js";
 
 const log = createLogger("deps-provisioner");

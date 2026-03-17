@@ -1,4 +1,4 @@
-import { createLogger } from "@easyclaw/logger";
+import { createLogger } from "@rivonclaw/logger";
 import { net } from "electron";
 
 const log = createLogger("deps-provisioner");

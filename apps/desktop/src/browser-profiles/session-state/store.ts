@@ -1,11 +1,11 @@
 import { mkdir, readFile, writeFile, access } from "node:fs/promises";
-import type { SessionStateRuntimeTarget } from "@easyclaw/core";
+import type { SessionStateRuntimeTarget } from "@rivonclaw/core";
 import { manifestPath, cookieSnapshotPath, sessionStateDirPath } from "./paths.js";
 import type { SessionStateCrypto } from "./crypto.js";
 
 /**
  * Snapshot metadata stored in manifest.json.
- * Mirrors BrowserProfileSessionSnapshotMeta from @easyclaw/core.
+ * Mirrors BrowserProfileSessionSnapshotMeta from @rivonclaw/core.
  */
 export interface SnapshotManifest {
   profileId: string;

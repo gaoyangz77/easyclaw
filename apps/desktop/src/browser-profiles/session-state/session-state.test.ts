@@ -6,8 +6,8 @@ import { existsSync } from "node:fs";
 import { sessionStateDirPath, manifestPath, cookieSnapshotPath } from "./paths.js";
 import { createPlaintextCrypto, createAesGcmCrypto } from "./crypto.js";
 import { SessionSnapshotStore, type SnapshotManifest } from "./store.js";
-import { DEFAULT_SESSION_STATE_POLICY } from "@easyclaw/core";
-import { MemorySecretStore } from "@easyclaw/secrets";
+import { DEFAULT_SESSION_STATE_POLICY } from "@rivonclaw/core";
+import { MemorySecretStore } from "@rivonclaw/secrets";
 
 // ---------------------------------------------------------------------------
 // Path resolution

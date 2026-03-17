@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
-import type { BrowserProfileSessionStatePolicy } from "@easyclaw/core";
+import type { BrowserProfileSessionStatePolicy } from "@rivonclaw/core";
 import { createPlaintextCrypto } from "./session-state/crypto.js";
 import { SessionSnapshotStore, sessionStateDirPath } from "./session-state/index.js";
 import type { SnapshotManifest, BrowserCookie, BrowserSessionAdapter, SessionStateBackupProvider } from "./session-state/index.js";

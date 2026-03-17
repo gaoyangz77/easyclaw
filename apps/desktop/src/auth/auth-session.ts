@@ -1,5 +1,5 @@
-import type { SecretStore } from "@easyclaw/secrets";
-import { getGraphqlUrl } from "@easyclaw/core";
+import type { SecretStore } from "@rivonclaw/secrets";
+import { getGraphqlUrl } from "@rivonclaw/core";
 
 const ACCESS_TOKEN_KEY = "auth.accessToken";
 const REFRESH_TOKEN_KEY = "auth.refreshToken";

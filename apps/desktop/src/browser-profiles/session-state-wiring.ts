@@ -3,7 +3,7 @@ import type { SessionStateBackupProvider } from "./session-state/index.js";
 import { BrowserProfileRuntimeService } from "./runtime-service.js";
 import type { ProfilePolicyResolver } from "./runtime-service.js";
 import { SessionLifecycleManager } from "./session-lifecycle-manager.js";
-import type { SecretStore } from "@easyclaw/secrets";
+import type { SecretStore } from "@rivonclaw/secrets";
 
 export interface SessionStateStack {
   lifecycleManager: SessionLifecycleManager;
@@ -15,7 +15,7 @@ export interface SessionStateStack {
  * Create the full production session state stack.
  *
  * Session-state persistence is a shared foundation supporting runtime targets:
- * - managed_profile (PRIMARY): EasyClaw-managed multi-profile browsers
+ * - managed_profile (PRIMARY): RivonClaw-managed multi-profile browsers
  * - cdp (COMPATIBILITY): User's existing Chrome via CDP debug port
  *
  * The stack is target-agnostic — adapter selection happens at session start time
