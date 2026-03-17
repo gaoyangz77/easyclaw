@@ -148,6 +148,50 @@ describe("configureMirrors", () => {
     );
   });
 
+  it('writes pip.ini to APPDATA on Windows for "cn" region', async () => {
+    mockPlatform.mockReturnValue("win32");
+    mockHomedir.mockReturnValue("C:\\Users\\testuser");
+    mockExistsSyncFn.mockReturnValue(false);
+    // Simulate APPDATA env
+    const origAppdata = process.env.APPDATA;
+    process.env.APPDATA = "C:\\Users\\testuser\\AppData\\Roaming";
+
+    setupExecFile({
+      "npm config get registry": {
+        stdout: "https://registry.npmjs.org/\n",
+        stderr: "",
+      },
+      [`npm config set registry https://registry.npmmirror.com`]: {
+        stdout: "",
+        stderr: "",
+      },
+    });
+
+    await configureMirrors("cn");
+
+    // On a non-Windows host, path.join uses "/" so the exact separator
+    // may differ. Assert the meaningful parts are present.
+    expect(mockMkdirSyncFn).toHaveBeenCalledWith(
+      expect.stringContaining("AppData"),
+      { recursive: true },
+    );
+    const mkdirArg = mockMkdirSyncFn.mock.calls[0][0] as string;
+    expect(mkdirArg).toContain("pip");
+
+    expect(mockWriteFileSyncFn).toHaveBeenCalledWith(
+      expect.stringContaining("pip.ini"),
+      expect.stringContaining("https://mirrors.aliyun.com/pypi/simple"),
+      "utf-8",
+    );
+
+    // Restore
+    if (origAppdata !== undefined) {
+      process.env.APPDATA = origAppdata;
+    } else {
+      delete process.env.APPDATA;
+    }
+  });
+
   it('skips pip config when file already exists for "cn" region', async () => {
     mockExistsSyncFn.mockReturnValue(true);
     setupExecFile({

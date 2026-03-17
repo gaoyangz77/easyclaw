@@ -180,6 +180,47 @@ describe("detectDeps", () => {
     expect(python.path).toBe("/usr/bin/python");
   });
 
+  it("rejects Windows Python Microsoft Store stub", async () => {
+    // On Windows, the `python` command exists but outputs nothing useful
+    // (it opens the Microsoft Store). Our code checks: if platform is win32
+    // and python output doesn't match /Python \d/, skip it.
+    mockPlatform.mockReturnValue("win32");
+    setupExecFile({
+      "git --version": { stdout: "git version 2.43.0", stderr: "" },
+      "where.exe git": { stdout: "C:\\Program Files\\Git\\cmd\\git.exe\n", stderr: "" },
+      // python3 not found, python command exists but returns Store stub output
+      "python --version": { stdout: "", stderr: "" },
+      "node --version": { stdout: "v20.11.0", stderr: "" },
+      "where.exe node": { stdout: "C:\\Program Files\\nodejs\\node.exe\n", stderr: "" },
+      "uv --version": { stdout: "uv 0.5.1", stderr: "" },
+      "where.exe uv": { stdout: "C:\\Users\\testuser\\.cargo\\bin\\uv.exe\n", stderr: "" },
+    });
+
+    const results = await detectDeps();
+    const python = results.find((d) => d.name === "python")!;
+    expect(python.available).toBe(false);
+  });
+
+  it("detects real Python on Windows", async () => {
+    mockPlatform.mockReturnValue("win32");
+    mockHomedir.mockReturnValue("C:\\Users\\testuser");
+    setupExecFile({
+      "git --version": { stdout: "git version 2.43.0", stderr: "" },
+      "where.exe git": { stdout: "C:\\Program Files\\Git\\cmd\\git.exe\n", stderr: "" },
+      "python3 --version": { stdout: "Python 3.12.1", stderr: "" },
+      "where.exe python3": { stdout: "C:\\Python312\\python3.exe\n", stderr: "" },
+      "node --version": { stdout: "v20.11.0", stderr: "" },
+      "where.exe node": { stdout: "C:\\Program Files\\nodejs\\node.exe\n", stderr: "" },
+      "uv --version": { stdout: "uv 0.5.1", stderr: "" },
+      "where.exe uv": { stdout: "C:\\Users\\testuser\\.cargo\\bin\\uv.exe\n", stderr: "" },
+    });
+
+    const results = await detectDeps();
+    const python = results.find((d) => d.name === "python")!;
+    expect(python.available).toBe(true);
+    expect(python.version).toBe("3.12.1");
+  });
+
   it("version parsing works correctly for each dep format", async () => {
     setupExecFile({
       "git --version": {
