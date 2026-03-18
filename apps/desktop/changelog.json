@@ -6,13 +6,17 @@
       "Fix rebrand migration missing agents and skills directories",
       "Fix garbled dependency installer output on Windows Chinese locale",
       "Fix chat session tabs not refreshing after sending a message",
-      "Fix Codex OAuth helper missing in production builds"
+      "Fix Codex OAuth helper missing in production builds",
+      "Add page-jump pagination to skill marketplace",
+      "Fix stale plugin ID replacement during gateway config migration"
     ],
     "zh": [
       "修复品牌迁移时遗漏 agents 和 skills 目录",
       "修复 Windows 中文系统下依赖安装器显示乱码",
       "修复发送消息后会话标签页未刷新",
-      "修复生产构建中缺少 Codex OAuth 组件"
+      "修复生产构建中缺少 Codex OAuth 组件",
+      "技能市场新增页码跳转分页",
+      "修复网关配置迁移时旧插件 ID 未正确替换"
     ]
   },
   {
