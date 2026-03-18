@@ -280,7 +280,7 @@ export function ExtrasPage() {
         <div className="section-card extras-card">
           <div className="extras-card-head">
             <div className="extras-card-icon extras-card-icon--stt">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>
             </div>
             <div className="extras-card-title-group">
               <h3>{t("extras.sttSection")}</h3>
@@ -372,7 +372,7 @@ export function ExtrasPage() {
           )}
 
           <div className="extras-card-foot">
-            <button className="btn btn-primary btn-sm" onClick={handleSaveStt} disabled={sttSaving}>
+            <button className="btn btn-primary btn-action" onClick={handleSaveStt} disabled={sttSaving}>
               {sttSaving ? t("common.loading") : t("common.save")}
             </button>
             {sttSaved && <span className="text-success">{t("common.saved")}</span>}
@@ -383,7 +383,7 @@ export function ExtrasPage() {
         <div className="section-card extras-card">
           <div className="extras-card-head">
             <div className="extras-card-icon extras-card-icon--search">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
             </div>
             <div className="extras-card-title-group">
               <h3>{t("extras.webSearchSection")}</h3>
@@ -439,7 +439,7 @@ export function ExtrasPage() {
           )}
 
           <div className="extras-card-foot">
-            <button className="btn btn-primary btn-sm" onClick={handleSaveWebSearch} disabled={webSearchSaving}>
+            <button className="btn btn-primary btn-action" onClick={handleSaveWebSearch} disabled={webSearchSaving}>
               {webSearchSaving ? t("common.loading") : t("common.save")}
             </button>
             {webSearchSaved && <span className="text-success">{t("common.saved")}</span>}
@@ -450,7 +450,7 @@ export function ExtrasPage() {
         <div className="section-card extras-card">
           <div className="extras-card-head">
             <div className="extras-card-icon extras-card-icon--memory">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /><polyline points="3.27 6.96 12 12.01 20.73 6.96" /><line x1="12" y1="22.08" x2="12" y2="12" /></svg>
             </div>
             <div className="extras-card-title-group">
               <h3>{t("extras.embeddingSection")}</h3>
@@ -506,7 +506,7 @@ export function ExtrasPage() {
           )}
 
           <div className="extras-card-foot">
-            <button className="btn btn-primary btn-sm" onClick={handleSaveEmbedding} disabled={embeddingSaving}>
+            <button className="btn btn-primary btn-action" onClick={handleSaveEmbedding} disabled={embeddingSaving}>
               {embeddingSaving ? t("common.loading") : t("common.save")}
             </button>
             {embeddingSaved && <span className="text-success">{t("common.saved")}</span>}

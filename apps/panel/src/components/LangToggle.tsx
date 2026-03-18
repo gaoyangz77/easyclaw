@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { trackEvent } from "../api/index.js";
+import { GlobeIcon } from "./icons.js";
 
 export function LangToggle({ popupDirection = "up" }: { popupDirection?: "up" | "down" }) {
   const { t, i18n } = useTranslation();
@@ -25,11 +26,7 @@ export function LangToggle({ popupDirection = "up" }: { popupDirection?: "up" | 
         onClick={() => setMenuOpen((v) => !v)}
         title={t("common.language")}
       >
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <circle cx="12" cy="12" r="10" />
-          <ellipse cx="12" cy="12" rx="4" ry="10" />
-          <path d="M2 12h20" />
-        </svg>
+        <GlobeIcon />
       </button>
       {menuOpen && (
         <div className={`lang-menu-popup ${popupDirection === "down" ? "lang-menu-popup-down" : ""}`}>

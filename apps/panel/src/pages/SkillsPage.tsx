@@ -13,25 +13,16 @@ import {
 } from "../api/index.js";
 import type { InstalledSkill } from "../api/index.js";
 import { ConfirmDialog } from "../components/modals/ConfirmDialog.js";
+import { SkillCard } from "../components/SkillCard.js";
 
 const PAGE_SIZE = 12;
-
-/** Map GQL SkillLabel enum values to badge CSS classes */
-const LABEL_BADGE_MAP: Record<string, string> = {
-  [GQL.SkillLabel.Recommended]: "badge badge-info",
-};
-
-/** Map GQL SkillLabel enum values to i18n keys */
-const LABEL_I18N_MAP: Record<string, string> = {
-  [GQL.SkillLabel.Recommended]: "skills.labelRecommended",
-};
 
 export function SkillsPage() {
   const { t, i18n } = useTranslation();
   const isCN = i18n.language === "zh";
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState<"market" | "installed">("market");
+  // Tab state — default to essential (featured)
+  const [activeTab, setActiveTab] = useState<"market" | "essential" | "installed">("market");
 
   // Market state
   const [page, setPage] = useState(1);
@@ -82,6 +73,12 @@ export function SkillsPage() {
   const marketSkills = marketData?.skills.skills ?? [];
   const total = marketData?.skills.total ?? 0;
 
+  // Featured/essential skills — filter by RECOMMENDED label from market data
+  const featuredSkills = useMemo(
+    () => marketSkills.filter((s) => s.labels.includes(GQL.SkillLabel.Recommended)),
+    [marketSkills],
+  );
+
   // Surface GraphQL errors
   useEffect(() => {
     if (gqlError) {
@@ -111,7 +108,7 @@ export function SkillsPage() {
   // Also load installed on mount so installedSlugs is populated for market tab
   useEffect(() => {
     loadInstalled();
-    fetchBundledSlugs().then(setBundledSlugs).catch(() => {});
+    fetchBundledSlugs().then(setBundledSlugs).catch(() => { });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle install
@@ -194,9 +191,9 @@ export function SkillsPage() {
       )}
 
       {/* Tab bar */}
-      <div className="skills-tab-bar" role="tablist" aria-label={t("skills.title")}>
+      <div className="tab-bar" role="tablist" aria-label={t("skills.title")}>
         <button
-          className={`skills-tab-btn${activeTab === "market" ? " skills-tab-btn-active" : ""}`}
+          className={`tab-btn${activeTab === "market" ? " tab-btn-active" : ""}`}
           onClick={() => setActiveTab("market")}
           role="tab"
           aria-selected={activeTab === "market"}
@@ -204,7 +201,7 @@ export function SkillsPage() {
           {t("skills.tabMarket")}
         </button>
         <button
-          className={`skills-tab-btn${activeTab === "installed" ? " skills-tab-btn-active" : ""}`}
+          className={`tab-btn${activeTab === "installed" ? " tab-btn-active" : ""}`}
           onClick={() => setActiveTab("installed")}
           role="tab"
           aria-selected={activeTab === "installed"}
@@ -212,6 +209,39 @@ export function SkillsPage() {
           {t("skills.tabInstalled")}
         </button>
       </div>
+
+      {/* Essential tab */}
+      {activeTab === "essential" && (
+        <>
+          {loading && <p className="text-muted">{t("common.loading")}</p>}
+          {!loading && featuredSkills.length > 0 && (
+            <div className="skills-grid">
+              {featuredSkills.map((skill) => (
+                <SkillCard
+                  key={skill.slug}
+                  slug={skill.slug}
+                  nameEn={skill.name_en}
+                  nameZh={skill.name_zh}
+                  descEn={skill.desc_en}
+                  descZh={skill.desc_zh}
+                  author={skill.author}
+                  version={skill.version}
+                  stars={skill.stars}
+                  downloads={skill.downloads}
+                  labels={skill.labels}
+                  isBundled={bundledSlugs.has(skill.slug)}
+                  isInstalled={installedSlugs.has(skill.slug)}
+                  isInstalling={installingSlug === skill.slug}
+                  onInstall={() => handleInstall(skill)}
+                />
+              ))}
+            </div>
+          )}
+          {!loading && featuredSkills.length === 0 && (
+            <div className="empty-state">{t("skills.emptyEssential")}</div>
+          )}
+        </>
+      )}
 
       {/* Market tab */}
       {activeTab === "market" && (
@@ -261,59 +291,23 @@ export function SkillsPage() {
           {!loading && marketSkills.length > 0 && (
             <div className="skills-grid">
               {marketSkills.map((skill) => (
-                <div key={skill.slug} className="section-card skill-market-card">
-                  <div className="skill-card-top">
-                    <div className="skill-card-name">
-                      {isCN ? skill.name_zh || skill.name_en : skill.name_en}
-                    </div>
-                    <div className="skill-card-version">
-                      <span>{skill.version}</span>
-                    </div>
-                  </div>
-                  <div className="skill-card-body">
-                    <div className="skill-card-desc">
-                      {isCN ? skill.desc_zh || skill.desc_en : skill.desc_en}
-                    </div>
-                    {skill.labels.length > 0 && (
-                      <div className="skill-card-labels">
-                        {skill.labels.map((label) => (
-                          <span
-                            key={label}
-                            className={LABEL_BADGE_MAP[label] ?? "badge badge-muted"}
-                          >
-                            {LABEL_I18N_MAP[label] ? t(LABEL_I18N_MAP[label]) : label}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="skill-card-bottom">
-                    <div className="skill-card-meta">
-                      <span>{t("skills.author", { author: skill.author })}</span>
-                      <span>{t("skills.stars", { count: skill.stars })}</span>
-                      <span>{t("skills.downloads", { count: skill.downloads })}</span>
-                    </div>
-                    {bundledSlugs.has(skill.slug) ? (
-                      <button className="btn btn-secondary btn-sm" disabled>
-                        {t("skills.builtIn")}
-                      </button>
-                    ) : installedSlugs.has(skill.slug) ? (
-                      <button className="btn btn-secondary btn-sm" disabled>
-                        {t("skills.installed")}
-                      </button>
-                    ) : (
-                      <button
-                        className="btn btn-primary btn-sm"
-                        disabled={installingSlug === skill.slug}
-                        onClick={() => handleInstall(skill)}
-                      >
-                        {installingSlug === skill.slug
-                          ? t("skills.installing")
-                          : t("skills.install")}
-                      </button>
-                    )}
-                  </div>
-                </div>
+                <SkillCard
+                  key={skill.slug}
+                  slug={skill.slug}
+                  nameEn={skill.name_en}
+                  nameZh={skill.name_zh}
+                  descEn={skill.desc_en}
+                  descZh={skill.desc_zh}
+                  author={skill.author}
+                  version={skill.version}
+                  stars={skill.stars}
+                  downloads={skill.downloads}
+                  labels={skill.labels}
+                  isBundled={bundledSlugs.has(skill.slug)}
+                  isInstalled={installedSlugs.has(skill.slug)}
+                  isInstalling={installingSlug === skill.slug}
+                  onInstall={() => handleInstall(skill)}
+                />
               ))}
             </div>
           )}
@@ -335,37 +329,9 @@ export function SkillsPage() {
               >
                 {t("skills.prevPage")}
               </button>
-              {(() => {
-                // Build page number list with ellipsis gaps
-                const pages: (number | "ellipsis-left" | "ellipsis-right")[] = [];
-                if (totalPages <= 7) {
-                  for (let i = 1; i <= totalPages; i++) pages.push(i);
-                } else {
-                  // Always show first page
-                  pages.push(1);
-                  if (page > 4) pages.push("ellipsis-left");
-                  // Pages around current
-                  const start = Math.max(2, page - 1);
-                  const end = Math.min(totalPages - 1, page + 1);
-                  for (let i = start; i <= end; i++) pages.push(i);
-                  if (page < totalPages - 3) pages.push("ellipsis-right");
-                  // Always show last page
-                  pages.push(totalPages);
-                }
-                return pages.map((p) =>
-                  typeof p === "string" ? (
-                    <span key={p} className="pagination-ellipsis">...</span>
-                  ) : (
-                    <button
-                      key={p}
-                      className={`btn btn-sm pagination-page-btn${p === page ? " pagination-page-btn-active" : ""}`}
-                      onClick={() => setPage(p)}
-                    >
-                      {p}
-                    </button>
-                  ),
-                );
-              })()}
+              <span className="text-muted">
+                {t("skills.pageInfo", { page, totalPages })}
+              </span>
               <button
                 className="btn btn-secondary btn-sm"
                 disabled={page >= totalPages}
@@ -401,34 +367,27 @@ export function SkillsPage() {
           )}
 
           {!installedLoading && installedSkills.length > 0 && (
-            <div className="skills-installed-list">
+            <div className="skills-grid">
               {installedSkills.map((skill) => (
-                <div key={skill.slug} className="section-card">
-                  <div className="skill-installed-row">
-                    <div className="skill-installed-info">
-                      <div className="skill-installed-name">{skill.name}</div>
-                      <div className="skill-installed-meta">
-                        {t("skills.author", { author: skill.author })}
-                        {" · "}
-                        {t("skills.version", { version: skill.version })}
-                      </div>
-                      {skill.description && (
-                        <div className="skill-card-desc">
-                          {skill.description}
-                        </div>
-                      )}
-                    </div>
-                    <button
-                      className="btn btn-danger btn-sm"
-                      disabled={deletingSlug === skill.slug}
-                      onClick={() => setConfirmDelete(skill.slug)}
-                    >
-                      {deletingSlug === skill.slug
-                        ? t("skills.deleting")
-                        : t("skills.delete")}
-                    </button>
-                  </div>
-                </div>
+                <SkillCard
+                  key={skill.slug}
+                  slug={skill.slug}
+                  nameEn={skill.name}
+                  nameZh={skill.name}
+                  descEn={skill.description}
+                  descZh={skill.description}
+                  author={skill.author}
+                  version={skill.version}
+                  stars={0}
+                  downloads={0}
+                  isBundled={false}
+                  isInstalled={true}
+                  isInstalling={false}
+                  onInstall={() => { }}
+                  variant="installed"
+                  isDeleting={deletingSlug === skill.slug}
+                  onDelete={() => setConfirmDelete(skill.slug)}
+                />
               ))}
             </div>
           )}

@@ -228,7 +228,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
   }, [visibleCount]);
 
   // Prune stale image cache entries (older than 30 days) on mount
-  useEffect(() => { clearImages().catch(() => {}); }, []);
+  useEffect(() => { clearImages().catch(() => { }); }, []);
 
   // Load chat history once connected
   const loadHistory = useCallback(async (client: GatewayChatClient) => {
@@ -630,7 +630,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         setActiveModel(null);
         setModelOptions([]);
         // Check if any provider keys exist at all
-        fetchProviderKeys().then((keys) => setHasProviderKeys(keys.length > 0)).catch(() => {});
+        fetchProviderKeys().then((keys) => setHasProviderKeys(keys.length > 0)).catch(() => { });
       }
     }).catch(() => { setActiveModel(null); setModelOptions([]); });
   }
@@ -653,7 +653,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
         setAgentName(res.name);
         onAgentNameChange?.(res.name);
       }
-    }).catch(() => {});
+    }).catch(() => { });
   }
 
   // Initialize connection
@@ -758,7 +758,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
             if (cancelled) return;
             if (sessionKey !== sessionKeyRef.current) return;
             setMessages([{ role: "assistant", text: `🔄 ${tRef.current("chat.resetCommandFeedback")}`, timestamp: Date.now() }]);
-            clearImages(sessionKeyRef.current).catch(() => {});
+            clearImages(sessionKeyRef.current).catch(() => { });
             trackerRef.current.reset();
             lastAgentStreamRef.current = null;
             setExternalPending(false); externalPendingRef.current = false;
@@ -907,7 +907,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     const sentAt = Date.now();
     setMessages((prev) => [...prev, { role: "user", text, timestamp: sentAt, images: optimisticImages, idempotencyKey }]);
     if (optimisticImages) {
-      saveImages(sessionKeyRef.current, idempotencyKey, sentAt, optimisticImages).catch(() => {});
+      saveImages(sessionKeyRef.current, idempotencyKey, sentAt, optimisticImages).catch(() => { });
     }
     shouldInstantScrollRef.current = true; stickyRef.current = true;
     setDraft("");
@@ -954,7 +954,7 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
     clientRef.current.request("chat.abort", {
       sessionKey: sessionKeyRef.current,
       runId: targetRunId,
-    }).catch(() => {});
+    }).catch(() => { });
     setMessages((prev) => [...prev, { role: "assistant", text: `⏹ ${t("chat.stopCommandFeedback")}`, timestamp: Date.now() }]);
   }
 
@@ -983,14 +983,14 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
       clientRef.current.request("chat.abort", {
         sessionKey: sessionKeyRef.current,
         runId: targetRunId,
-      }).catch(() => {});
+      }).catch(() => { });
     }
     // Reset session on gateway
     clientRef.current.request("sessions.reset", {
       key: sessionKeyRef.current,
     }).then(() => {
       setMessages([{ role: "assistant", text: `🔄 ${t("chat.resetCommandFeedback")}`, timestamp: Date.now() }]);
-      clearImages(sessionKeyRef.current).catch(() => {});
+      clearImages(sessionKeyRef.current).catch(() => { });
       trackerRef.current.reset();
       lastAgentStreamRef.current = null;
     }).catch((err) => {
@@ -1087,33 +1087,33 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
             const wrapClass = isUserRole ? "chat-bubble-wrap-user" : "chat-bubble-wrap-assistant";
             const bubbleClass = isUserRole ? "chat-bubble-user" : msg.isExternal ? "chat-bubble-external" : "chat-bubble-assistant";
             return (
-            <div key={i} className={`chat-bubble-wrap ${wrapClass}`}>
-              {msg.timestamp > 0 && (
-                <div className="chat-bubble-timestamp">
-                  {msg.channel ? `${msg.channel} · ` : ""}{formatTimestamp(msg.timestamp, i18n.language)}
+              <div key={i} className={`chat-bubble-wrap ${wrapClass}`}>
+                {msg.timestamp > 0 && (
+                  <div className="chat-bubble-timestamp">
+                    {msg.channel ? `${msg.channel} · ` : ""}{formatTimestamp(msg.timestamp, i18n.language)}
+                  </div>
+                )}
+                <div
+                  className={`chat-bubble ${bubbleClass}`}
+                >
+                  {hasImages && (
+                    <div className="chat-bubble-images">
+                      {msg.images!.map((img, j) => (
+                        <img
+                          key={j}
+                          src={`data:${img.mimeType};base64,${img.data}`}
+                          alt=""
+                          className="chat-bubble-img"
+                        />
+                      ))}
+                    </div>
+                  )}
+                  {cleaned && (msg.role === "assistant"
+                    ? <CollapsibleContent defaultCollapsed={collapseMessages}><MarkdownMessage text={cleaned} /></CollapsibleContent>
+                    : cleaned)}
+                  {msg.role === "assistant" && cleaned && <CopyButton text={cleaned} />}
                 </div>
-              )}
-            <div
-              className={`chat-bubble ${bubbleClass}`}
-            >
-              {hasImages && (
-                <div className="chat-bubble-images">
-                  {msg.images!.map((img, j) => (
-                    <img
-                      key={j}
-                      src={`data:${img.mimeType};base64,${img.data}`}
-                      alt=""
-                      className="chat-bubble-img"
-                    />
-                  ))}
-                </div>
-              )}
-              {cleaned && (msg.role === "assistant"
-                ? <CollapsibleContent defaultCollapsed={collapseMessages}><MarkdownMessage text={cleaned} /></CollapsibleContent>
-                : cleaned)}
-              {msg.role === "assistant" && cleaned && <CopyButton text={cleaned} />}
-            </div>
-            </div>
+              </div>
             );
           })}
           {(() => {
@@ -1174,22 +1174,22 @@ export function ChatPage({ onAgentNameChange }: { onAgentNameChange?: (name: str
             localStorage.setItem("chat-examples-collapsed", next ? "0" : "1");
           }}
         >
-          <svg className={`chat-examples-chevron ${chatExamplesExpanded ? "chat-examples-chevron-down" : ""}`} width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M4.5 10L8 6.5L11.5 10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          <svg className={`chat-examples-chevron ${chatExamplesExpanded ? "chat-examples-chevron-down" : ""}`} width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4.5 10L8 6.5L11.5 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
         {chatExamplesExpanded && (
           <>
-          <div className="chat-examples-title">{t("chat.examplesTitle")}</div>
-          <div className="chat-examples-grid">
-            {(["example1", "example2", "example3", "example4", "example5", "example6"] as const).map((key) => (
-              <button
-                key={key}
-                className="chat-example-card"
-                onClick={() => setDraft(t(`chat.${key}`))}
-              >
-                {t(`chat.${key}`)}
-              </button>
-            ))}
-          </div>
+            <div className="chat-examples-title">{t("chat.examplesTitle")}</div>
+            <div className="chat-examples-grid">
+              {(["example1", "example2", "example3", "example4", "example5", "example6"] as const).map((key) => (
+                <button
+                  key={key}
+                  className="chat-example-card"
+                  onClick={() => setDraft(t(`chat.${key}`))}
+                >
+                  {t(`chat.${key}`)}
+                </button>
+              ))}
+            </div>
           </>
         )}
       </div>

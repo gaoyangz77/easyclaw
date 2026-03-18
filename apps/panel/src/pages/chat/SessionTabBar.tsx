@@ -54,6 +54,32 @@ function capitalizeFirst(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
+/**
+ * Cycling color palette for session tab dots.
+ * 12 perceptually distinct hues, evenly spaced on the color wheel.
+ * Inspired by Google Calendar / Notion category colors.
+ * Each session gets a color by index modulo palette length.
+ */
+const TAB_DOT_PALETTE = [
+  "#F56565", // red
+  "#ED8936", // orange
+  "#ECC94B", // yellow
+  "#48BB78", // green
+  "#38B2AC", // teal
+  "#4299E1", // blue
+  "#667EEA", // indigo
+  "#9F7AEA", // purple
+  "#ED64A6", // pink
+  "#2AABEE", // sky
+  "#F6AD55", // peach
+  "#68D391", // mint
+];
+
+/** Get the dot color for a session tab by its index. */
+function getTabDotColor(index: number): string {
+  return TAB_DOT_PALETTE[index % TAB_DOT_PALETTE.length];
+}
+
 /** Compact channel badge shown on session tabs. */
 function ChannelBadge({ channel }: { channel: string }) {
   const { t } = useTranslation();
@@ -360,23 +386,23 @@ function ArchivedDropdown({
 
   const handleDelete = useCallback((key: string) => {
     setItems((prev) => prev.filter((i) => i.key !== key));
-    deleteChatSession(key).catch(() => {});
+    deleteChatSession(key).catch(() => { });
   }, []);
 
   const lowerQuery = query.toLowerCase();
   const filtered = query
     ? items.filter((item) => {
-        const title = item.customTitle || "";
-        const derived = item.derivedTitle || "";
-        const preview = item.lastMessagePreview || "";
-        const key = item.key;
-        return (
-          title.toLowerCase().includes(lowerQuery) ||
-          derived.toLowerCase().includes(lowerQuery) ||
-          preview.toLowerCase().includes(lowerQuery) ||
-          key.toLowerCase().includes(lowerQuery)
-        );
-      })
+      const title = item.customTitle || "";
+      const derived = item.derivedTitle || "";
+      const preview = item.lastMessagePreview || "";
+      const key = item.key;
+      return (
+        title.toLowerCase().includes(lowerQuery) ||
+        derived.toLowerCase().includes(lowerQuery) ||
+        preview.toLowerCase().includes(lowerQuery) ||
+        key.toLowerCase().includes(lowerQuery)
+      );
+    })
     : items;
 
   return (
@@ -539,7 +565,7 @@ export function SessionTabBar({
       setDragState(null);
       dragStateRef.current = null;
       isDraggingRef.current = false;
-      try { start.button.releasePointerCapture(e.pointerId); } catch {}
+      try { start.button.releasePointerCapture(e.pointerId); } catch { }
     }
     dragStartRef.current = null;
   }, [onReorderSession]);
@@ -551,7 +577,7 @@ export function SessionTabBar({
       setDragState(null);
       dragStateRef.current = null;
       isDraggingRef.current = false;
-      try { start?.button.releasePointerCapture(e.pointerId); } catch {}
+      try { start?.button.releasePointerCapture(e.pointerId); } catch { }
     }
   }, []);
 
@@ -606,6 +632,7 @@ export function SessionTabBar({
               onPointerCancel={handleTabPointerCancel}
               title={session.key}
             >
+              <span className="chat-tab-dot" style={{ background: getTabDotColor(index) }} />
               {session.pinned && <PinIcon />}
               {session.channel && !isMain && <ChannelBadge channel={session.channel} />}
               {isRenaming ? (

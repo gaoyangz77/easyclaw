@@ -1,6 +1,7 @@
 import { getProviderMeta, getDefaultModelForProvider } from "@rivonclaw/core";
 import type { LLMProvider } from "@rivonclaw/core";
 import { ModelSelect } from "../inputs/ModelSelect.js";
+import { ChevronRightIcon } from "../icons.js";
 import type { ProviderFormState } from "./use-provider-form.js";
 
 export function ApiKeyForm({
@@ -71,37 +72,37 @@ export function ApiKeyForm({
         />
         {tab === "subscription" ? (
           getProviderMeta(provider as LLMProvider)?.subscriptionUrl && (
-          <div className="form-help-sm provider-links">
-            <a
-              href={getProviderMeta(provider as LLMProvider)?.subscriptionUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {t("providers.getSubscription")} &rarr;
-            </a>
-            {getProviderMeta(provider as LLMProvider)?.apiKeyUrl &&
-             getProviderMeta(provider as LLMProvider)?.apiKeyUrl !== getProviderMeta(provider as LLMProvider)?.subscriptionUrl && (
-            <a
-              href={getProviderMeta(provider as LLMProvider)?.apiKeyUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {t("providers.getApiKey")} &rarr;
-            </a>
-            )}
-          </div>
+            <div className="form-help-sm provider-links">
+              <a
+                href={getProviderMeta(provider as LLMProvider)?.subscriptionUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t("providers.getSubscription")} &rarr;
+              </a>
+              {getProviderMeta(provider as LLMProvider)?.apiKeyUrl &&
+                getProviderMeta(provider as LLMProvider)?.apiKeyUrl !== getProviderMeta(provider as LLMProvider)?.subscriptionUrl && (
+                  <a
+                    href={getProviderMeta(provider as LLMProvider)?.apiKeyUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {t("providers.getApiKey")} &rarr;
+                  </a>
+                )}
+            </div>
           )
         ) : (
           getProviderMeta(provider as LLMProvider)?.apiKeyUrl && (
-          <div className="form-help-sm provider-links">
-            <a
-              href={getProviderMeta(provider as LLMProvider)?.apiKeyUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {t("providers.getApiKey")} &rarr;
-            </a>
-          </div>
+            <div className="form-help-sm provider-links">
+              <a
+                href={getProviderMeta(provider as LLMProvider)?.apiKeyUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t("providers.getApiKey")} &rarr;
+              </a>
+            </div>
           )
         )}
       </div>
@@ -111,7 +112,7 @@ export function ApiKeyForm({
           onClick={() => setShowAdvanced(!showAdvanced)}
           className="advanced-toggle"
         >
-          <span className={`advanced-chevron${showAdvanced ? " advanced-chevron-open" : ""}`}>&#9654;</span>
+          <span className={`advanced-chevron${showAdvanced ? " advanced-chevron-open" : ""}`}><ChevronRightIcon /></span>
           {t("providers.advancedSettings")}
         </button>
         {showAdvanced && (

@@ -16,6 +16,7 @@ export default {
     disabled: "已停用",
     brandName: "爪爪",
     language: "语言",
+    help: "帮助",
     currencySymbol: "$",
   },
   authGate: {
@@ -897,7 +898,7 @@ export default {
     autoLaunch: {
       title: "启动",
       toggle: "登录时自动启动 RivonClaw",
-      hint: "登录电脑时自动启动 RivonClaw。",
+      hint: "",
       failedToSave: "保存启动设置失败：",
     },
     telemetry: {
@@ -1023,6 +1024,7 @@ export default {
     title: "技能市场",
     description: "浏览、安装和管理 Agent 技能。",
     tabMarket: "市场",
+    tabEssential: "精选",
     tabInstalled: "已安装",
     search: "搜索技能...",
     allCategories: "全部",
@@ -1039,6 +1041,7 @@ export default {
     version: "v{{version}}",
     author: "作者: {{author}}",
     emptyMarket: "未找到技能。",
+    emptyEssential: "暂无精选技能推荐。",
     emptyInstalled: "暂无已安装技能。前往市场浏览并安装。",
     openFolder: "打开文件夹",
     installSuccess: "技能安装成功。",
@@ -1046,6 +1049,8 @@ export default {
     deleteSuccess: "技能已删除。",
     deleteError: "删除技能失败：{{error}}",
     labelRecommended: "推荐",
+    dblClickCopy: "双击复制",
+    copied: "已复制",
     prevPage: "上一页",
     nextPage: "下一页",
     pageInfo: "第 {{page}} 页 / 共 {{totalPages}} 页",

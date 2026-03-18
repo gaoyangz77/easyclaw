@@ -2,8 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { trackEvent } from "../api/index.js";
 import { ProviderSetupForm } from "../components/ProviderSetupForm.js";
-import { ThemeToggle } from "../components/ThemeToggle.js";
-import { LangToggle } from "../components/LangToggle.js";
+import { BottomActions } from "../components/BottomActions.js";
 
 function StepDot({ step, currentStep }: { step: number; currentStep: number }) {
   const isActive = step === currentStep;
@@ -42,10 +41,7 @@ export function OnboardingPage({
 
   return (
     <div className="onboarding-page">
-      <div className="onboarding-bottom-actions">
-        <ThemeToggle />
-        <LangToggle />
-      </div>
+      <BottomActions />
       <div className="onboarding-top-controls">
         <button
           className="btn-ghost"

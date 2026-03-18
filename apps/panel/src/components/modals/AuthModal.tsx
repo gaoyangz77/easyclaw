@@ -104,9 +104,9 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
       <div className="auth-modal-form">
         <p className="auth-subtitle">{t("auth.subtitle")}</p>
 
-        <div className="auth-tab-bar" role="tablist">
+        <div className="tab-bar tab-bar--spread" role="tablist">
           <button
-            className={`auth-tab-btn${activeTab === "login" ? " auth-tab-btn-active" : ""}`}
+            className={`tab-btn${activeTab === "login" ? " tab-btn-active" : ""}`}
             onClick={() => switchTab("login")}
             role="tab"
             aria-selected={activeTab === "login"}
@@ -114,7 +114,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             {t("auth.login")}
           </button>
           <button
-            className={`auth-tab-btn${activeTab === "register" ? " auth-tab-btn-active" : ""}`}
+            className={`tab-btn${activeTab === "register" ? " tab-btn-active" : ""}`}
             onClick={() => switchTab("register")}
             role="tab"
             aria-selected={activeTab === "register"}

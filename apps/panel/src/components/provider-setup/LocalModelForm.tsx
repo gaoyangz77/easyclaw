@@ -1,4 +1,5 @@
 import { ModalityCheckboxGroup } from "./ModalityCheckboxGroup.js";
+import { ChevronRightIcon } from "../icons.js";
 import type { ProviderFormState } from "./use-provider-form.js";
 
 export function LocalModelForm({
@@ -80,7 +81,7 @@ export function LocalModelForm({
           onClick={() => setShowAdvanced(!showAdvanced)}
           className="advanced-toggle"
         >
-          <span className={`advanced-chevron${showAdvanced ? " advanced-chevron-open" : ""}`}>&#9654;</span>
+          <span className={`advanced-chevron${showAdvanced ? " advanced-chevron-open" : ""}`}><ChevronRightIcon /></span>
           {t("providers.advancedSettings")}
         </button>
         {showAdvanced && (

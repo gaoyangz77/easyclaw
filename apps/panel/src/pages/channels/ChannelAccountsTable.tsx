@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from "react";
 import type { ChannelAccountSnapshot } from "../../api/index.js";
+import { ChevronRightIcon } from "../../components/icons.js";
 import {
   fetchAllowlist,
   fetchPairingRequests,
@@ -22,7 +23,7 @@ function TruncatedId({ value, t }: { value: string; t: (key: string) => string }
     navigator.clipboard.writeText(value).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
-    }).catch(() => {});
+    }).catch(() => { });
   }, [value]);
 
   return (
@@ -538,7 +539,7 @@ export function ChannelAccountsTable({
                       }}
                     >
                       <td className="channel-expand-col">
-                        <span className={`expand-chevron${isExpanded ? " expanded" : ""}`}>&#9654;</span>
+                        <span className={`advanced-chevron${isExpanded ? " advanced-chevron-open" : ""}`}><ChevronRightIcon /></span>
                       </td>
                       <td className="font-medium">{channelLabel}</td>
                       <td>{account.name || "\u2014"}</td>

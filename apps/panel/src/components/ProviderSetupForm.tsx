@@ -86,36 +86,36 @@ export function ProviderSetupForm({
         ) : tab === "local" ? (
           <LocalModelForm form={form} saveButtonLabel={saveButtonLabel} savingLabel={savingLabel} />
         ) : (
-        <>
-        <div className="mb-sm">
-          <div className="form-label text-secondary">{t("onboarding.providerLabel")}</div>
-          <ProviderSelect value={provider} onChange={handleProviderChange} providers={providerFilter} />
-        </div>
+          <>
+            <div className="mb-sm">
+              <div className="form-label text-secondary">{t("onboarding.providerLabel")}</div>
+              <ProviderSelect value={provider} onChange={handleProviderChange} providers={providerFilter} />
+            </div>
 
-        {isOAuth ? (
-          <OAuthProviderForm form={form} saveButtonLabel={saveButtonLabel} validatingLabel={validatingLabel} savingLabel={savingLabel} />
-        ) : (
-          <ApiKeyForm form={form} saveButtonLabel={saveButtonLabel} validatingLabel={validatingLabel} savingLabel={savingLabel} />
-        )}
-        </>
+            {isOAuth ? (
+              <OAuthProviderForm form={form} saveButtonLabel={saveButtonLabel} validatingLabel={validatingLabel} savingLabel={savingLabel} />
+            ) : (
+              <ApiKeyForm form={form} saveButtonLabel={saveButtonLabel} validatingLabel={validatingLabel} savingLabel={savingLabel} />
+            )}
+          </>
         )}
       </div>
 
       {/* Right: Pricing table / Local info / Custom info */}
       <div className="page-col-side" style={{ height: leftHeight }}>
         {tab === "custom" ? (
-          <div className="info-box info-box-blue local-info-box">
-            <strong>{t("providers.customInfoTitle")}</strong>
-            <p className="local-info-body">
+          <div className="section-card pricing-card provider-info-card">
+            <h4 className="pricing-heading">{t("providers.customInfoTitle")}</h4>
+            <div className="provider-info-body">
               {t("providers.customInfoBody")}
-            </p>
+            </div>
           </div>
         ) : tab === "local" ? (
-          <div className="info-box info-box-blue local-info-box">
-            <strong>{t("providers.localInfoTitle")}</strong>
-            <p className="local-info-body">
+          <div className="section-card pricing-card provider-info-card">
+            <h4 className="pricing-heading">{t("providers.localInfoTitle")}</h4>
+            <div className="provider-info-body">
               {t("providers.localInfoBody")}
-            </p>
+            </div>
           </div>
         ) : tab === "subscription" ? (
           <SubscriptionPricingTable provider={provider} pricingList={pricingList} loading={pricingLoading} />

@@ -455,9 +455,11 @@ export function SettingsPage() {
             <span>{t("settings.autoLaunch.toggle")}</span>
             <ToggleSwitch checked={autoLaunchEnabled} onChange={handleToggleAutoLaunch} disabled={saving} />
           </div>
-          <div className="form-hint">
-            {t("settings.autoLaunch.hint")}
-          </div>
+          {t("settings.autoLaunch.hint") && (
+            <div className="form-hint">
+              {t("settings.autoLaunch.hint")}
+            </div>
+          )}
         </div>
       </div>
 
@@ -467,9 +469,9 @@ export function SettingsPage() {
           <h3>{t("settings.dataDir.title")}</h3>
 
           <div>
-            <label className="form-label-block">
-              {t("settings.dataDir.label")}
-            </label>
+            <div className="settings-toggle-label" style={{ cursor: "default" }}>
+              <span>{t("settings.dataDir.label")}</span>
+            </div>
             <div className="data-dir-display">
               <code className="data-dir-path">{dataDirInfo.override ?? dataDirInfo.effective}</code>
               {dataDirInfo.override && <span className="badge">{t("settings.dataDir.custom")}</span>}

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Modal } from "../../components/modals/Modal.js";
 import { Select } from "../../components/inputs/Select.js";
 import { ToolSelector } from "../../components/inputs/ToolSelector.js";
+import { ChevronRightIcon } from "../../components/icons.js";
 import { fetchChannelStatus, fetchAllowlist, setRecipientLabel, type ChannelsStatusSnapshot } from "../../api/channels.js";
 import { useToolRegistry } from "../../providers/ToolRegistryProvider.js";
 import type { CronJob, CronJobFormData, ScheduleKind, PayloadKind, EveryUnit, CronWakeMode, CronDeliveryMode, FormErrors } from "./cron-utils.js";
@@ -521,7 +522,7 @@ export function CronJobForm({ mode, initialData, onSubmit, onCancel }: CronJobFo
             <>
               <Select
                 value="none"
-                onChange={() => {}}
+                onChange={() => { }}
                 options={[{ value: "none", label: t("crons.deliveryNone") }]}
                 disabled
               />
@@ -544,7 +545,7 @@ export function CronJobForm({ mode, initialData, onSubmit, onCancel }: CronJobFo
                     {channelStatusLoading ? (
                       <Select
                         value=""
-                        onChange={() => {}}
+                        onChange={() => { }}
                         options={[]}
                         placeholder={t("crons.channelStatusLoading")}
                         disabled
@@ -586,7 +587,7 @@ export function CronJobForm({ mode, initialData, onSubmit, onCancel }: CronJobFo
                           onChange={(e) => setRecipientLabels((prev) => ({ ...prev, [form.deliveryTo]: e.target.value }))}
                           onBlur={() => {
                             const label = recipientLabels[form.deliveryTo] ?? "";
-                            setRecipientLabel(form.deliveryChannel, form.deliveryTo, label).catch(() => {});
+                            setRecipientLabel(form.deliveryChannel, form.deliveryTo, label).catch(() => { });
                           }}
                           placeholder={t("crons.recipientLabelPlaceholder")}
                         />
@@ -639,10 +640,11 @@ export function CronJobForm({ mode, initialData, onSubmit, onCancel }: CronJobFo
         {/* Advanced toggle */}
         <button
           type="button"
-          className="crons-advanced-toggle"
+          className="advanced-toggle"
           onClick={() => setShowAdvanced((v) => !v)}
         >
-          {showAdvanced ? "▾" : "▸"} {t("crons.advancedOptions")}
+          <span className={`advanced-chevron${showAdvanced ? " advanced-chevron-open" : ""}`}><ChevronRightIcon /></span>
+          {t("crons.advancedOptions")}
         </button>
 
         {showAdvanced && (

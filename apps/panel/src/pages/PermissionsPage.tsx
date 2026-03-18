@@ -280,81 +280,81 @@ export function PermissionsPage() {
         </div>
 
         {/* Permissions table */}
-        <div className="table-scroll-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>{t("permissions.colPath")}</th>
-              <th>{t("permissions.colPermission")}</th>
-              <th className="td-actions">{t("permissions.colActions")}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {/* Workspace row - always shown first, non-editable */}
-            {workspacePath && (
-              <tr className="perm-workspace-row">
-                <td>
-                  <div className="flex-row-center gap-sm">
-                    <code className="perm-path-display">
-                      {workspacePath}
-                    </code>
-                    <span className="perm-workspace-label">
-                      (Workspace)
-                    </span>
-                    <span
-                      className="has-tooltip"
-                      data-tooltip={t("permissions.workspaceTooltip")}
-                    >
-                      i
-                    </span>
-                  </div>
-                </td>
-                <td>
-                  <PermissionSwitcher value="readwrite" onChange={() => {}} t={t} disabled={true} />
-                </td>
-                <td>
-                  <span className="text-muted text-xs">&mdash;</span>
-                </td>
-              </tr>
-            )}
-
-            {/* User-configured paths */}
-            {entries.length === 0 && !workspacePath ? (
+        <div className="table-scroll-wrap table-rounded">
+          <table>
+            <thead>
               <tr>
-                <td colSpan={3} className="empty-cell">
-                  {t("permissions.noPaths")}
-                </td>
+                <th>{t("permissions.colPath")}</th>
+                <th>{t("permissions.colPermission")}</th>
+                <th className="td-actions">{t("permissions.colActions")}</th>
               </tr>
-            ) : (
-              entries.map((entry, i) => (
-                <tr key={entry.path} className="table-hover-row">
+            </thead>
+            <tbody>
+              {/* Workspace row - always shown first, non-editable */}
+              {workspacePath && (
+                <tr className="perm-workspace-row">
                   <td>
-                    <code className="perm-path-display">
-                      {entry.path}
-                    </code>
+                    <div className="flex-row-center gap-sm">
+                      <code className="perm-path-display">
+                        {workspacePath}
+                      </code>
+                      <span className="perm-workspace-label">
+                        (Workspace)
+                      </span>
+                      <span
+                        className="stt-help-icon has-tooltip"
+                        data-tooltip={t("permissions.workspaceTooltip")}
+                      >
+                        ?
+                      </span>
+                    </div>
                   </td>
                   <td>
-                    <PermissionSwitcher
-                      value={entry.permission}
-                      onChange={(perm) => handleTogglePermission(i, perm)}
-                      t={t}
-                      disabled={saving}
-                    />
+                    <PermissionSwitcher value="readwrite" onChange={() => { }} t={t} disabled={true} />
                   </td>
                   <td>
-                    <button
-                      className="btn btn-danger"
-                      onClick={() => handleRemove(i)}
-                      disabled={saving}
-                    >
-                      {t("common.remove")}
-                    </button>
+                    <span className="text-muted text-xs">&mdash;</span>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              )}
+
+              {/* User-configured paths */}
+              {entries.length === 0 && !workspacePath ? (
+                <tr>
+                  <td colSpan={3} className="empty-cell">
+                    {t("permissions.noPaths")}
+                  </td>
+                </tr>
+              ) : (
+                entries.map((entry, i) => (
+                  <tr key={entry.path} className="table-hover-row">
+                    <td>
+                      <code className="perm-path-display">
+                        {entry.path}
+                      </code>
+                    </td>
+                    <td>
+                      <PermissionSwitcher
+                        value={entry.permission}
+                        onChange={(perm) => handleTogglePermission(i, perm)}
+                        t={t}
+                        disabled={saving}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        className="btn btn-danger"
+                        onClick={() => handleRemove(i)}
+                        disabled={saving}
+                      >
+                        {t("common.remove")}
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

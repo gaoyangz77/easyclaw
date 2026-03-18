@@ -41,7 +41,7 @@ export function Select({ value, onChange, options, placeholder, disabled, classN
         ? { bottom: window.innerHeight - rect.top + 4, maxHeight: rect.top - 8 }
         : { top: rect.bottom + 4, maxHeight: spaceBelow - 8 }),
       left: rect.left,
-      width: rect.width,
+      minWidth: rect.width,
     });
   }, []);
 
@@ -88,7 +88,8 @@ export function Select({ value, onChange, options, placeholder, disabled, classN
             s.maxHeight = `${spaceBelow - 8}px`;
           }
           s.left = `${rect.left}px`;
-          s.width = `${rect.width}px`;
+          s.minWidth = `${rect.width}px`;
+          s.width = "";
         }
         return;
       }

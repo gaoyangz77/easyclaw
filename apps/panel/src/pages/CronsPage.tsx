@@ -197,8 +197,8 @@ export function CronsPage() {
             <span>{t("common.loading")}</span>
           </div>
         ) : cron.jobs.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-state-title">{t("crons.emptyState")}</div>
+          <div className="empty-cell">
+            {t("crons.emptyState")}
           </div>
         ) : (
           <div className="table-scroll-wrap">
