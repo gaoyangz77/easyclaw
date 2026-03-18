@@ -4,12 +4,12 @@ import { createRivonClawContext } from "./rivonclaw-context.js";
 describe("createRivonClawContext", () => {
   const handler = createRivonClawContext();
 
-  it("returns prependContext with RivonClaw runtime block", () => {
+  it("returns prependSystemContext with RivonClaw runtime block", () => {
     const result = handler({ prompt: "hello" });
-    expect(result.prependContext).toContain("RivonClaw Runtime Environment");
-    expect(result.prependContext).toContain("RivonClaw Desktop Application");
-    expect(result.prependContext).toContain("`gateway` tool");
-    expect(result.prependContext).toContain("`rivonclaw` tool");
+    expect(result.prependSystemContext).toContain("RivonClaw Runtime Environment");
+    expect(result.prependSystemContext).toContain("RivonClaw Desktop Application");
+    expect(result.prependSystemContext).toContain("`gateway` tool");
+    expect(result.prependSystemContext).toContain("`rivonclaw` tool");
   });
 
   it("does not return systemPrompt", () => {
@@ -19,15 +19,15 @@ describe("createRivonClawContext", () => {
 
   it("tells AI not to use openclaw CLI", () => {
     const result = handler({ prompt: "hello" });
-    expect(result.prependContext).toContain(
+    expect(result.prependSystemContext).toContain(
       "Do NOT attempt to run any `openclaw` commands",
     );
-    expect(result.prependContext).toContain("OpenClaw CLI Quick Reference");
+    expect(result.prependSystemContext).toContain("OpenClaw CLI Quick Reference");
   });
 
   it("mentions gateway lifecycle is auto-managed", () => {
     const result = handler({ prompt: "hello" });
-    expect(result.prependContext).toContain(
+    expect(result.prependSystemContext).toContain(
       "automatically managed by RivonClaw",
     );
   });

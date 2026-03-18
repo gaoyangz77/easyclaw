@@ -17,7 +17,7 @@ electron-builder.yml.
 
 | Component | Status | Description |
 |-----------|--------|-------------|
-| `before_prompt_build` hook | Implemented | Prepends RivonClaw runtime context via `prependContext` |
+| `before_prompt_build` hook | Implemented | Prepends RivonClaw runtime context via `prependSystemContext` |
 | `rivonclaw` tool | Implemented | `status` (runtime info), `help` (available tools + tips) |
 | `providers` tool | Implemented | list, add, activate, remove — calls panel-server HTTP API |
 | `channels` tool | Placeholder | list, status, configure — will call panel-server API |
@@ -25,19 +25,19 @@ electron-builder.yml.
 | `rules` tool | Placeholder | list, create, update, delete — will call panel-server API |
 | `skills` tool | Placeholder | search, install, delete, list — will call panel-server API |
 
-### rivonclaw-tools: Why `prependContext` Instead of `systemPrompt` Replacement
+### rivonclaw-tools: Why `prependSystemContext` Instead of `systemPrompt` Replacement
 
 The `before_prompt_build` hook's `event.prompt` is the **user's message**, not the
 built system prompt. The hook cannot read or modify the existing system prompt —
 it can only provide a full replacement via `systemPrompt` or prepend to the user
-message via `prependContext`.
+message via `prependSystemContext`.
 
 Full replacement (`systemPrompt`) would require calling `buildAgentSystemPrompt()`
 ourselves with 25+ dynamic parameters (toolNames, workspace, timezone, skills,
 context files, sandbox info, etc.) that are not available in the hook context.
 This would mean maintaining a copy of the vendor's prompt builder logic.
 
-`prependContext` is the correct approach: the AI sees "do NOT use openclaw CLI"
+`prependSystemContext` is the correct approach: the AI sees "do NOT use openclaw CLI"
 before it encounters the CLI instructions in the system prompt. The OpenClaw CLI
 section remains in the system prompt but is effectively overridden.
 

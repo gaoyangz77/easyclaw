@@ -1,15 +1,12 @@
 /**
- * RivonClaw Runtime Context — prependContext injection
+ * RivonClaw Runtime Context — prependSystemContext injection
  *
  * Uses the `before_prompt_build` hook to prepend RivonClaw runtime context
- * to the user's prompt. This tells the AI it's inside RivonClaw and must
+ * to the system prompt. This tells the AI it's inside RivonClaw and must
  * use `gateway`/`rivonclaw` tools instead of `openclaw` CLI commands.
  *
- * Architecture note: `before_prompt_build` does NOT expose the built system
- * prompt in event.prompt (that field is the user's message). The hook can
- * only provide a full replacement via `systemPrompt` or prepend to the user
- * message via `prependContext`. Since we cannot read/modify the existing
- * system prompt without vendor changes, we use `prependContext`.
+ * Uses `prependSystemContext` so the context is injected into the system
+ * prompt layer (invisible to the user chat UI), not into the user message.
  *
  * The OpenClaw system prompt still contains the CLI Quick Reference section,
  * but the prepended context takes priority — the AI sees "do NOT use openclaw
@@ -22,7 +19,7 @@ type PromptBuildEvent = {
 };
 
 type PromptBuildResult = {
-  prependContext?: string;
+  prependSystemContext?: string;
 };
 
 const RIVONCLAW_CONTEXT = [
@@ -44,6 +41,6 @@ const RIVONCLAW_CONTEXT = [
 
 export function createRivonClawContext(): (event: PromptBuildEvent) => PromptBuildResult {
   return function handlePromptBuild(_event: PromptBuildEvent): PromptBuildResult {
-    return { prependContext: RIVONCLAW_CONTEXT };
+    return { prependSystemContext: RIVONCLAW_CONTEXT };
   };
 }
