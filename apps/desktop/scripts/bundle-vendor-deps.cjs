@@ -1083,13 +1083,15 @@ function patchPluginSdkPreload() {
   // and loads it via native require() before jiti runs. jiti checks
   // require.cache (when moduleCache is enabled, which is the default) and
   // returns the cached exports immediately, skipping its slow babel pipeline.
-  // Only preload index.js — NOT subpath files (bluebubbles.js, telegram.js, etc.).
-  // Each bundled subpath file has module-level code that calls loadConfig() during
-  // require(), which triggers an esbuild CJS initialization order issue where a
-  // config include-resolver class is used before its assignment runs. The error is
-  // caught internally, but 20+ repeated errors slow gateway startup beyond the
-  // smoke test timeout. Subpath files are loaded lazily by jiti when extensions
-  // actually need them, which is fast enough (~100ms each).
+  // Preload plugin-sdk via require() to bypass jiti's slow babel pipeline.
+  // The CJS-bundled plugin-sdk has known TDZ (Temporal Dead Zone) issues from
+  // esbuild's module initialization ordering (upstream OpenClaw issue — see
+  // openclaw/openclaw#45085, #48171). These errors are caught internally by
+  // HRl() and do not affect runtime behavior. The preload is wrapped in
+  // try/catch so these caught-and-logged errors don't prevent gateway startup.
+  //
+  // Only preload index.js — subpath files (bluebubbles.js, telegram.js, etc.)
+  // are loaded lazily by jiti when extensions need them.
   const preloadCode = [
     "// ── Plugin-SDK preload (bypass jiti) ──",
     'var __sdkDir=require("path").join(require("url").fileURLToPath(import.meta.url),"..","plugin-sdk");',
@@ -1432,7 +1434,7 @@ function smokeTestGateway() {
   let killed = false;
 
   try {
-    const stdout = execFileSync(process.execPath, [openclawMjs, "gateway"], {
+    const stdout = execFileSync(process.execPath, ["--max-old-space-size=4096", openclawMjs, "gateway"], {
       cwd: tmpDir,
       timeout: 90_000,
       env: {
