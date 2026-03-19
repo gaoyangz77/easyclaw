@@ -610,10 +610,17 @@ function prebundleExtensions() {
     ...pluginSdkExternals,
   ];
   const pluginSdkDir = path.join(distDir, "plugin-sdk");
-  // Mark plugin-sdk chunks as side-effect-free for esbuild tree-shaking.
+  // Mark plugin-sdk chunks as side-effect-free for esbuild tree-shaking,
+  // but exclude chunks that contain Zod schema initialization code.
+  // These chunks are imported as bare side-effect imports (e.g. `import "./zod-schema.core-*.js"`)
+  // and must not be dropped, otherwise Zod constructors are undefined at runtime.
   const pluginSdkPkg = path.join(pluginSdkDir, "package.json");
   const hadPkgJson = fs.existsSync(pluginSdkPkg);
-  fs.writeFileSync(pluginSdkPkg, JSON.stringify({ sideEffects: false }), "utf-8");
+  const sideEffectFiles = fs.readdirSync(pluginSdkDir)
+    .filter((f) => f.endsWith(".js") && /^zod-schema[.\-]/.test(f))
+    .map((f) => `./${f}`);
+  const sideEffectsValue = sideEffectFiles.length > 0 ? sideEffectFiles : false;
+  fs.writeFileSync(pluginSdkPkg, JSON.stringify({ sideEffects: sideEffectsValue }), "utf-8");
 
   // Find all extensions with openclaw.plugin.json
   const extDirs = [];
