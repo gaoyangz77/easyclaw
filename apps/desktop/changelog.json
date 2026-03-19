@@ -1,5 +1,31 @@
 [
   {
+    "version": "1.7.2",
+    "date": "2026-03-18",
+    "en": [
+      "UI overhaul: component refactor, theme separation, and redesigned skills page",
+      "Add captcha-based authentication and centralized default settings",
+      "Add channel group-allow-from editor with SQLite-backed account config",
+      "Plugin SDK refactor with internationalized branding",
+      "Add system theme support and settings button to dependency provisioner",
+      "Fix dependency provisioner showing misleading 'Setup complete' on failure",
+      "Fix locally-installed skills missing display name falling back to folder name",
+      "Fix rebrand migration incorrectly deleting old data directory",
+      "Fix plugin SDK register() broken this binding"
+    ],
+    "zh": [
+      "界面全面改版：组件重构、主题分离、技能页面重新设计",
+      "新增验证码登录认证和集中式默认配置",
+      "新增频道群组白名单编辑器，支持 SQLite 存储账号配置",
+      "插件 SDK 重构，品牌名称国际化",
+      "依赖安装器支持跟随系统主题，新增设置按钮",
+      "修复依赖安装失败时仍显示"安装完成"的误导提示",
+      "修复本地安装的技能缺少名称时显示为空",
+      "修复品牌迁移时误删旧数据目录",
+      "修复插件 SDK register() 方法 this 绑定错误"
+    ]
+  },
+  {
     "version": "1.7.1",
     "date": "2026-03-17",
     "en": [
