@@ -3,6 +3,7 @@ import { useQuery } from "@apollo/client/react";
 import { GQL } from "@rivonclaw/core";
 import { useAuth } from "../providers/AuthProvider.js";
 import { SUBSCRIPTION_STATUS_QUERY } from "../api/auth-queries.js";
+import { getUserInitial } from "../lib/user-manager.js";
 
 export function AccountPage({ onNavigate }: { onNavigate: (path: string) => void }) {
   const { t } = useTranslation();
@@ -30,74 +31,70 @@ export function AccountPage({ onNavigate }: { onNavigate: (path: string) => void
     );
   }
 
-  const isActive = subscription?.status === GQL.SubscriptionStatus.Active;
-  const initial = (user.name ?? user.email).charAt(0).toUpperCase();
+  const initial = getUserInitial(user);
+  const seatsUsed = subscription?.seatsUsed ?? 0;
+  const seatsMax = subscription?.seatsMax ?? 1;
+  const seatsPct = Math.round((seatsUsed / seatsMax) * 100);
 
   return (
-    <div className="page-enter account-page">
+    <div className="page-enter">
       <h1>{t("account.title")}</h1>
+      <p className="page-description">{t("account.description")}</p>
 
-      {/* Profile card */}
-      <div className="section-card account-profile-card">
-        <div className="account-profile-header">
-          <div className="account-profile-identity">
-            <div className="account-avatar">{initial}</div>
-            <div className="account-profile-name-group">
-              {user.name && (
-                <span className="account-profile-name">{user.name}</span>
-              )}
-              <span className="account-profile-email">{user.email}</span>
-            </div>
+      {/* ── Card 1: Profile ── */}
+      <div className="section-card">
+        <h3>{t("account.profile")}</h3>
+
+        <div className="acct-profile-row">
+          <div className="acct-avatar">{initial}</div>
+          <div className="acct-profile-info">
+            {user.name && <span className="acct-name">{user.name}</span>}
+            <span className="acct-email">{user.email}</span>
+            <span className="acct-member-since">
+              {t("account.memberSince")}: {new Date(user.createdAt).toLocaleDateString()}
+            </span>
           </div>
           <button className="btn btn-danger btn-sm" onClick={handleLogout}>
             {t("auth.logout")}
           </button>
         </div>
+      </div>
 
-        <div className="account-profile-details">
-          <div className="account-info-item">
-            <span className="account-info-label">{t("account.plan")}</span>
-            <span className="badge badge-info">{user.plan}</span>
+      {/* ── Card 2: Subscription ── */}
+      <div className="section-card">
+        <h3>{t("account.subscription")}</h3>
+
+        <div className="settings-toggle-card">
+          <div className="settings-toggle-label" style={{ cursor: "default" }}>
+            <span>{t("account.plan")}</span>
+            <span className="acct-badge acct-badge-plan">{subscription?.plan ?? user.plan}</span>
           </div>
-          <div className="account-info-item">
-            <span className="account-info-label">{t("account.memberSince")}</span>
-            <span className="account-info-value">
-              {new Date(user.createdAt).toLocaleDateString()}
+        </div>
+
+        <div className="settings-toggle-card">
+          <div className="settings-toggle-label" style={{ cursor: "default" }}>
+            <span>{t("account.validUntil")}</span>
+            <span>
+              {subscription
+                ? new Date(subscription.validUntil).toLocaleDateString()
+                : "—"}
             </span>
           </div>
         </div>
-      </div>
 
-      {/* Subscription status */}
-      {subscription && (
-        <div className="section-card">
-          <h2>{t("account.subscription")}</h2>
-          <div className="account-info-grid">
-            <div className="account-info-item">
-              <span className="account-info-label">{t("account.plan")}</span>
-              <span className="badge badge-info">{subscription.plan}</span>
+        {/* Seats progress */}
+        {subscription && (
+          <div className="acct-seats">
+            <div className="settings-toggle-label" style={{ cursor: "default" }}>
+              <span>{t("account.seats")}</span>
+              <span>{seatsUsed} / {seatsMax}</span>
             </div>
-            <div className="account-info-item">
-              <span className="account-info-label">{t("account.status")}</span>
-              <span className={`badge ${isActive ? "badge-success" : "badge-warning"}`}>
-                {subscription.status}
-              </span>
-            </div>
-            <div className="account-info-item">
-              <span className="account-info-label">{t("account.seats")}</span>
-              <span className="account-info-value">
-                {subscription.seatsUsed} / {subscription.seatsMax}
-              </span>
-            </div>
-            <div className="account-info-item">
-              <span className="account-info-label">{t("account.validUntil")}</span>
-              <span className="account-info-value">
-                {new Date(subscription.validUntil).toLocaleDateString()}
-              </span>
+            <div className="acct-seats-track">
+              <div className="acct-seats-fill" style={{ width: `${seatsPct}%` }} />
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
