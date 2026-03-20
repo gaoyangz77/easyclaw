@@ -137,6 +137,7 @@ exports.default = async function copyVendorDeps(context) {
   const ALLOWED_NATIVE_PATTERNS = [
     /[\\/]@img[\\/]sharp-/,
     /[\\/]koffi[\\/]/,
+    /[\\/]@snazzah[\\/]davey-/,
   ];
   let skippedCount = 0;
 

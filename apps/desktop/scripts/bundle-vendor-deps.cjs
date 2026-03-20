@@ -458,24 +458,54 @@ function bundlePluginSdk() {
   }
 
   const esbuild = loadEsbuild();
-  const tmpOut = path.join(pluginSdkDir, "index.bundled.mjs");
 
-  esbuild.buildSync({
-    entryPoints: [pluginSdkIndex],
-    outfile: tmpOut,
-    bundle: true,
-    // CJS so jiti can require() without babel ESM→CJS transform.
-    format: "cjs",
-    platform: "node",
-    target: "node22",
-    define: { "import.meta.url": "__import_meta_url" },
-    banner: {
-      js: 'var __import_meta_url = require("url").pathToFileURL(__filename).href;',
-    },
-    external: EXTERNAL_PACKAGES,
-    minify: true,
-    logLevel: "warning",
-  });
+  function bundleSingleFile(entryPath, outPath, opts = {}) {
+    esbuild.buildSync({
+      entryPoints: [entryPath],
+      outfile: outPath,
+      bundle: true,
+      format: "cjs",
+      platform: "node",
+      target: "node22",
+      define: { "import.meta.url": "__import_meta_url" },
+      banner: {
+        js: 'var __import_meta_url = require("url").pathToFileURL(__filename).href;',
+      },
+      external: EXTERNAL_PACKAGES,
+      minify: true,
+      logLevel: "warning",
+      ...opts,
+    });
+  }
+
+  // ── Pre-bundle patch: skip eager context-window warmup ──
+  // The vendor's thread-bindings chunk calls ensureContextWindowCacheLoaded()
+  // at module top level during init. When esbuild bundles multiple ESM chunks
+  // into a single CJS file, it reorders code, causing IncludeProcessor (used
+  // by loadConfig → resolveConfigIncludes) to be referenced before its class
+  // assignment. This throws "X is not a constructor".
+  //
+  // Fix: patch the SOURCE chunk before bundling so the eager warmup always
+  // skips. The gateway calls loadConfig() later at startup, so the
+  // context-window cache is still populated on first use.
+  const WARMUP_ORIGINAL = "if (!shouldSkipEagerContextWindowWarmup()) ensureContextWindowCacheLoaded();";
+  const WARMUP_PATCHED = "/* [rivonclaw] eager warmup disabled — see bundle-vendor-deps.cjs */";
+  let warmupPatched = 0;
+  for (const chunkFile of fs.readdirSync(pluginSdkDir)) {
+    if (!chunkFile.endsWith(".js")) continue;
+    const chunkPath = path.join(pluginSdkDir, chunkFile);
+    const content = fs.readFileSync(chunkPath, "utf-8");
+    if (content.includes(WARMUP_ORIGINAL)) {
+      fs.writeFileSync(chunkPath, content.replaceAll(WARMUP_ORIGINAL, WARMUP_PATCHED), "utf-8");
+      warmupPatched++;
+    }
+  }
+  if (warmupPatched > 0) {
+    console.log(`[bundle-vendor-deps] Patched eager context-window warmup in ${warmupPatched} chunk(s)`);
+  }
+
+  const tmpOut = path.join(pluginSdkDir, "index.bundled.mjs");
+  bundleSingleFile(pluginSdkIndex, tmpOut);
 
   const bundleSize = fs.statSync(tmpOut).size;
 
@@ -489,16 +519,9 @@ function bundlePluginSdk() {
   const accountIdPath = path.join(pluginSdkDir, "account-id.js");
   if (fs.existsSync(accountIdPath)) {
     const accountIdTmp = path.join(pluginSdkDir, "account-id.bundled.cjs");
-    esbuild.buildSync({
-      entryPoints: [accountIdPath],
-      outfile: accountIdTmp,
-      bundle: true,
-      format: "cjs",
-      platform: "node",
-      target: "node22",
-      external: EXTERNAL_PACKAGES,
-      minify: true,
-      logLevel: "warning",
+    bundleSingleFile(accountIdPath, accountIdTmp, {
+      define: {},
+      banner: {},
     });
     fs.unlinkSync(accountIdPath);
     fs.renameSync(accountIdTmp, accountIdPath);
@@ -513,21 +536,8 @@ function bundlePluginSdk() {
     const subPath = path.join(pluginSdkDir, subFile);
     if (fs.existsSync(subPath)) {
       const subTmp = path.join(pluginSdkDir, subFile.replace(".js", ".bundled.cjs"));
-      esbuild.buildSync({
-        entryPoints: [subPath],
-        outfile: subTmp,
-        bundle: true,
-        format: "cjs",
-        platform: "node",
-        target: "node22",
-        define: { "import.meta.url": "__import_meta_url" },
-        banner: {
-          js: 'var __import_meta_url = require("url").pathToFileURL(__filename).href;',
-        },
-        external: EXTERNAL_PACKAGES,
-        minify: true,
-        logLevel: "warning",
-      });
+      bundleSingleFile(subPath, subTmp);
+
       fs.unlinkSync(subPath);
       fs.renameSync(subTmp, subPath);
     }
