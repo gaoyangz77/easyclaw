@@ -253,11 +253,11 @@ export function AddChannelAccountModal({
             </div>
           )}
           <div className="form-group">
-            <label className="form-label-block">{t("channels.displayName")}</label>
+            <label className="form-label-block">{t("channels.fieldDisplayName")}</label>
             <input
               type="text"
               className="input-full"
-              placeholder={t("channels.displayNamePlaceholder")}
+              placeholder={t("channels.fieldDisplayNamePlaceholder")}
               value={name}
               onChange={e => setName(e.target.value)}
             />
@@ -266,7 +266,7 @@ export function AddChannelAccountModal({
           <div className="modal-actions">
             <button className="btn btn-secondary" onClick={handleCancel}>{t("channels.buttonCancel")}</button>
             <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
-              {saving ? t("channels.buttonSaving") : t("channels.buttonSave")}
+              {saving ? t("channels.buttonSaving") : t("channels.buttonUpdate")}
             </button>
           </div>
         </div>
