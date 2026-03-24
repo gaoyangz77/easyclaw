@@ -42,6 +42,7 @@ export default {
     expand: "Expand sidebar",
     browserProfiles: "Multi Browser",
     tiktokShops: "TikTok Shops",
+    ecommerce: "Global E-commerce",
     surfaces: "Surfaces",
   },
   chat: {
@@ -904,6 +905,8 @@ export default {
       privacyMode: "Privacy Mode",
       privacyModeHint: "Hide sensitive information like QR codes behind a blur. Useful for screen sharing or live streaming.",
       clickToReveal: "Click to reveal",
+      showAgentName: "Show Agent Name in Sidebar",
+      showAgentNameHint: "Display the agent's name in the sidebar header instead of the app brand name.",
     },
     agent: {
       title: "Agent Settings",
@@ -1491,6 +1494,10 @@ export default {
       category: {
         browserProfiles: "Browser Profiles",
         BROWSER_PROFILES: "Browser Profiles",
+        TIKTOK_CS: "TikTok Customer Service",
+        TIKTOK_LOGISTICS: "TikTok Logistics",
+        TIKTOK_PRODUCT: "TikTok Products",
+        TIKTOK_SHOP_MGMT: "TikTok Shop Management",
         SYSTEM: "System",
         EXTENSION: "Extensions",
         ENTITLED: "Premium",
@@ -1513,6 +1520,27 @@ export default {
         BROWSER_PROFILES_FIND: "Browser Profiles — Find",
         BROWSER_PROFILES_MANAGE: "Browser Profiles — Manage",
         BROWSER_PROFILES_TEST_PROXY: "Browser Profiles — Test Proxy",
+        // TikTok CS Read
+        TIKTOK_GET_CONVERSATIONS: "TikTok — Get Conversations",
+        TIKTOK_GET_CONVERSATION_MESSAGES: "TikTok — Get Messages",
+        TIKTOK_GET_CONVERSATION_DETAILS: "TikTok — Conversation Details",
+        TIKTOK_GET_AGENT_SETTINGS: "TikTok — Agent Settings",
+        TIKTOK_GET_CS_PERFORMANCE: "TikTok — CS Performance",
+        // TikTok CS Write
+        TIKTOK_CREATE_CONVERSATION: "TikTok — Create Conversation",
+        TIKTOK_SEND_MESSAGE: "TikTok — Send Message",
+        TIKTOK_READ_MESSAGE: "TikTok — Read Message",
+        TIKTOK_UPLOAD_IMAGE: "TikTok — Upload Image",
+        TIKTOK_UPDATE_AGENT_SETTINGS: "TikTok — Update Settings",
+        TIKTOK_SEARCH_SESSIONS: "TikTok — Search Sessions",
+        // TikTok Product/Logistics
+        TIKTOK_GET_PRODUCT: "TikTok — Get Product",
+        TIKTOK_GET_WAREHOUSES: "TikTok — Warehouses",
+        TIKTOK_GET_SHIPPING_PROVIDERS: "TikTok — Shipping Providers",
+        // TikTok Shop Management
+        TIKTOK_LIST_SHOPS: "TikTok — List Shops",
+        TIKTOK_GET_CURRENT_SHOP: "TikTok — Current Shop",
+        TIKTOK_GET_SHOP_AUTH_STATUS: "TikTok — Auth Status",
         // System tools — Files
         read: "Read File",
         write: "Write File",
@@ -2050,16 +2078,35 @@ export default {
     connectShopTitle: "Connect TikTok Shop",
     connectShopDesc: "A TikTok authorization page will open in your browser. After authorization, your shop will appear here automatically.",
     noShops: "No TikTok Shops connected yet. Click \"Connect Shop\" to get started.",
+    view: "View",
     // Platform app selection
     platformAppLabel: "Platform Account",
     platformAppHint: "Select the platform account to authorize with.",
     noPlatformApps: "No platform accounts configured. Contact your administrator.",
     authorizeButton: "Authorize with TikTok",
+    // Table headers
+    tableHeaders: {
+      name: "Shop Name",
+      region: "Region",
+      authStatus: "Auth Status",
+      csStatus: "CS Status",
+      balance: "Balance",
+      actions: "Actions",
+    },
     // Auth status
     authStatus_AUTHORIZED: "Authorized",
     authStatus_TOKEN_EXPIRED: "Token Expired",
     authStatus_REVOKED: "Revoked",
     authStatus_PENDING_AUTH: "Pending",
+    // Balance
+    balance: {
+      remaining: "{{balance}} remaining",
+      of: "{{balance}} / {{tier}}",
+      low: "Balance running low",
+      expiring: "Balance expires on {{date}}",
+      expired: "Balance expired",
+      none: "No balance",
+    },
     // Actions
     reauthorize: "Re-authorize",
     disconnect: "Disconnect",
@@ -2067,6 +2114,47 @@ export default {
     // Service toggles
     customerServiceLabel: "AI Customer Service",
     customerServiceActiveHint: "AI customer service is active for this shop. Configure skills in the Skills page.",
+    // Detail modal
+    detail: {
+      platform: "Platform",
+      accessTokenExpiry: "Access Token Expires",
+      refreshTokenExpiry: "Refresh Token Expires",
+      businessPrompt: "Business Prompt",
+      businessPromptHint: "Describe your business context to help the AI provide better customer service responses.",
+      balanceExpiry: "Balance Expires",
+    },
+    // Modal tabs
+    modal: {
+      tabs: {
+        overview: "Overview",
+        billing: "Billing",
+        sessions: "Sessions",
+      },
+      billing: {
+        currentTier: "Current Plan",
+        noTier: "No subscription — using credits",
+        credits: "Available Credits",
+        redeemButton: "Redeem",
+        redeemSuccess: "Credit redeemed successfully!",
+      },
+      sessions: {
+        active: "Active Sessions",
+        total: "Total Sessions",
+        balance: "Balance Remaining",
+        noData: "No session data available.",
+      },
+    },
+    // Credits
+    credits: {
+      available: "Available Credits",
+      quota: "{{quota}} sessions",
+      expires: "Expires: {{date}}",
+      source: "Source",
+      redeem: "Redeem",
+      noCredits: "No credits available.",
+    },
+    // Upgrade
+    upgradeRequired: "This feature requires a subscription. Please upgrade your plan.",
     // Status messages
     oauthSuccess: "TikTok Shop connected successfully!",
     oauthFailed: "Failed to connect TikTok Shop. Please try again.",
@@ -2075,5 +2163,94 @@ export default {
     deleteFailed: "Failed to disconnect shop. Please try again.",
     updateFailed: "Failed to update shop settings. Please try again.",
     lastUpdated: "Updated: {{date}}",
+  },
+  modules: {
+    title: "Modules",
+    description: "Enable optional modules to unlock additional features and navigation items.",
+    globalEcommerceSeller: {
+      name: "Global E-commerce Seller",
+      description: "Manage your TikTok shops and automate customer service.",
+    },
+    enrolled: "Enabled",
+    notEnrolled: "Disabled",
+  },
+  ecommerce: {
+    title: "Global E-commerce Seller",
+    subtitle: "Manage your connected shops",
+    addShop: "Add Shop",
+    addShopModal: {
+      title: "Add Shop",
+      marketLabel: "Market / Region",
+      marketPlaceholder: "Select a market...",
+      platformLabel: "Platform",
+      platformPlaceholder: "Select a platform...",
+      regionLabel: "Region / Platform Account",
+      addButton: "Authorize",
+      authLink: "Authorization Link",
+      copyButton: "Copy Link",
+      copySuccess: "Link copied to clipboard!",
+      waitingAuth: "Waiting for authorization...",
+      tooltip: "Copy this link and open it in the browser where you manage your TikTok Shop seller account.",
+      noMatch: "No platform app available for this combination.",
+      multipleMatch: "Multiple platform apps found — contact support.",
+    },
+    market: {
+      US: "United States",
+      ROW: "Rest of World",
+    },
+    platform: {
+      TIKTOK_SHOP: "TikTok Shop",
+    },
+    table: {
+      headers: {
+        name: "Shop Name",
+        platform: "Platform",
+        region: "Region",
+        authStatus: "Auth Status",
+        csBalance: "CS Balance",
+        actions: "Actions",
+      },
+    },
+    shopDrawer: {
+      tabs: {
+        overview: "Overview",
+        billing: "Billing",
+        sessions: "Sessions",
+      },
+      overview: {
+        shopInfo: "Shop Information",
+        tokenExpiry: "Token Expiry",
+        csToggle: "AI Customer Service",
+        businessPrompt: "Business Prompt",
+        businessPromptHint: "Describe your business context to help the AI provide better customer service responses.",
+        save: "Save",
+      },
+      billing: {
+        currentTier: "Current Plan",
+        noTier: "No subscription — using credits",
+        balance: "Balance",
+        expiry: "Balance Expires",
+        credits: "Available Credits",
+        redeem: "Redeem",
+        redeemSuccess: "Credit redeemed successfully!",
+      },
+      sessions: {
+        active: "Active Sessions",
+        total: "Total Sessions",
+        balance: "Balance Remaining",
+        noData: "No session data available.",
+      },
+    },
+    noShops: "No shops connected yet. Click \"Add Shop\" to get started.",
+    view: "View",
+    reauthorize: "Re-authorize",
+    disconnect: "Disconnect",
+    confirmDisconnect: "Are you sure you want to disconnect this shop? This will remove all associated tokens and cannot be undone.",
+    oauthSuccess: "Shop connected successfully!",
+    oauthFailed: "Failed to connect shop. Please try again.",
+    oauthTimeout: "Authorization timed out. Please try again.",
+    deleteFailed: "Failed to disconnect shop. Please try again.",
+    updateFailed: "Failed to update shop settings. Please try again.",
+    upgradeRequired: "This feature requires a subscription. Please upgrade your plan.",
   },
 } as const;

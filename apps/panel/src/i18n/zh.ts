@@ -42,6 +42,7 @@ export default {
     expand: "展开侧栏",
     browserProfiles: "多浏览器",
     tiktokShops: "TikTok 店铺",
+    ecommerce: "跨境电商",
     surfaces: "场景",
   },
   chat: {
@@ -894,6 +895,8 @@ export default {
       privacyMode: "隐私模式",
       privacyModeHint: "隐藏敏感信息（如二维码），适合直播或屏幕共享时使用。",
       clickToReveal: "点击显示",
+      showAgentName: "在侧边栏显示 Agent 名称",
+      showAgentNameHint: "在侧边栏顶部显示 Agent 名称，而非应用品牌名。",
     },
     agent: {
       title: "智能体设置",
@@ -1481,6 +1484,10 @@ export default {
       category: {
         browserProfiles: "浏览器配置",
         BROWSER_PROFILES: "浏览器配置",
+        TIKTOK_CS: "TikTok 客服",
+        TIKTOK_LOGISTICS: "TikTok 物流",
+        TIKTOK_PRODUCT: "TikTok 商品",
+        TIKTOK_SHOP_MGMT: "TikTok 店铺管理",
         SYSTEM: "系统工具",
         EXTENSION: "扩展工具",
         ENTITLED: "增值工具",
@@ -1503,6 +1510,27 @@ export default {
         BROWSER_PROFILES_FIND: "浏览器配置 — 搜索",
         BROWSER_PROFILES_MANAGE: "浏览器配置 — 管理",
         BROWSER_PROFILES_TEST_PROXY: "浏览器配置 — 测试代理",
+        // TikTok 客服 — 只读
+        TIKTOK_GET_CONVERSATIONS: "TikTok — 获取会话列表",
+        TIKTOK_GET_CONVERSATION_MESSAGES: "TikTok — 获取消息",
+        TIKTOK_GET_CONVERSATION_DETAILS: "TikTok — 会话详情",
+        TIKTOK_GET_AGENT_SETTINGS: "TikTok — 客服设置",
+        TIKTOK_GET_CS_PERFORMANCE: "TikTok — 客服绩效",
+        // TikTok 客服 — 操作
+        TIKTOK_CREATE_CONVERSATION: "TikTok — 创建会话",
+        TIKTOK_SEND_MESSAGE: "TikTok — 发送消息",
+        TIKTOK_READ_MESSAGE: "TikTok — 标记已读",
+        TIKTOK_UPLOAD_IMAGE: "TikTok — 上传图片",
+        TIKTOK_UPDATE_AGENT_SETTINGS: "TikTok — 更新设置",
+        TIKTOK_SEARCH_SESSIONS: "TikTok — 搜索会话",
+        // TikTok 商品/物流
+        TIKTOK_GET_PRODUCT: "TikTok — 商品详情",
+        TIKTOK_GET_WAREHOUSES: "TikTok — 仓库列表",
+        TIKTOK_GET_SHIPPING_PROVIDERS: "TikTok — 物流商",
+        // TikTok 店铺管理
+        TIKTOK_LIST_SHOPS: "TikTok — 店铺列表",
+        TIKTOK_GET_CURRENT_SHOP: "TikTok — 当前店铺",
+        TIKTOK_GET_SHOP_AUTH_STATUS: "TikTok — 授权状态",
         // 系统工具 — 文件
         read: "读取文件",
         write: "写入文件",
@@ -2040,16 +2068,35 @@ export default {
     connectShopTitle: "连接 TikTok Shop",
     connectShopDesc: "将在浏览器中打开 TikTok 授权页面。授权完成后，你的店铺将自动显示在此处。",
     noShops: "尚未连接任何 TikTok Shop。点击「连接店铺」开始。",
+    view: "查看",
     // Platform app selection
     platformAppLabel: "平台账号",
     platformAppHint: "选择要授权的平台账号。",
     noPlatformApps: "未配置平台账号。请联系管理员。",
     authorizeButton: "前往 TikTok 授权",
+    // Table headers
+    tableHeaders: {
+      name: "店铺名称",
+      region: "地区",
+      authStatus: "授权状态",
+      csStatus: "客服状态",
+      balance: "余额",
+      actions: "操作",
+    },
     // Auth status
     authStatus_AUTHORIZED: "已授权",
     authStatus_TOKEN_EXPIRED: "令牌过期",
     authStatus_REVOKED: "已撤销",
     authStatus_PENDING_AUTH: "待授权",
+    // Balance
+    balance: {
+      remaining: "剩余 {{balance}}",
+      of: "{{balance}} / {{tier}}",
+      low: "余额不足",
+      expiring: "余额将于 {{date}} 到期",
+      expired: "余额已过期",
+      none: "无余额",
+    },
     // Actions
     reauthorize: "重新授权",
     disconnect: "断开连接",
@@ -2057,6 +2104,47 @@ export default {
     // Service toggles
     customerServiceLabel: "AI 智能客服",
     customerServiceActiveHint: "此店铺的 AI 客服已激活。可在技能页面配置客服技能。",
+    // Detail modal
+    detail: {
+      platform: "平台",
+      accessTokenExpiry: "访问令牌过期时间",
+      refreshTokenExpiry: "刷新令牌过期时间",
+      businessPrompt: "业务提示词",
+      businessPromptHint: "描述你的业务背景，帮助 AI 提供更好的客服回复。",
+      balanceExpiry: "余额到期时间",
+    },
+    // Modal tabs
+    modal: {
+      tabs: {
+        overview: "概览",
+        billing: "计费",
+        sessions: "会话",
+      },
+      billing: {
+        currentTier: "当前套餐",
+        noTier: "未订阅 — 使用额度",
+        credits: "可用额度",
+        redeemButton: "兑换",
+        redeemSuccess: "额度兑换成功！",
+      },
+      sessions: {
+        active: "活跃会话",
+        total: "总会话数",
+        balance: "剩余额度",
+        noData: "暂无会话数据。",
+      },
+    },
+    // Credits
+    credits: {
+      available: "可用额度",
+      quota: "{{quota}} 次会话",
+      expires: "过期时间: {{date}}",
+      source: "来源",
+      redeem: "兑换",
+      noCredits: "暂无可用额度。",
+    },
+    // Upgrade
+    upgradeRequired: "此功能需要订阅。请升级你的套餐。",
     // Status messages
     oauthSuccess: "TikTok Shop 连接成功！",
     oauthFailed: "连接 TikTok Shop 失败，请重试。",
@@ -2065,5 +2153,94 @@ export default {
     deleteFailed: "断开店铺失败，请重试。",
     updateFailed: "更新店铺设置失败，请重试。",
     lastUpdated: "更新于: {{date}}",
+  },
+  modules: {
+    title: "模块",
+    description: "启用可选模块以解锁额外功能和导航项。",
+    globalEcommerceSeller: {
+      name: "跨境电商卖家",
+      description: "管理你的 TikTok 店铺并自动化客户服务。",
+    },
+    enrolled: "已启用",
+    notEnrolled: "未启用",
+  },
+  ecommerce: {
+    title: "跨境电商卖家",
+    subtitle: "管理你的已连接店铺",
+    addShop: "添加店铺",
+    addShopModal: {
+      title: "添加店铺",
+      marketLabel: "地区 / 市场",
+      marketPlaceholder: "选择地区...",
+      platformLabel: "平台",
+      platformPlaceholder: "选择平台...",
+      regionLabel: "地区 / 平台账号",
+      addButton: "授权",
+      authLink: "授权链接",
+      copyButton: "复制链接",
+      copySuccess: "链接已复制！",
+      waitingAuth: "正在等待授权……",
+      tooltip: "复制此链接并在你管理 TikTok Shop 卖家账户的浏览器中打开。",
+      noMatch: "此组合没有可用的平台应用。",
+      multipleMatch: "发现多个平台应用 — 请联系技术支持。",
+    },
+    market: {
+      US: "美国",
+      ROW: "其他地区",
+    },
+    platform: {
+      TIKTOK_SHOP: "TikTok 商店",
+    },
+    table: {
+      headers: {
+        name: "店铺名称",
+        platform: "平台",
+        region: "地区",
+        authStatus: "授权状态",
+        csBalance: "客服余额",
+        actions: "操作",
+      },
+    },
+    shopDrawer: {
+      tabs: {
+        overview: "概览",
+        billing: "计费",
+        sessions: "会话",
+      },
+      overview: {
+        shopInfo: "店铺信息",
+        tokenExpiry: "令牌过期",
+        csToggle: "AI 智能客服",
+        businessPrompt: "业务提示词",
+        businessPromptHint: "描述你的业务背景，帮助 AI 提供更好的客服回复。",
+        save: "保存",
+      },
+      billing: {
+        currentTier: "当前套餐",
+        noTier: "未订阅 — 使用额度",
+        balance: "余额",
+        expiry: "余额到期时间",
+        credits: "可用额度",
+        redeem: "兑换",
+        redeemSuccess: "额度兑换成功！",
+      },
+      sessions: {
+        active: "活跃会话",
+        total: "总会话数",
+        balance: "剩余额度",
+        noData: "暂无会话数据。",
+      },
+    },
+    noShops: "尚未连接任何店铺。点击「添加店铺」开始。",
+    view: "查看",
+    reauthorize: "重新授权",
+    disconnect: "断开连接",
+    confirmDisconnect: "确定要断开此店铺的连接吗？这将删除所有相关令牌，且无法撤销。",
+    oauthSuccess: "店铺连接成功！",
+    oauthFailed: "连接店铺失败，请重试。",
+    oauthTimeout: "授权超时，请重试。",
+    deleteFailed: "断开店铺失败，请重试。",
+    updateFailed: "更新店铺设置失败，请重试。",
+    upgradeRequired: "此功能需要订阅。请升级你的套餐。",
   },
 } as const;

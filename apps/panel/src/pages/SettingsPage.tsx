@@ -53,6 +53,11 @@ export function SettingsPage() {
     if (stored === null) return DEFAULTS.settings.tutorialEnabled;
     return stored === "true";
   });
+  const [showAgentName, setShowAgentName] = useState(() => {
+    const stored = localStorage.getItem("showAgentName");
+    if (stored === null) return DEFAULTS.settings.showAgentName;
+    return stored === "true";
+  });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -280,6 +285,12 @@ export function SettingsPage() {
     localStorage.setItem("tutorial.enabled", String(enabled));
     setTutorialEnabled(enabled);
     window.dispatchEvent(new CustomEvent("tutorial-settings-changed"));
+  }
+
+  function handleToggleShowAgentName(enabled: boolean) {
+    localStorage.setItem("showAgentName", String(enabled));
+    setShowAgentName(enabled);
+    window.dispatchEvent(new CustomEvent("brand-display-changed"));
   }
 
   async function handleToggleSessionStateCdp(enabled: boolean) {
@@ -528,6 +539,16 @@ export function SettingsPage() {
           </div>
           <div className="form-hint">
             {t("settings.app.privacyModeHint")}
+          </div>
+        </div>
+
+        <div className="settings-toggle-card">
+          <div className="settings-toggle-label">
+            <span>{t("settings.app.showAgentName")}</span>
+            <ToggleSwitch checked={showAgentName} onChange={handleToggleShowAgentName} />
+          </div>
+          <div className="form-hint">
+            {t("settings.app.showAgentNameHint")}
           </div>
         </div>
       </div>

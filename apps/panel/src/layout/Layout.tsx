@@ -8,6 +8,7 @@ import {
   fetchUpdateDownloadStatus,
   triggerUpdateInstall,
 } from "../api/index.js";
+import { DEFAULTS } from "@rivonclaw/core";
 import { formatError } from "@rivonclaw/core";
 import type { UpdateInfo, UpdateDownloadStatus } from "../api/index.js";
 import { BottomActions } from "../components/BottomActions.js";
@@ -15,12 +16,12 @@ import {
   ChatIcon, RulesIcon, ProvidersIcon, ChannelsIcon,
   PermissionsIcon, ExtrasIcon, UsageIcon, SkillsIcon,
   BrowserProfilesIcon, CronsIcon, SettingsIcon, AccountIcon,
-  AuthIcon, MenuIcon, ShopIcon,
+  AuthIcon, MenuIcon, ShopIcon, EcommerceIcon,
 } from "../components/icons.js";
-import { useAuth } from "../stores/index.js";
+import { useAuth, usePanelStore } from "../stores/index.js";
 import { AuthModal } from "../components/modals/AuthModal.js";
 
-const AUTH_REQUIRED_PATHS = new Set(["/browser-profiles", "/tiktok-shops"]);
+const AUTH_REQUIRED_PATHS = new Set(["/browser-profiles", "/tiktok-shops", "/ecommerce"]);
 
 const SIDEBAR_MIN = 140;
 const SIDEBAR_MAX = 360;
@@ -37,6 +38,7 @@ const NAV_ICONS: Record<string, ReactNode> = {
   "/skills": <SkillsIcon />,
   "/browser-profiles": <BrowserProfilesIcon />,
   "/tiktok-shops": <ShopIcon />,
+  "/ecommerce": <EcommerceIcon />,
   "/crons": <CronsIcon />,
   "/settings": <SettingsIcon />,
   "/account": <AccountIcon />,
@@ -56,6 +58,7 @@ export function Layout({
 }) {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const enrolledModules = usePanelStore((s) => s.enrolledModules);
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [pendingAuthPath, setPendingAuthPath] = useState<string | null>(null);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -67,6 +70,11 @@ export function Layout({
   const [collapsed, setCollapsed] = useState(
     () => localStorage.getItem("sidebar-collapsed") === "true",
   );
+  const [showAgentName, setShowAgentName] = useState(() => {
+    const stored = localStorage.getItem("showAgentName");
+    if (stored === null) return DEFAULTS.settings.showAgentName;
+    return stored === "true";
+  });
   const isDragging = useRef(false);
 
   // Check for updates after 5s + retry once at 20s to handle startup race.
@@ -112,6 +120,15 @@ export function Layout({
       document.removeEventListener("visibilitychange", onVisibilityChange);
       sse.close();
     };
+  }, []);
+
+  useEffect(() => {
+    function onBrandDisplayChanged() {
+      const stored = localStorage.getItem("showAgentName");
+      setShowAgentName(stored === null ? true : stored === "true");
+    }
+    window.addEventListener("brand-display-changed", onBrandDisplayChanged);
+    return () => window.removeEventListener("brand-display-changed", onBrandDisplayChanged);
   }, []);
 
   // Poll download status: fast (500ms) when actively downloading, slow (3s) when banner is visible.
@@ -212,6 +229,9 @@ export function Layout({
     { path: "/browser-profiles", label: t("nav.browserProfiles") },
     { path: "/crons", label: t("nav.crons") },
     // { path: "/tiktok-shops", label: t("nav.tiktokShops") },  // temporarily hidden
+    ...(enrolledModules.has("GLOBAL_ECOMMERCE_SELLER")
+      ? [{ path: "/ecommerce", label: t("nav.ecommerce") }]
+      : []),
     { path: "/usage", label: t("nav.usage") },
     { path: "/settings", label: t("nav.settings") },
   ];
@@ -297,7 +317,7 @@ export function Layout({
             {!collapsed && (
               <>
                 <span className="sidebar-brand-text">
-                  {agentName && agentName !== "Assistant"
+                  {showAgentName && agentName && agentName !== "Assistant"
                     ? agentName
                     : t("common.brandName")}
                 </span>
