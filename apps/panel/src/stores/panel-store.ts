@@ -14,6 +14,8 @@ import { createProviderKeysSlice } from "./slices/provider-keys-slice.js";
 import type { ProviderKeysSlice } from "./slices/provider-keys-slice.js";
 import { createShopsSlice } from "./slices/shops-slice.js";
 import type { ShopsSlice } from "./slices/shops-slice.js";
+import { createModulesSlice } from "./slices/modules-slice.js";
+import type { ModulesSlice } from "./slices/modules-slice.js";
 
 export type PanelStore = AuthSlice &
   SubscriptionSlice &
@@ -21,7 +23,8 @@ export type PanelStore = AuthSlice &
   RunProfilesSlice &
   AvailableToolsSlice &
   ProviderKeysSlice &
-  ShopsSlice;
+  ShopsSlice &
+  ModulesSlice;
 
 export const usePanelStore = create<PanelStore>()((...a) => ({
   ...createAuthSlice(...a),
@@ -31,6 +34,7 @@ export const usePanelStore = create<PanelStore>()((...a) => ({
   ...createAvailableToolsSlice(...a),
   ...createProviderKeysSlice(...a),
   ...createShopsSlice(...a),
+  ...createModulesSlice(...a),
 }));
 
 /** Call once before React tree mounts to wire Apollo client callbacks. */

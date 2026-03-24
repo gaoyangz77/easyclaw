@@ -7,15 +7,17 @@ export interface ModalProps {
   children: ReactNode;
   maxWidth?: number;
   hideCloseButton?: boolean;
+  /** When true, clicking the backdrop overlay will not trigger onClose. */
+  preventBackdropClose?: boolean;
 }
 
-export function Modal({ isOpen, onClose, title, children, maxWidth = 600, hideCloseButton }: ModalProps) {
+export function Modal({ isOpen, onClose, title, children, maxWidth = 600, hideCloseButton, preventBackdropClose }: ModalProps) {
   if (!isOpen) return null;
 
   return (
     <div
       className="modal-backdrop"
-      onClick={onClose}
+      onClick={preventBackdropClose ? undefined : onClose}
     >
       <div
         className="modal-content"

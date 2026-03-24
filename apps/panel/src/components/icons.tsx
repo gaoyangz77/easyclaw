@@ -322,3 +322,67 @@ export function LogOutIcon(props: IconProps) {
         </Icon>
     );
 }
+
+/** Globe with a shopping bag — Global E-commerce icon */
+export function EcommerceIcon(props: IconProps) {
+    return (
+        <Icon {...props}>
+            <circle cx="12" cy="12" r="10" />
+            <path d="M2 12h20" />
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+            <path d="M9 17h6l1-4H8l1 4z" />
+        </Icon>
+    );
+}
+
+/** X mark for close buttons */
+export function CloseIcon(props: IconProps) {
+    return (
+        <Icon {...props}>
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+        </Icon>
+    );
+}
+
+/** Copy icon */
+export function CopyIcon(props: IconProps) {
+    return (
+        <Icon size={16} {...props}>
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </Icon>
+    );
+}
+
+/** Check/success icon */
+export function CheckIcon(props: IconProps) {
+    return (
+        <Icon size={16} {...props}>
+            <polyline points="20 6 9 17 4 12" />
+        </Icon>
+    );
+}
+
+/** Info circle icon */
+export function InfoIcon(props: IconProps) {
+    return (
+        <Icon size={16} {...props}>
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="16" x2="12" y2="12" />
+            <line x1="12" y1="8" x2="12.01" y2="8" />
+        </Icon>
+    );
+}
+
+/** Package/Module icon */
+export function ModuleIcon(props: IconProps) {
+    return (
+        <Icon {...props}>
+            <path d="M16.5 9.4l-9-5.19" />
+            <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+            <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+            <line x1="12" y1="22.08" x2="12" y2="12" />
+        </Icon>
+    );
+}

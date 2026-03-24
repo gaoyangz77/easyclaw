@@ -8,8 +8,8 @@ const ACCESS_TOKEN_KEY = "auth.accessToken";
 const REFRESH_TOKEN_KEY = "auth.refreshToken";
 
 // GraphQL operations (same as panel uses, but as raw strings)
-const REFRESH_TOKEN_MUTATION = `mutation RefreshToken($refreshToken: String!) { refreshToken(refreshToken: $refreshToken) { accessToken refreshToken user { userId email name plan createdAt llmKey { key suspendedUntil } } } }`;
-const ME_QUERY = `query Me { me { userId email name plan createdAt llmKey { key suspendedUntil } } }`;
+const REFRESH_TOKEN_MUTATION = `mutation RefreshToken($refreshToken: String!) { refreshToken(refreshToken: $refreshToken) { accessToken refreshToken user { userId email name plan createdAt enrolledModules entitlementKeys llmKey { key suspendedUntil } } } }`;
+const ME_QUERY = `query Me { me { userId email name plan createdAt enrolledModules entitlementKeys llmKey { key suspendedUntil } } }`;
 const LOGOUT_MUTATION = `mutation Logout($refreshToken: String!) { logout(refreshToken: $refreshToken) }`;
 const AVAILABLE_TOOLS_QUERY = `query { availableTools { id displayName description category allowed denialReason } }`;
 

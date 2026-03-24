@@ -1382,7 +1382,7 @@ export default {
     quotaRefreshAt: "Refreshes at {{time}}",
   },
   subscription: {
-    free: "Free",
+    free: "Bring Your Own Key",
     pro: "Pro",
     enterprise: "Enterprise",
     subscribe: "Subscribe",
@@ -2214,14 +2214,12 @@ export default {
     shopDrawer: {
       tabs: {
         overview: "Overview",
-        billing: "Billing",
-        sessions: "Sessions",
+        aiCustomerService: "AI Customer Service",
       },
       overview: {
         shopInfo: "Shop Information",
         tokenExpiry: "Token Expiry",
         csToggle: "AI Customer Service",
-        businessPrompt: "Business Prompt",
         businessPromptHint: "Describe your business context to help the AI provide better customer service responses.",
         save: "Save",
       },
@@ -2230,7 +2228,6 @@ export default {
         noTier: "No subscription — using credits",
         balance: "Balance",
         expiry: "Balance Expires",
-        credits: "Available Credits",
         redeem: "Redeem",
         redeemSuccess: "Credit redeemed successfully!",
       },
@@ -2239,6 +2236,13 @@ export default {
         total: "Total Sessions",
         balance: "Balance Remaining",
         noData: "No session data available.",
+      },
+      aiCS: {
+        serviceStatus: "Service Status",
+        businessPrompt: "Business Prompt",
+        credits: "Service Credits",
+        sessions: "Session Stats",
+        noCredits: "No credits available",
       },
     },
     noShops: "No shops connected yet. Click \"Add Shop\" to get started.",

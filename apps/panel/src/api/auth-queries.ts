@@ -20,6 +20,8 @@ export const LOGIN_MUTATION = gql`
         name
         plan
         createdAt
+        enrolledModules
+        entitlementKeys
         llmKey {
           key
           suspendedUntil
@@ -40,6 +42,8 @@ export const REGISTER_MUTATION = gql`
         name
         plan
         createdAt
+        enrolledModules
+        entitlementKeys
         llmKey {
           key
           suspendedUntil
@@ -60,6 +64,8 @@ export const REFRESH_TOKEN_MUTATION = gql`
         name
         plan
         createdAt
+        enrolledModules
+        entitlementKeys
         llmKey {
           key
           suspendedUntil
@@ -77,10 +83,30 @@ export const ME_QUERY = gql`
       name
       plan
       createdAt
+      enrolledModules
+      entitlementKeys
       llmKey {
         key
         suspendedUntil
       }
+    }
+  }
+`;
+
+export const ENROLL_MODULE_MUTATION = gql`
+  mutation EnrollModule($moduleId: ModuleId!) {
+    enrollModule(moduleId: $moduleId) {
+      enrolledModules
+      entitlementKeys
+    }
+  }
+`;
+
+export const UNENROLL_MODULE_MUTATION = gql`
+  mutation UnenrollModule($moduleId: ModuleId!) {
+    unenrollModule(moduleId: $moduleId) {
+      enrolledModules
+      entitlementKeys
     }
   }
 `;

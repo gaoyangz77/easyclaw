@@ -59,6 +59,7 @@ export const createAuthSlice: StateCreator<PanelStore, [], [], AuthSlice> = (set
           if (session.user) {
             // Have both token and user — done
             set({ token: session.accessToken, user: session.user, authLoading: false });
+            get().syncEnrolledModules((session.user.enrolledModules ?? []) as import("./modules-slice.js").ModuleId[]);
             // Fire-and-forget post-auth data fetches
             get().fetchSubscription();
             get().fetchLlmQuota();
@@ -77,6 +78,7 @@ export const createAuthSlice: StateCreator<PanelStore, [], [], AuthSlice> = (set
             });
             if (data?.me) {
               set({ user: data.me, authLoading: false });
+              get().syncEnrolledModules((data.me.enrolledModules ?? []) as import("./modules-slice.js").ModuleId[]);
               // Fire-and-forget post-auth data fetches
               get().fetchSubscription();
               get().fetchLlmQuota();
@@ -117,6 +119,7 @@ export const createAuthSlice: StateCreator<PanelStore, [], [], AuthSlice> = (set
       }),
     });
     set({ token: payload.accessToken, user: payload.user });
+    get().syncEnrolledModules((payload.user.enrolledModules ?? []) as import("./modules-slice.js").ModuleId[]);
     trackEvent("auth.login");
     // Fire-and-forget post-auth data fetches
     get().fetchSubscription();
@@ -143,6 +146,7 @@ export const createAuthSlice: StateCreator<PanelStore, [], [], AuthSlice> = (set
       }),
     });
     set({ token: payload.accessToken, user: payload.user });
+    get().syncEnrolledModules((payload.user.enrolledModules ?? []) as import("./modules-slice.js").ModuleId[]);
     trackEvent("auth.register");
     // Fire-and-forget post-auth data fetches
     get().fetchSubscription();

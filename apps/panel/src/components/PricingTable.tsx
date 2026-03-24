@@ -6,7 +6,7 @@ import type { LLMProvider, GQL } from "@rivonclaw/core";
 function findSubscription(
   pricingList: GQL.ProviderPricing[] | null,
   subId: string,
-): { sub: GQL.Subscription; currency: string; pricingUrl: string } | null {
+): { sub: GQL.ProviderSubscription; currency: string; pricingUrl: string } | null {
   for (const pp of pricingList ?? []) {
     const sub = pp.subscriptions?.find((s) => s.id === subId);
     if (sub) return { sub, currency: pp.currency, pricingUrl: sub.pricingUrl };

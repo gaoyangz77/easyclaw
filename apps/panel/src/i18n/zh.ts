@@ -1372,7 +1372,7 @@ export default {
     quotaRefreshAt: "{{time}} 刷新",
   },
   subscription: {
-    free: "免费版",
+    free: "自带密钥",
     pro: "专业版",
     enterprise: "企业版",
     subscribe: "订阅",
@@ -2204,14 +2204,12 @@ export default {
     shopDrawer: {
       tabs: {
         overview: "概览",
-        billing: "计费",
-        sessions: "会话",
+        aiCustomerService: "AI 智能客服",
       },
       overview: {
         shopInfo: "店铺信息",
         tokenExpiry: "令牌过期",
         csToggle: "AI 智能客服",
-        businessPrompt: "业务提示词",
         businessPromptHint: "描述你的业务背景，帮助 AI 提供更好的客服回复。",
         save: "保存",
       },
@@ -2220,7 +2218,6 @@ export default {
         noTier: "未订阅 — 使用额度",
         balance: "余额",
         expiry: "余额到期时间",
-        credits: "可用额度",
         redeem: "兑换",
         redeemSuccess: "额度兑换成功！",
       },
@@ -2229,6 +2226,13 @@ export default {
         total: "总会话数",
         balance: "剩余额度",
         noData: "暂无会话数据。",
+      },
+      aiCS: {
+        serviceStatus: "服务状态",
+        businessPrompt: "业务提示词",
+        credits: "充值卡",
+        sessions: "会话统计",
+        noCredits: "没有可用的充值卡",
       },
     },
     noShops: "尚未连接任何店铺。点击「添加店铺」开始。",

@@ -18,7 +18,8 @@ export type RegisterInput = GQL.RegisterInput;
 export type { Surface } from "./slices/surfaces-slice.js";
 export type { RunProfile } from "./slices/run-profiles-slice.js";
 export type { ProviderKeyEntry } from "./slices/provider-keys-slice.js";
-export type { Shop } from "./slices/shops-slice.js";
+export type { Shop, ServiceCreditInfo, CSSessionStatsInfo } from "./slices/shops-slice.js";
+export type { ModuleId } from "./slices/modules-slice.js";
 
 // Convenience selector hooks
 export const useUser = () => usePanelStore((s) => s.user);

@@ -1,22 +1,36 @@
 import { gql } from "@apollo/client/core";
 
+export const SHOP_FIELDS_FRAGMENT = gql`
+  fragment ShopFields on Shop {
+    id
+    platform
+    platformAppId
+    platformShopId
+    shopName
+    authStatus
+    region
+    accessTokenExpiresAt
+    refreshTokenExpiresAt
+    services {
+      customerService {
+        enabled
+        businessPrompt
+      }
+      customerServiceBilling {
+        tier
+        balance
+        balanceExpiresAt
+        periodEnd
+      }
+    }
+  }
+`;
+
 export const SHOPS_QUERY = gql`
+  ${SHOP_FIELDS_FRAGMENT}
   query Shops {
     shops {
-      id
-      userId
-      platform
-      platformShopId
-      shopName
-      authStatus
-      region
-      platformAppId
-      grantedScopes
-      services {
-        customerService
-      }
-      createdAt
-      updatedAt
+      ...ShopFields
     }
   }
 `;
@@ -46,43 +60,19 @@ export const PLATFORM_APPS_QUERY = gql`
 `;
 
 export const CREATE_SHOP_MUTATION = gql`
+  ${SHOP_FIELDS_FRAGMENT}
   mutation CreateShop($input: CreateShopInput!) {
     createShop(input: $input) {
-      id
-      userId
-      platform
-      platformShopId
-      shopName
-      authStatus
-      region
-      platformAppId
-      grantedScopes
-      services {
-        customerService
-      }
-      createdAt
-      updatedAt
+      ...ShopFields
     }
   }
 `;
 
 export const UPDATE_SHOP_MUTATION = gql`
+  ${SHOP_FIELDS_FRAGMENT}
   mutation UpdateShop($id: ID!, $input: UpdateShopInput!) {
     updateShop(id: $id, input: $input) {
-      id
-      userId
-      platform
-      platformShopId
-      shopName
-      authStatus
-      region
-      platformAppId
-      grantedScopes
-      services {
-        customerService
-      }
-      createdAt
-      updatedAt
+      ...ShopFields
     }
   }
 `;
@@ -107,5 +97,35 @@ export const COMPLETE_TIKTOK_OAUTH_MUTATION = gql`
     completeTikTokOAuth(code: $code, state: $state) {
       shopId
     }
+  }
+`;
+
+export const MY_CREDITS_QUERY = gql`
+  query MyCredits {
+    myCredits {
+      id
+      service
+      quota
+      status
+      expiresAt
+      source
+    }
+  }
+`;
+
+export const CS_SESSION_STATS_QUERY = gql`
+  query CSSessionStats($shopId: ID!) {
+    csSessionStats(shopId: $shopId) {
+      activeSessions
+      totalSessions
+      balance
+      balanceExpiresAt
+    }
+  }
+`;
+
+export const REDEEM_CREDIT_MUTATION = gql`
+  mutation RedeemCredit($creditId: ID!, $shopId: ID!) {
+    redeemCredit(creditId: $creditId, shopId: $shopId)
   }
 `;

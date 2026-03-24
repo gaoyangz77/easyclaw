@@ -4,6 +4,7 @@ import { getUserInitial } from "../lib/user-manager.js";
 import { Modal } from "../components/modals/Modal.js";
 import { ToolMultiSelect } from "../components/inputs/ToolMultiSelect.js";
 import { Select } from "../components/inputs/Select.js";
+import { ModuleIcon } from "../components/icons.js";
 import { useAuth, usePanelStore, useToolRegistry } from "../stores/index.js";
 import type { Surface } from "../api/surfaces.js";
 import type { RunProfile } from "../api/run-profiles.js";
@@ -13,6 +14,9 @@ export function AccountPage({ onNavigate }: { onNavigate: (path: string) => void
   const { user, logout } = useAuth();
 
   const { tools: allTools } = useToolRegistry();
+  const enrolledModules = usePanelStore((s) => s.enrolledModules);
+  const enrollModule = usePanelStore((s) => s.enrollModule);
+  const unenrollModule = usePanelStore((s) => s.unenrollModule);
   const subscription = usePanelStore((s) => s.subscriptionStatus);
   const llmQuota = usePanelStore((s) => s.llmQuota);
   const surfaces = usePanelStore((s) => s.surfaces);
@@ -24,6 +28,9 @@ export function AccountPage({ onNavigate }: { onNavigate: (path: string) => void
   const storeCreateRunProfile = usePanelStore((s) => s.createRunProfile);
   const storeUpdateRunProfile = usePanelStore((s) => s.updateRunProfile);
   const storeDeleteRunProfile = usePanelStore((s) => s.deleteRunProfile);
+
+  // ── Module toggle state ──
+  const [moduleToggling, setModuleToggling] = useState(false);
 
   // ── Surface modal state ──
   const [surfaceError, setSurfaceError] = useState<string | null>(null);
@@ -225,7 +232,7 @@ export function AccountPage({ onNavigate }: { onNavigate: (path: string) => void
           <div className="account-info-item">
             <span className="account-info-label">{t("account.plan")}</span>
             <span className="account-info-value">
-              <span className="acct-badge acct-badge-plan">{subscription?.plan ?? user.plan}</span>
+              <span className="acct-badge acct-badge-plan">{t(`subscription.${(subscription?.plan ?? user.plan).toLowerCase()}`)}</span>
             </span>
           </div>
           <div className="account-info-item">
@@ -428,6 +435,58 @@ export function AccountPage({ onNavigate }: { onNavigate: (path: string) => void
             })}
           </div>
         )}
+      </div>
+
+      {/* ── Modules ── */}
+      <div className="section-card">
+        <div className="acct-section-header">
+          <div>
+            <h3>{t("modules.title")}</h3>
+            <p className="acct-section-desc">{t("modules.description")}</p>
+          </div>
+        </div>
+
+        <div className="acct-item-list">
+          <div className="module-card">
+            <div className="module-card-icon">
+              <ModuleIcon size={22} />
+            </div>
+            <div className="module-card-body">
+              <span className="module-card-name">{t("modules.globalEcommerceSeller.name")}</span>
+              <span className="module-card-desc">{t("modules.globalEcommerceSeller.description")}</span>
+            </div>
+            <div className="module-card-toggle">
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={enrolledModules.has("GLOBAL_ECOMMERCE_SELLER")}
+                  disabled={moduleToggling}
+                  onChange={async () => {
+                    setModuleToggling(true);
+                    try {
+                      if (enrolledModules.has("GLOBAL_ECOMMERCE_SELLER")) {
+                        await unenrollModule("GLOBAL_ECOMMERCE_SELLER");
+                      } else {
+                        await enrollModule("GLOBAL_ECOMMERCE_SELLER");
+                      }
+                    } catch {
+                      // Error will surface via network layer
+                    } finally {
+                      setModuleToggling(false);
+                    }
+                  }}
+                />
+                <span
+                  className={`toggle-track ${enrolledModules.has("GLOBAL_ECOMMERCE_SELLER") ? "toggle-track-on" : "toggle-track-off"} ${moduleToggling ? "toggle-track-disabled" : ""}`}
+                >
+                  <span
+                    className={`toggle-thumb ${enrolledModules.has("GLOBAL_ECOMMERCE_SELLER") ? "toggle-thumb-on" : "toggle-thumb-off"}`}
+                  />
+                </span>
+              </label>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* ── Surface Modal ── */}

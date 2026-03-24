@@ -132,6 +132,14 @@ export interface CsSeat {
   userId: Scalars['String']['output'];
 }
 
+/** Session statistics for a shop */
+export interface CsSessionStats {
+  activeSessions: Scalars['Int']['output'];
+  balance: Scalars['Int']['output'];
+  balanceExpiresAt?: Maybe<Scalars['DateTimeISO']['output']>;
+  totalSessions: Scalars['Int']['output'];
+}
+
 /** Per-seat usage record for a billing period */
 export interface CsUsageRecord {
   createdAt: Scalars['DateTimeISO']['output'];
@@ -166,6 +174,16 @@ export interface CreateRunProfileInput {
   surfaceId: Scalars['String']['input'];
 }
 
+/** Input for creating a new shop connection */
+export interface CreateShopInput {
+  grantedScopes?: InputMaybe<Array<Scalars['String']['input']>>;
+  platform: ShopPlatform;
+  platformAppId: Scalars['String']['input'];
+  platformShopId: Scalars['String']['input'];
+  region: ShopRegion;
+  shopName: Scalars['String']['input'];
+}
+
 /** Input for creating a new Surface */
 export interface CreateSurfaceInput {
   allowedCategories: Array<Scalars['String']['input']>;
@@ -181,6 +199,26 @@ export const Currency = {
 } as const;
 
 export type Currency = typeof Currency[keyof typeof Currency];
+/** Customer service billing/quota state (system-managed) */
+export interface CustomerServiceBilling {
+  balance: Scalars['Int']['output'];
+  balanceExpiresAt?: Maybe<Scalars['DateTimeISO']['output']>;
+  periodEnd?: Maybe<Scalars['DateTimeISO']['output']>;
+  tier?: Maybe<Scalars['String']['output']>;
+}
+
+/** Customer service settings per shop (user-configurable) */
+export interface CustomerServiceSettings {
+  businessPrompt?: Maybe<Scalars['String']['output']>;
+  enabled: Scalars['Boolean']['output'];
+}
+
+/** Input for updating customer service settings */
+export interface CustomerServiceSettingsInput {
+  businessPrompt?: InputMaybe<Scalars['String']['input']>;
+  enabled?: InputMaybe<Scalars['Boolean']['input']>;
+}
+
 /** Result of checking a specific entitlement */
 export interface EntitlementCheckResult {
   allowed: Scalars['Boolean']['output'];
@@ -203,10 +241,14 @@ export const EntitlementKey = {
 export type EntitlementKey = typeof EntitlementKey[keyof typeof EntitlementKey];
 /** Entitlement set pushed to desktop on login / subscription change */
 export interface EntitlementSetModel {
+  /** App IDs the plan grants access to */
+  appIds: Array<Scalars['String']['output']>;
   /** Tool categories the plan grants access to */
   categories: Array<Scalars['String']['output']>;
   /** Service categories the plan grants access to */
   serviceCategories: Array<Scalars['String']['output']>;
+  /** Service IDs the plan grants access to */
+  serviceIds: Array<Scalars['String']['output']>;
   /** Tool IDs the user's plan grants access to */
   toolIds: Array<Scalars['String']['output']>;
 }
@@ -222,6 +264,12 @@ export type EntitlementSource = typeof EntitlementSource[keyof typeof Entitlemen
 export interface GeneratePairingResult {
   code: Scalars['String']['output'];
   qrUrl?: Maybe<Scalars['String']['output']>;
+}
+
+/** OAuth initiation response with authorization URL */
+export interface InitiateOAuthResponse {
+  authUrl: Scalars['String']['output'];
+  state: Scalars['String']['output'];
 }
 
 export interface LlmKey {
@@ -242,10 +290,19 @@ export interface LoginInput {
   password: Scalars['String']['input'];
 }
 
+/** Product module identifiers */
+export const ModuleId = {
+  GlobalEcommerceSeller: 'GLOBAL_ECOMMERCE_SELLER'
+} as const;
+
+export type ModuleId = typeof ModuleId[keyof typeof ModuleId];
+
 /** Current user profile */
 export interface MeResponse {
   createdAt: Scalars['DateTimeISO']['output'];
   email: Scalars['String']['output'];
+  enrolledModules: Array<ModuleId>;
+  entitlementKeys: Array<EntitlementKey>;
   llmKey?: Maybe<LlmKey>;
   name?: Maybe<Scalars['String']['output']>;
   plan: UserPlan;
@@ -267,10 +324,14 @@ export interface Mutation {
   batchArchiveBrowserProfiles: Scalars['Int']['output'];
   /** Batch delete browser profiles */
   batchDeleteBrowserProfiles: Scalars['Int']['output'];
+  /** Handle TikTok OAuth callback (exchange code for tokens) */
+  completeTikTokOAuth: OAuthCallbackResponse;
   /** Create a new browser profile */
   createBrowserProfile: BrowserProfile;
   /** Create a new run profile */
   createRunProfile: RunProfile;
+  /** Create a new shop connection */
+  createShop: Shop;
   /** Create a new surface */
   createSurface: Surface;
   /** Deallocate a seat by ID */
@@ -281,16 +342,26 @@ export interface Mutation {
   deleteRunProfile: Scalars['Boolean']['output'];
   /** Delete the session state backup for a profile */
   deleteSessionStateBackup: Scalars['Boolean']['output'];
+  /** Delete/disconnect a shop */
+  deleteShop: Scalars['Boolean']['output'];
+  /** Enroll in a product module */
+  enrollModule: MeResponse;
   /** Delete a surface */
   deleteSurface: Scalars['Boolean']['output'];
   /** Delete WeCom customer service credentials */
   deleteWeComConfig: CsConfig;
   /** Generate a 6-character pairing code for QR display */
   generatePairingCode: GeneratePairingResult;
+  /** Generate TikTok OAuth authorization URL */
+  initiateTikTokOAuth: InitiateOAuthResponse;
   /** Log in with email and password */
   login: AuthPayload;
   /** Log out (revoke the provided refresh token) */
   logout: Scalars['Boolean']['output'];
+  /** Publish an update notification to all connected clients (admin only) */
+  publishUpdate: Scalars['Boolean']['output'];
+  /** Redeem a service credit to a shop */
+  redeemCredit: Scalars['Boolean']['output'];
   /** Refresh an expired access token */
   refreshToken: AuthPayload;
   /** Register a new user account */
@@ -299,12 +370,24 @@ export interface Mutation {
   requestCaptcha: CaptchaResponse;
   /** Revoke all sessions for the current user (remote logout) */
   revokeAllSessions: Scalars['Int']['output'];
+  /** Unenroll from a product module */
+  unenrollModule: MeResponse;
   /** Save WeCom customer service credentials */
   saveWeComConfig: CsConfig;
+  /** Create a new conversation with a buyer */
+  tiktokCreateConversation: TikTokApiResult;
+  /** Mark messages as read in a conversation */
+  tiktokReadMessage: TikTokApiResult;
+  /** Send a message in a conversation */
+  tiktokSendMessage: TikTokApiResult;
+  /** Update agent settings for a shop */
+  tiktokUpdateAgentSettings: TikTokApiResult;
   /** Update an existing browser profile */
   updateBrowserProfile?: Maybe<BrowserProfile>;
   /** Update an existing run profile */
   updateRunProfile?: Maybe<RunProfile>;
+  /** Update an existing shop */
+  updateShop?: Maybe<Shop>;
   /** Update an existing surface */
   updateSurface?: Maybe<Surface>;
   /** Upload (upsert) an encrypted session state backup */
@@ -329,6 +412,12 @@ export interface MutationBatchDeleteBrowserProfilesArgs {
 }
 
 
+export interface MutationCompleteTikTokOAuthArgs {
+  code: Scalars['String']['input'];
+  state: Scalars['String']['input'];
+}
+
+
 export interface MutationCreateBrowserProfileArgs {
   input: CreateBrowserProfileInput;
 }
@@ -336,6 +425,11 @@ export interface MutationCreateBrowserProfileArgs {
 
 export interface MutationCreateRunProfileArgs {
   input: CreateRunProfileInput;
+}
+
+
+export interface MutationCreateShopArgs {
+  input: CreateShopInput;
 }
 
 
@@ -364,8 +458,18 @@ export interface MutationDeleteSessionStateBackupArgs {
 }
 
 
+export interface MutationDeleteShopArgs {
+  id: Scalars['ID']['input'];
+}
+
+
 export interface MutationDeleteSurfaceArgs {
   id: Scalars['ID']['input'];
+}
+
+
+export interface MutationEnrollModuleArgs {
+  moduleId: ModuleId;
 }
 
 
@@ -379,6 +483,11 @@ export interface MutationGeneratePairingCodeArgs {
 }
 
 
+export interface MutationInitiateTikTokOAuthArgs {
+  platformAppId: Scalars['ID']['input'];
+}
+
+
 export interface MutationLoginArgs {
   input: LoginInput;
 }
@@ -386,6 +495,18 @@ export interface MutationLoginArgs {
 
 export interface MutationLogoutArgs {
   refreshToken: Scalars['String']['input'];
+}
+
+
+export interface MutationPublishUpdateArgs {
+  downloadUrl?: InputMaybe<Scalars['String']['input']>;
+  version: Scalars['String']['input'];
+}
+
+
+export interface MutationRedeemCreditArgs {
+  creditId: Scalars['ID']['input'];
+  shopId: Scalars['ID']['input'];
 }
 
 
@@ -404,6 +525,33 @@ export interface MutationSaveWeComConfigArgs {
 }
 
 
+export interface MutationTiktokCreateConversationArgs {
+  buyerUserId: Scalars['String']['input'];
+  orderId?: InputMaybe<Scalars['String']['input']>;
+  shopId: Scalars['String']['input'];
+}
+
+
+export interface MutationTiktokReadMessageArgs {
+  conversationId: Scalars['String']['input'];
+  shopId: Scalars['String']['input'];
+}
+
+
+export interface MutationTiktokSendMessageArgs {
+  content: Scalars['String']['input'];
+  conversationId: Scalars['String']['input'];
+  shopId: Scalars['String']['input'];
+  type: Scalars['String']['input'];
+}
+
+
+export interface MutationTiktokUpdateAgentSettingsArgs {
+  settings: Scalars['String']['input'];
+  shopId: Scalars['String']['input'];
+}
+
+
 export interface MutationUpdateBrowserProfileArgs {
   id: Scalars['ID']['input'];
   input: UpdateBrowserProfileInput;
@@ -416,9 +564,20 @@ export interface MutationUpdateRunProfileArgs {
 }
 
 
+export interface MutationUpdateShopArgs {
+  id: Scalars['ID']['input'];
+  input: UpdateShopInput;
+}
+
+
 export interface MutationUpdateSurfaceArgs {
   id: Scalars['ID']['input'];
   input: UpdateSurfaceInput;
+}
+
+
+export interface MutationUnenrollModuleArgs {
+  moduleId: ModuleId;
 }
 
 
@@ -432,6 +591,18 @@ export interface MutationUploadSessionStateBackupArgs {
 export interface MutationVerifyPairingCodeArgs {
   mobileDeviceId: Scalars['String']['input'];
   pairingCode: Scalars['String']['input'];
+}
+
+/** OAuth callback result */
+export interface OAuthCallbackResponse {
+  shopId: Scalars['String']['output'];
+}
+
+/** OAuth flow completed payload (e.g. TikTok shop authorization) */
+export interface OAuthCompletePayload {
+  platform: Scalars['String']['output'];
+  shopId: Scalars['String']['output'];
+  shopName: Scalars['String']['output'];
 }
 
 /** Paginated browser profiles result */
@@ -463,12 +634,52 @@ export interface PlanDetail {
   volume: Scalars['String']['output'];
 }
 
+/** ISV application credentials for a platform+market combination */
+export interface PlatformApp {
+  apiBaseUrl: Scalars['String']['output'];
+  authLinkUrl: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  label: Scalars['String']['output'];
+  market: PlatformMarket;
+  platform: PlatformType;
+  status: PlatformAppStatus;
+}
+
+/** PlatformApp lifecycle status */
+export const PlatformAppStatus = {
+  Active: 'ACTIVE',
+  Draft: 'DRAFT',
+  Suspended: 'SUSPENDED'
+} as const;
+
+export type PlatformAppStatus = typeof PlatformAppStatus[keyof typeof PlatformAppStatus];
+/** Platform market region */
+export const PlatformMarket = {
+  Row: 'ROW',
+  Us: 'US'
+} as const;
+
+export type PlatformMarket = typeof PlatformMarket[keyof typeof PlatformMarket];
+/** Platform type identifier */
+export const PlatformType = {
+  TiktokShop: 'TIKTOK_SHOP'
+} as const;
+
+export type PlatformType = typeof PlatformType[keyof typeof PlatformType];
 export interface ProviderPricing {
   currency: Scalars['String']['output'];
   models: Array<ModelPricing>;
   pricingUrl: Scalars['String']['output'];
   provider: Scalars['String']['output'];
-  subscriptions?: Maybe<Array<Subscription>>;
+  subscriptions?: Maybe<Array<ProviderSubscription>>;
+}
+
+export interface ProviderSubscription {
+  id: Scalars['String']['output'];
+  label: Scalars['String']['output'];
+  models?: Maybe<Array<ModelPricing>>;
+  plans: Array<Plan>;
+  pricingUrl: Scalars['String']['output'];
 }
 
 export interface Query {
@@ -488,7 +699,9 @@ export interface Query {
   checkToolAccess: ToolAccessResult;
   /** Get customer service platform configuration */
   csConfig?: Maybe<CsConfig>;
-  /** Returns the current user's entitlement set (toolIds, categories, serviceCategories) */
+  /** Get CS session stats for a shop */
+  csSessionStats: CsSessionStats;
+  /** Returns the current user's entitlement set (toolIds, categories, serviceCategories, appIds, serviceIds) */
   entitlementSet: EntitlementSetModel;
   /** List all entitlements for the authenticated user */
   entitlements: Array<UserEntitlement>;
@@ -498,8 +711,12 @@ export interface Query {
   me: MeResponse;
   /** Get PWA install URL (base URL without pairing code) */
   mobileInstallUrl: Scalars['String']['output'];
+  /** List available credits for the authenticated user */
+  myCredits: Array<ServiceCredit>;
   /** List all available plan definitions */
   planDefinitions: Array<PlanDefinition>;
+  /** List active PlatformApps (for OAuth target selection) */
+  platformApps: Array<PlatformApp>;
   /** Get pricing for all providers */
   pricing: Array<ProviderPricing>;
   /** Resolve the best browser profile for a given task description */
@@ -514,6 +731,12 @@ export interface Query {
   seats: Array<CsSeat>;
   /** Download the encrypted session state backup for a profile */
   sessionStateBackup?: Maybe<SessionStateBackupDownload>;
+  /** Get a single shop by ID */
+  shop?: Maybe<Shop>;
+  /** Get OAuth token status for a shop */
+  shopAuthStatus: ShopAuthStatusResponse;
+  /** List shops for the authenticated user */
+  shops: Array<Shop>;
   /** Get a single skill by slug */
   skill?: Maybe<Skill>;
   /** Get all skill categories with counts */
@@ -526,6 +749,28 @@ export interface Query {
   surface?: Maybe<Surface>;
   /** List surfaces for the authenticated user */
   surfaces: Array<Surface>;
+  /** Get agent settings for a shop */
+  tiktokGetAgentSettings: TikTokApiResult;
+  /** Get customer service performance metrics */
+  tiktokGetCSPerformance: TikTokApiResult;
+  /** Get conversation details */
+  tiktokGetConversationDetails: TikTokApiResult;
+  /** Get messages in a conversation */
+  tiktokGetConversationMessages: TikTokApiResult;
+  /** Get conversations for a shop */
+  tiktokGetConversations: TikTokApiResult;
+  /** Get global seller warehouses */
+  tiktokGetGlobalWarehouses: TikTokApiResult;
+  /** Get logistics tracking for an order. Optional buyerUserId for buyer scoping. */
+  tiktokGetLogisticsTracking: TikTokApiResult;
+  /** Get order details. Optional buyerUserId for platform-level buyer scoping. */
+  tiktokGetOrder: TikTokApiResult;
+  /** List/search orders. Optional buyerUserId for buyer-scoped queries. */
+  tiktokGetOrders: TikTokApiResult;
+  /** Get product details */
+  tiktokGetProduct: TikTokApiResult;
+  /** Get warehouse list */
+  tiktokGetWarehouses: TikTokApiResult;
   /** Get the full tool registry (all defined tools) */
   toolRegistry: Array<ToolDefinition>;
   /** Batch-verify relay access tokens */
@@ -558,6 +803,11 @@ export interface QueryCheckEntitlementArgs {
 
 export interface QueryCheckToolAccessArgs {
   toolId: Scalars['String']['input'];
+}
+
+
+export interface QueryCsSessionStatsArgs {
+  shopId: Scalars['ID']['input'];
 }
 
 
@@ -594,6 +844,16 @@ export interface QuerySessionStateBackupArgs {
 }
 
 
+export interface QueryShopArgs {
+  id: Scalars['ID']['input'];
+}
+
+
+export interface QueryShopAuthStatusArgs {
+  id: Scalars['ID']['input'];
+}
+
+
 export interface QuerySkillArgs {
   slug: Scalars['String']['input'];
 }
@@ -610,6 +870,83 @@ export interface QuerySkillsArgs {
 
 export interface QuerySurfaceArgs {
   id: Scalars['ID']['input'];
+}
+
+
+export interface QueryTiktokGetAgentSettingsArgs {
+  shopId: Scalars['String']['input'];
+}
+
+
+export interface QueryTiktokGetCsPerformanceArgs {
+  endTime?: InputMaybe<Scalars['String']['input']>;
+  shopId: Scalars['String']['input'];
+  startTime?: InputMaybe<Scalars['String']['input']>;
+}
+
+
+export interface QueryTiktokGetConversationDetailsArgs {
+  conversationId: Scalars['String']['input'];
+  shopId: Scalars['String']['input'];
+}
+
+
+export interface QueryTiktokGetConversationMessagesArgs {
+  conversationId: Scalars['String']['input'];
+  locale?: InputMaybe<Scalars['String']['input']>;
+  pageSize: Scalars['Float']['input'];
+  pageToken?: InputMaybe<Scalars['String']['input']>;
+  shopId: Scalars['String']['input'];
+}
+
+
+export interface QueryTiktokGetConversationsArgs {
+  locale?: InputMaybe<Scalars['String']['input']>;
+  pageSize: Scalars['Float']['input'];
+  pageToken?: InputMaybe<Scalars['String']['input']>;
+  shopId: Scalars['String']['input'];
+}
+
+
+export interface QueryTiktokGetGlobalWarehousesArgs {
+  shopId: Scalars['String']['input'];
+  warehouseId?: InputMaybe<Scalars['String']['input']>;
+}
+
+
+export interface QueryTiktokGetLogisticsTrackingArgs {
+  buyerUserId?: InputMaybe<Scalars['String']['input']>;
+  orderId: Scalars['String']['input'];
+  shopId: Scalars['String']['input'];
+}
+
+
+export interface QueryTiktokGetOrderArgs {
+  buyerUserId?: InputMaybe<Scalars['String']['input']>;
+  orderId: Scalars['String']['input'];
+  shopId: Scalars['String']['input'];
+}
+
+
+export interface QueryTiktokGetOrdersArgs {
+  buyerUserId?: InputMaybe<Scalars['String']['input']>;
+  pageSize?: InputMaybe<Scalars['Float']['input']>;
+  pageToken?: InputMaybe<Scalars['String']['input']>;
+  shopId: Scalars['String']['input'];
+  status?: InputMaybe<Scalars['String']['input']>;
+}
+
+
+export interface QueryTiktokGetProductArgs {
+  productId: Scalars['String']['input'];
+  shopId: Scalars['String']['input'];
+}
+
+
+export interface QueryTiktokGetWarehousesArgs {
+  pageSize?: InputMaybe<Scalars['Float']['input']>;
+  pageToken?: InputMaybe<Scalars['String']['input']>;
+  shopId: Scalars['String']['input'];
 }
 
 
@@ -676,6 +1013,43 @@ export const ServiceCategory = {
 } as const;
 
 export type ServiceCategory = typeof ServiceCategory[keyof typeof ServiceCategory];
+/** A one-time service credit (top-up) that can be redeemed to a shop */
+export interface ServiceCredit {
+  createdAt: Scalars['DateTimeISO']['output'];
+  expiresAt: Scalars['DateTimeISO']['output'];
+  id: Scalars['ID']['output'];
+  quota: Scalars['Int']['output'];
+  redeemedAt?: Maybe<Scalars['DateTimeISO']['output']>;
+  redeemedShopId?: Maybe<Scalars['String']['output']>;
+  service: ServiceId;
+  source: ServiceCreditSource;
+  status: ServiceCreditStatus;
+  updatedAt: Scalars['DateTimeISO']['output'];
+  userId: Scalars['String']['output'];
+}
+
+/** Origin of a service credit */
+export const ServiceCreditSource = {
+  Promotion: 'PROMOTION',
+  Trial: 'TRIAL'
+} as const;
+
+export type ServiceCreditSource = typeof ServiceCreditSource[keyof typeof ServiceCreditSource];
+/** Status of a service credit */
+export const ServiceCreditStatus = {
+  Available: 'AVAILABLE',
+  Expired: 'EXPIRED',
+  Redeemed: 'REDEEMED'
+} as const;
+
+export type ServiceCreditStatus = typeof ServiceCreditStatus[keyof typeof ServiceCreditStatus];
+/** Service-level identifiers for subscription gating */
+export const ServiceId = {
+  CustomerService: 'CUSTOMER_SERVICE',
+  OrderManagement: 'ORDER_MANAGEMENT'
+} as const;
+
+export type ServiceId = typeof ServiceId[keyof typeof ServiceId];
 /** Session state backup with payload for download */
 export interface SessionStateBackupDownload {
   manifest: SessionStateBackupManifest;
@@ -706,6 +1080,71 @@ export interface SessionStatePolicyInput {
   enabled?: InputMaybe<Scalars['Boolean']['input']>;
   mode?: InputMaybe<Scalars['String']['input']>;
   storage?: InputMaybe<Scalars['String']['input']>;
+}
+
+/** A connected e-commerce shop */
+export interface Shop {
+  accessTokenExpiresAt?: Maybe<Scalars['DateTimeISO']['output']>;
+  authStatus: ShopAuthStatus;
+  createdAt: Scalars['DateTimeISO']['output'];
+  grantedScopes: Array<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  platform: ShopPlatform;
+  platformAppId: Scalars['String']['output'];
+  platformShopId: Scalars['String']['output'];
+  refreshTokenExpiresAt?: Maybe<Scalars['DateTimeISO']['output']>;
+  region: ShopRegion;
+  services: ShopServiceConfig;
+  shopName: Scalars['String']['output'];
+  updatedAt: Scalars['DateTimeISO']['output'];
+  userId: Scalars['String']['output'];
+}
+
+/** OAuth authorization status of a connected shop */
+export const ShopAuthStatus = {
+  Authorized: 'AUTHORIZED',
+  PendingAuth: 'PENDING_AUTH',
+  Revoked: 'REVOKED',
+  TokenExpired: 'TOKEN_EXPIRED'
+} as const;
+
+export type ShopAuthStatus = typeof ShopAuthStatus[keyof typeof ShopAuthStatus];
+/** Shop auth/token status */
+export interface ShopAuthStatusResponse {
+  accessTokenExpiresAt?: Maybe<Scalars['DateTimeISO']['output']>;
+  hasToken: Scalars['Boolean']['output'];
+  refreshTokenExpiresAt?: Maybe<Scalars['DateTimeISO']['output']>;
+}
+
+/** E-commerce platform identifier */
+export const ShopPlatform = {
+  TiktokShop: 'TIKTOK_SHOP'
+} as const;
+
+export type ShopPlatform = typeof ShopPlatform[keyof typeof ShopPlatform];
+/** Country/region code for a connected shop */
+export const ShopRegion = {
+  Gb: 'GB',
+  Id: 'ID',
+  My: 'MY',
+  Ph: 'PH',
+  Row: 'ROW',
+  Sg: 'SG',
+  Th: 'TH',
+  Us: 'US',
+  Vn: 'VN'
+} as const;
+
+export type ShopRegion = typeof ShopRegion[keyof typeof ShopRegion];
+/** Per-shop service feature toggles */
+export interface ShopServiceConfig {
+  customerService: CustomerServiceSettings;
+  customerServiceBilling: CustomerServiceBilling;
+}
+
+/** Input for updating per-shop service toggles */
+export interface ShopServiceConfigInput {
+  customerService?: InputMaybe<CustomerServiceSettingsInput>;
 }
 
 export interface Skill {
@@ -746,11 +1185,14 @@ export const SkillLabel = {
 
 export type SkillLabel = typeof SkillLabel[keyof typeof SkillLabel];
 export interface Subscription {
-  id: Scalars['String']['output'];
-  label: Scalars['String']['output'];
-  models?: Maybe<Array<ModelPricing>>;
-  plans: Array<Plan>;
-  pricingUrl: Scalars['String']['output'];
+  /** Fires when an OAuth flow completes (e.g. TikTok shop authorization) */
+  oauthComplete: OAuthCompletePayload;
+  updateAvailable: UpdatePayload;
+}
+
+
+export interface SubscriptionUpdateAvailableArgs {
+  clientVersion: Scalars['String']['input'];
 }
 
 /** Subscription lifecycle states */
@@ -773,6 +1215,13 @@ export interface Surface {
   presetId?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['DateTimeISO']['output'];
   userId?: Maybe<Scalars['String']['output']>;
+}
+
+/** Generic JSON result proxied from TikTok API */
+export interface TikTokApiResult {
+  code: Scalars['Float']['output'];
+  data?: Maybe<Scalars['String']['output']>;
+  message: Scalars['String']['output'];
 }
 
 /** Result of checking access to a specific tool */
@@ -840,11 +1289,26 @@ export interface UpdateBrowserProfileInput {
   tags?: InputMaybe<Array<Scalars['String']['input']>>;
 }
 
+/** Update notification payload */
+export interface UpdatePayload {
+  downloadUrl?: Maybe<Scalars['String']['output']>;
+  version: Scalars['String']['output'];
+}
+
 /** Input for updating an existing RunProfile */
 export interface UpdateRunProfileInput {
   name?: InputMaybe<Scalars['String']['input']>;
   selectedToolIds?: InputMaybe<Array<Scalars['String']['input']>>;
   surfaceId?: InputMaybe<Scalars['String']['input']>;
+}
+
+/** Input for updating an existing shop */
+export interface UpdateShopInput {
+  authStatus?: InputMaybe<ShopAuthStatus>;
+  grantedScopes?: InputMaybe<Array<Scalars['String']['input']>>;
+  region?: InputMaybe<ShopRegion>;
+  services?: InputMaybe<ShopServiceConfigInput>;
+  shopName?: InputMaybe<Scalars['String']['input']>;
 }
 
 /** Input for updating an existing Surface */
@@ -864,6 +1328,7 @@ export interface UserEntitlement {
 
 /** Subscription plan tiers */
 export const UserPlan = {
+  Enterprise: 'ENTERPRISE',
   Free: 'FREE',
   Pro: 'PRO'
 } as const;

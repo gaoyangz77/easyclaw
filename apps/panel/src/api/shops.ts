@@ -3,29 +3,42 @@ import {
   SHOPS_QUERY,
   SHOP_AUTH_STATUS_QUERY,
   PLATFORM_APPS_QUERY,
-  CREATE_SHOP_MUTATION,
   UPDATE_SHOP_MUTATION,
   DELETE_SHOP_MUTATION,
   INITIATE_TIKTOK_OAUTH_MUTATION,
+  MY_CREDITS_QUERY,
+  CS_SESSION_STATS_QUERY,
+  REDEEM_CREDIT_MUTATION,
 } from "./shops-queries.js";
 
+export interface CustomerServiceConfig {
+  enabled: boolean;
+  businessPrompt?: string;
+}
+
+export interface CustomerServiceBilling {
+  tier?: string;
+  balance: number;
+  balanceExpiresAt?: string;
+  periodEnd?: string;
+}
+
 export interface ShopServiceConfig {
-  customerService: boolean;
+  customerService: CustomerServiceConfig;
+  customerServiceBilling?: CustomerServiceBilling;
 }
 
 export interface Shop {
   id: string;
-  userId: string;
   platform: string;
+  platformAppId: string;
   platformShopId: string;
   shopName: string;
   authStatus: string;
   region: string;
-  platformAppId: string;
-  grantedScopes: string[];
+  accessTokenExpiresAt?: string;
+  refreshTokenExpiresAt?: string;
   services: ShopServiceConfig;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface ShopAuthStatusInfo {
@@ -42,6 +55,22 @@ export interface PlatformAppInfo {
   label: string;
   apiBaseUrl: string;
   authLinkUrl: string;
+}
+
+export interface ServiceCreditInfo {
+  id: string;
+  service: string;
+  quota: number;
+  status: string;
+  expiresAt: string;
+  source: string;
+}
+
+export interface CSSessionStatsInfo {
+  activeSessions: number;
+  totalSessions: number;
+  balance: number;
+  balanceExpiresAt?: string;
 }
 
 export async function fetchShops(): Promise<Shop[]> {
@@ -81,8 +110,7 @@ export async function updateShop(
     shopName?: string;
     authStatus?: string;
     region?: string;
-    grantedScopes?: string[];
-    services?: { customerService?: boolean };
+    services?: { customerService?: { enabled?: boolean; businessPrompt?: string } };
   },
 ): Promise<Shop> {
   return trackedQuery(async () => {
@@ -115,5 +143,36 @@ export async function initiateTikTokOAuth(platformAppId: string): Promise<{ auth
       variables: { platformAppId },
     });
     return result.data!.initiateTikTokOAuth;
+  });
+}
+
+export async function fetchMyCredits(): Promise<ServiceCreditInfo[]> {
+  return trackedQuery(async () => {
+    const result = await getClient().query<{ myCredits: ServiceCreditInfo[] }>({
+      query: MY_CREDITS_QUERY,
+      fetchPolicy: "network-only",
+    });
+    return result.data!.myCredits;
+  });
+}
+
+export async function fetchCSSessionStats(shopId: string): Promise<CSSessionStatsInfo> {
+  return trackedQuery(async () => {
+    const result = await getClient().query<{ csSessionStats: CSSessionStatsInfo }>({
+      query: CS_SESSION_STATS_QUERY,
+      variables: { shopId },
+      fetchPolicy: "network-only",
+    });
+    return result.data!.csSessionStats;
+  });
+}
+
+export async function redeemCredit(creditId: string, shopId: string): Promise<boolean> {
+  return trackedQuery(async () => {
+    const result = await getClient().mutate<{ redeemCredit: boolean }>({
+      mutation: REDEEM_CREDIT_MUTATION,
+      variables: { creditId, shopId },
+    });
+    return result.data!.redeemCredit;
   });
 }

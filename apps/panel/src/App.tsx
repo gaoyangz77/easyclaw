@@ -16,6 +16,7 @@ import { OnboardingPage } from "./pages/OnboardingPage.js";
 import { AccountPage } from "./pages/AccountPage.js";
 import { BrowserProfilesPage } from "./pages/BrowserProfilesPage.js";
 import { TikTokShopsPage } from "./pages/TikTokShopsPage.js";
+import { EcommercePage } from "./pages/EcommercePage.js";
 import { WhatsNewModal } from "./components/modals/WhatsNewModal.js";
 import { TelemetryConsentModal } from "./components/modals/TelemetryConsentModal.js";
 import { TutorialProvider, TutorialBubble, TutorialOverlay } from "./tutorial/index.js";
@@ -33,6 +34,7 @@ const PAGES: Record<string, () => ReactNode> = {
   "/skills": SkillsPage,
   "/crons": CronsPage,
   "/tiktok-shops": () => null, // Rendered separately below (auth-gated)
+  "/ecommerce": () => null, // Rendered separately below (auth-gated)
   "/browser-profiles": () => null, // Rendered separately below (needs onNavigate prop)
   "/settings": SettingsPage,
   "/account": () => null, // Rendered separately below (needs onNavigate prop)
@@ -147,7 +149,7 @@ export function App() {
     return <OnboardingPage onComplete={handleOnboardingComplete} />;
   }
 
-  const skipPages = new Set(["/", "/channels", "/tiktok-shops", "/account"]);
+  const skipPages = new Set(["/", "/channels", "/tiktok-shops", "/ecommerce", "/account"]);
   const OtherPage = !skipPages.has(currentPath) ? PAGES[currentPath] : null;
   return (
     <TutorialProvider currentPath={currentPath}>
@@ -162,6 +164,7 @@ export function App() {
           <ChannelsPage />
         </div>
         {currentPath === "/tiktok-shops" && <TikTokShopsPage />}
+        {currentPath === "/ecommerce" && <EcommercePage />}
         {currentPath === "/browser-profiles" && <BrowserProfilesPage />}
         {currentPath === "/account" && <AccountPage onNavigate={navigate} />}
         {OtherPage && <OtherPage />}
