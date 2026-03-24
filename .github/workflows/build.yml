@@ -15,15 +15,7 @@ jobs:
         with:
           repository: gaoyangz77/rivonclaw-merchant-extensions
           token: ${{ secrets.PRIVATE_EXTENSIONS_PAT }}
-          path: .merchant-extensions
-
-      - name: Link merchant extensions
-        shell: bash
-        run: |
-          for dir in .merchant-extensions/*/; do
-            [ -d "$dir" ] && cp -r "$dir" "extensions/$(basename "$dir")"
-          done
-          rm -rf .merchant-extensions
+          path: extensions-merchant
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4

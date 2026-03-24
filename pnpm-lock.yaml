@@ -103,6 +103,9 @@ importers:
       '@playwright/test':
         specifier: ^1.58.2
         version: 1.58.2
+      '@rivonclaw/ecommerce':
+        specifier: workspace:*
+        version: link:../../extensions-merchant/ecommerce
       '@rivonclaw/rivonclaw-browser-profiles-tools':
         specifier: workspace:*
         version: link:../../extensions/rivonclaw-browser-profiles-tools
@@ -242,6 +245,53 @@ importers:
       vitest:
         specifier: ^4.0.18
         version: 4.0.18(@types/node@25.2.2)(jiti@2.6.1)(jsdom@28.1.0)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
+
+  extensions-merchant/ecommerce:
+    dependencies:
+      '@rivonclaw/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+    devDependencies:
+      '@rivonclaw/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@sinclair/typebox':
+        specifier: ^0.34.0
+        version: 0.34.48
+      oxlint:
+        specifier: ^1.43.0
+        version: 1.43.0
+      tsdown:
+        specifier: ^0.20.3
+        version: 0.20.3(synckit@0.11.12)(typescript@5.9.3)
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@types/node@25.2.2)(jiti@2.6.1)(jsdom@28.1.0)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
+
+  extensions-merchant/tiktok-shop:
+    dependencies:
+      '@rivonclaw/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+    devDependencies:
+      '@rivonclaw/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@sinclair/typebox':
+        specifier: ^0.34.0
+        version: 0.34.48
+      '@types/node':
+        specifier: ^22.15.0
+        version: 22.19.9
+      oxlint:
+        specifier: ^1.43.0
+        version: 1.43.0
+      tsdown:
+        specifier: ^0.20.3
+        version: 0.20.3(synckit@0.11.12)(typescript@5.9.3)
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@types/node@22.19.9)(jiti@2.6.1)(jsdom@28.1.0)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
 
   extensions/channel-weixin:
     dependencies:
@@ -416,31 +466,6 @@ importers:
       vitest:
         specifier: ^4.0.18
         version: 4.0.18(@types/node@25.2.2)(jiti@2.6.1)(jsdom@28.1.0)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
-
-  extensions/tiktok-shop:
-    dependencies:
-      '@rivonclaw/plugin-sdk':
-        specifier: workspace:*
-        version: link:../../packages/plugin-sdk
-    devDependencies:
-      '@rivonclaw/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@sinclair/typebox':
-        specifier: ^0.34.0
-        version: 0.34.48
-      '@types/node':
-        specifier: ^22.15.0
-        version: 22.19.9
-      oxlint:
-        specifier: ^1.43.0
-        version: 1.43.0
-      tsdown:
-        specifier: ^0.20.3
-        version: 0.20.3(synckit@0.11.12)(typescript@5.9.3)
-      vitest:
-        specifier: ^4.0.18
-        version: 4.0.18(@types/node@22.19.9)(jiti@2.6.1)(jsdom@28.1.0)(lightningcss@1.31.1)(terser@5.46.0)(tsx@4.21.0)(yaml@2.8.2)
 
   packages/core:
     dependencies:

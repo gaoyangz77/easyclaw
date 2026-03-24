@@ -6,6 +6,7 @@ import { buildExtraProviderConfigs, writeGatewayConfig } from "@rivonclaw/gatewa
 import type { Storage } from "@rivonclaw/storage";
 import type { SecretStore } from "@rivonclaw/secrets";
 import { buildOwnerAllowFrom } from "../auth/owner-sync.js";
+import { OUR_PLUGIN_IDS } from "../generated/our-plugin-ids.js";
 export interface GatewayConfigDeps {
   storage: Storage;
   secretStore: SecretStore;
@@ -132,16 +133,10 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
       extensionsDir,
       plugins: {
         allow: [
-          "rivonclaw-tools",
-          "rivonclaw-file-permissions",
-          "rivonclaw-capability-manager",
-          "rivonclaw-search-browser-fallback",
+          ...OUR_PLUGIN_IDS,
+          // Vendor-bundled plugins that are not in extensions/ but need to be allowed
           "google-gemini-cli-auth",
-          "rivonclaw-mobile-chat-channel",
-          "rivonclaw-event-bridge",
           "memory-core",
-          "rivonclaw-browser-profiles-tools",
-          "openclaw-weixin",
         ],
         entries: {
           "rivonclaw-tools": {

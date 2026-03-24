@@ -7,18 +7,27 @@ import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const extensionsDir = join(__dirname, "../extensions");
-const outputDir = join(__dirname, "../apps/desktop/src/generated");
+const repoRoot = join(__dirname, "..");
+const outputDir = join(repoRoot, "apps/desktop/src/generated");
 const outputPath = join(outputDir, "our-plugin-ids.ts");
+
+// Scan both public and private extension directories.
+const extensionDirs = [
+  join(repoRoot, "extensions"),
+  join(repoRoot, "extensions-merchant"),
+];
 
 const pluginIds = [];
 
-for (const entry of readdirSync(extensionsDir, { withFileTypes: true })) {
-  if (!entry.isDirectory()) continue;
-  const manifestPath = join(extensionsDir, entry.name, "openclaw.plugin.json");
-  if (!existsSync(manifestPath)) continue;
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
-  if (manifest.id) pluginIds.push(manifest.id);
+for (const extensionsDir of extensionDirs) {
+  if (!existsSync(extensionsDir)) continue;
+  for (const entry of readdirSync(extensionsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const manifestPath = join(extensionsDir, entry.name, "openclaw.plugin.json");
+    if (!existsSync(manifestPath)) continue;
+    const manifest = JSON.parse(readFileSync(manifestPath, "utf-8"));
+    if (manifest.id) pluginIds.push(manifest.id);
+  }
 }
 
 pluginIds.sort();

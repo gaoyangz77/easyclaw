@@ -45,6 +45,12 @@ extraResources:
     filter:
       - "**"
       - "!**/node_modules/**"
+  # Private merchant extensions (may not exist in open-source builds)
+  - from: "../../extensions-merchant"
+    to: "extensions-merchant"
+    filter:
+      - "**"
+      - "!**/node_modules/**"
       - "!**/.turbo/**"
       - "!**/src/**"
       - "!**/test/**"

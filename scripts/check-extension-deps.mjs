@@ -17,16 +17,11 @@ const extensionsDir = join(root, "extensions");
 const desktopPkg = JSON.parse(readFileSync(join(root, "apps", "desktop", "package.json"), "utf8"));
 const desktopDevDeps = desktopPkg.devDependencies || {};
 
-// Private extensions are injected by CI from a separate repo and don't need
-// to be in desktop's package.json.  List directory names here.
-const PRIVATE_EXTENSIONS = new Set(["tiktok-shop"]);
-
 const missing = [];
 let total = 0;
 
 for (const entry of readdirSync(extensionsDir, { withFileTypes: true })) {
   if (!entry.isDirectory()) continue;
-  if (PRIVATE_EXTENSIONS.has(entry.name)) continue;
   const pkgPath = join(extensionsDir, entry.name, "package.json");
   if (!existsSync(pkgPath)) continue;
   const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));

@@ -1497,7 +1497,7 @@ export default {
         TIKTOK_CS: "TikTok Customer Service",
         TIKTOK_LOGISTICS: "TikTok Logistics",
         TIKTOK_PRODUCT: "TikTok Products",
-        TIKTOK_SHOP_MGMT: "TikTok Shop Management",
+        ECOMMERCE_SHOP_MGMT: "E-commerce Shop Management",
         SYSTEM: "System",
         EXTENSION: "Extensions",
         ENTITLED: "Premium",
@@ -1537,10 +1537,9 @@ export default {
         TIKTOK_GET_PRODUCT: "TikTok — Get Product",
         TIKTOK_GET_WAREHOUSES: "TikTok — Warehouses",
         TIKTOK_GET_SHIPPING_PROVIDERS: "TikTok — Shipping Providers",
-        // TikTok Shop Management
-        TIKTOK_LIST_SHOPS: "TikTok — List Shops",
-        TIKTOK_GET_CURRENT_SHOP: "TikTok — Current Shop",
-        TIKTOK_GET_SHOP_AUTH_STATUS: "TikTok — Auth Status",
+        // E-commerce Shop Management
+        ECOMMERCE_LIST_SHOPS: "E-commerce — List Shops",
+        ECOMMERCE_GET_SHOP_AUTH_STATUS: "E-commerce — Shop Auth Status",
         // System tools — Files
         read: "Read File",
         write: "Write File",

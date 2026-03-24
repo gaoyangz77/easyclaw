@@ -1487,7 +1487,7 @@ export default {
         TIKTOK_CS: "TikTok 客服",
         TIKTOK_LOGISTICS: "TikTok 物流",
         TIKTOK_PRODUCT: "TikTok 商品",
-        TIKTOK_SHOP_MGMT: "TikTok 店铺管理",
+        ECOMMERCE_SHOP_MGMT: "电商店铺管理",
         SYSTEM: "系统工具",
         EXTENSION: "扩展工具",
         ENTITLED: "增值工具",
@@ -1527,10 +1527,9 @@ export default {
         TIKTOK_GET_PRODUCT: "TikTok — 商品详情",
         TIKTOK_GET_WAREHOUSES: "TikTok — 仓库列表",
         TIKTOK_GET_SHIPPING_PROVIDERS: "TikTok — 物流商",
-        // TikTok 店铺管理
-        TIKTOK_LIST_SHOPS: "TikTok — 店铺列表",
-        TIKTOK_GET_CURRENT_SHOP: "TikTok — 当前店铺",
-        TIKTOK_GET_SHOP_AUTH_STATUS: "TikTok — 授权状态",
+        // 电商店铺管理
+        ECOMMERCE_LIST_SHOPS: "电商 — 店铺列表",
+        ECOMMERCE_GET_SHOP_AUTH_STATUS: "电商 — 授权状态",
         // 系统工具 — 文件
         read: "读取文件",
         write: "写入文件",

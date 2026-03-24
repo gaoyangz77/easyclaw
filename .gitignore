@@ -21,6 +21,4 @@ CLAUDE.md
 CODEX.md
 ANTIGRAVITY.md
 tmp/
-
-# Private merchant extensions (source lives in rivonclaw-merchant-extensions repo)
-extensions/tiktok-shop/
+extensions-merchant/

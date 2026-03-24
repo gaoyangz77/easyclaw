@@ -761,15 +761,22 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
             normalized.includes("extensions/wecom") ||
             normalized.includes("extensions/dingtalk") ||
             normalized.endsWith("/extensions") ||
+            normalized.endsWith("/extensions-merchant") ||
             p === extDir
           );
         };
         const filteredPaths = existingPaths.filter(
           (p: unknown) => typeof p !== "string" || !isStaleExtPath(p),
         );
+        // Also add the private merchant extensions directory if present.
+        // It lives alongside extensions/ as a separate clone and is discovered
+        // via plugins.load.paths rather than being nested inside extensions/.
+        const merchantDir = resolve(extDir, "..", "extensions-merchant");
+        const extraDirs = existsSync(merchantDir) ? [merchantDir] : [];
+
         merged.load = {
           ...existingLoad,
-          paths: [...filteredPaths, extDir],
+          paths: [...filteredPaths, extDir, ...extraDirs],
         };
       } else {
         log.warn(`Extensions directory not found at ${extDir}, skipping`);

@@ -56,6 +56,7 @@
     "@rivonclaw/rivonclaw-mobile-chat-channel": "workspace:*",
     "@rivonclaw/rivonclaw-policy": "workspace:*",
     "@rivonclaw/rivonclaw-search-browser-fallback": "workspace:*",
+    "@rivonclaw/ecommerce": "workspace:*",
     "@rivonclaw/rivonclaw-tools": "workspace:*",
     "openclaw-weixin": "workspace:*",
     "@types/ws": "^8.18.1",

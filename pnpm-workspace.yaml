@@ -3,3 +3,4 @@ packages:
   - "packages/*"
   - "packages/apps/*"
   - "extensions/*"
+  - "extensions-merchant/*"

@@ -1237,7 +1237,7 @@ export const ToolCategory = {
   TiktokCs: 'TIKTOK_CS',
   TiktokLogistics: 'TIKTOK_LOGISTICS',
   TiktokProduct: 'TIKTOK_PRODUCT',
-  TiktokShopMgmt: 'TIKTOK_SHOP_MGMT'
+  EcommerceShopMgmt: 'ECOMMERCE_SHOP_MGMT'
 } as const;
 
 export type ToolCategory = typeof ToolCategory[keyof typeof ToolCategory];
@@ -1264,12 +1264,12 @@ export const ToolId = {
   TiktokGetConversationDetails: 'TIKTOK_GET_CONVERSATION_DETAILS',
   TiktokGetConversationMessages: 'TIKTOK_GET_CONVERSATION_MESSAGES',
   TiktokGetCsPerformance: 'TIKTOK_GET_CS_PERFORMANCE',
-  TiktokGetCurrentShop: 'TIKTOK_GET_CURRENT_SHOP',
+  EcommerceGetCurrentShop: 'ECOMMERCE_GET_CURRENT_SHOP',
   TiktokGetProduct: 'TIKTOK_GET_PRODUCT',
   TiktokGetShippingProviders: 'TIKTOK_GET_SHIPPING_PROVIDERS',
-  TiktokGetShopAuthStatus: 'TIKTOK_GET_SHOP_AUTH_STATUS',
+  EcommerceGetShopAuthStatus: 'ECOMMERCE_GET_SHOP_AUTH_STATUS',
   TiktokGetWarehouses: 'TIKTOK_GET_WAREHOUSES',
-  TiktokListShops: 'TIKTOK_LIST_SHOPS',
+  EcommerceListShops: 'ECOMMERCE_LIST_SHOPS',
   TiktokReadMessage: 'TIKTOK_READ_MESSAGE',
   TiktokSearchSessions: 'TIKTOK_SEARCH_SESSIONS',
   TiktokSendMessage: 'TIKTOK_SEND_MESSAGE',
