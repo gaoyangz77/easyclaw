@@ -8,6 +8,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { compileMerchantBytecode } = require("./compile-merchant-bytecode.cjs");
 
 /** Recursively count files in a directory. */
 function countFiles(/** @type {string} */ dir) {
@@ -48,6 +49,8 @@ exports.default = async function copyVendorDeps(context) {
 
   if (fs.existsSync(vendorDest)) {
     console.log("[copy-vendor-deps] vendor/openclaw/node_modules already present, skipping.");
+    // Still run bytecode compilation (universal pass reuses existing resources)
+    await compileMerchantBytecode(context, resourcesDir);
     return;
   }
 
@@ -394,4 +397,11 @@ exports.default = async function copyVendorDeps(context) {
       console.log(`[copy-vendor-deps] Cleaned .ts source files from ${cleanedExts} pre-bundled extensions (${cleanedFiles} files removed).`);
     }
   }
+
+  // ── Compile private merchant extensions to V8 bytecode ──
+  // After all resources are copied and cleaned, compile extensions-merchant/
+  // .mjs files to V8 bytecode (.jsc) to protect business logic in packaged
+  // builds. This must run after extraResources copy and uses the packaged
+  // Electron binary for V8-compatible compilation.
+  await compileMerchantBytecode(context, resourcesDir);
 };
