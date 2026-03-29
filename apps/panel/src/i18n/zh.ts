@@ -1518,6 +1518,7 @@ export default {
         BROWSER_PROFILES_GET: "获取",
         BROWSER_PROFILES_FIND: "搜索",
         BROWSER_PROFILES_MANAGE: "管理",
+        browser_profiles_test_proxy: "测试代理",
         // 电商运营 — 运营管理
         ECOM_GET_CONVERSATIONS: "获取会话列表",
         ECOM_GET_CONVERSATION_MESSAGES: "获取会话消息",
@@ -1538,18 +1539,13 @@ export default {
         ECOM_GET_PRODUCT: "获取商品",
         ECOM_SEARCH_PRODUCTS: "搜索商品",
         // 电商运营 — 操作
-        ECOM_READ_MESSAGE: "已读消息",
-        ECOM_READ_MESSAGES: "批量已读消息",
         ECOM_CREATE_CONVERSATION: "创建会话",
-        ECOM_UPLOAD_IMAGE: "上传图片",
         // 电商客服 — 会话级工具
-        ECOM_CS_SEND_MEDIA: "发送媒体",
+        ECOM_CS_SEND_MEDIA: "发送图片",
         ECOM_CS_SEND_CARD: "发送卡片",
         ECOM_CS_GET_CONVERSATIONS: "获取会话",
         ECOM_CS_GET_CONVERSATION_MESSAGES: "获取消息",
         ECOM_CS_GET_CONVERSATION_DETAILS: "获取详情",
-        ECOM_CS_READ_MESSAGE: "已读消息",
-        ECOM_CS_READ_MESSAGES: "批量已读",
         ECOM_CS_GET_ORDER: "获取订单",
         ECOM_CS_LIST_ORDERS: "订单列表",
         ECOM_CS_GET_FULFILLMENT_TRACKING: "获取物流",

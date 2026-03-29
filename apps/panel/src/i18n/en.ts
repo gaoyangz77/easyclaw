@@ -1528,6 +1528,7 @@ export default {
         BROWSER_PROFILES_GET: "Get",
         BROWSER_PROFILES_FIND: "Find",
         BROWSER_PROFILES_MANAGE: "Manage",
+        browser_profiles_test_proxy: "Test Proxy",
         // E-commerce Ops — Operations
         ECOM_GET_CONVERSATIONS: "Get Conversations",
         ECOM_GET_CONVERSATION_MESSAGES: "Get Messages",
@@ -1548,18 +1549,13 @@ export default {
         ECOM_GET_PRODUCT: "Get Product",
         ECOM_SEARCH_PRODUCTS: "Search Products",
         // E-commerce Ops — Write
-        ECOM_READ_MESSAGE: "Read Message",
-        ECOM_READ_MESSAGES: "Read Messages",
         ECOM_CREATE_CONVERSATION: "Create Conversation",
-        ECOM_UPLOAD_IMAGE: "Upload Image",
         // E-commerce CS — Session-scoped tools
-        ECOM_CS_SEND_MEDIA: "Send Media",
+        ECOM_CS_SEND_MEDIA: "Send Image",
         ECOM_CS_SEND_CARD: "Send Card",
         ECOM_CS_GET_CONVERSATIONS: "Get Conversations",
         ECOM_CS_GET_CONVERSATION_MESSAGES: "Get Messages",
         ECOM_CS_GET_CONVERSATION_DETAILS: "Get Details",
-        ECOM_CS_READ_MESSAGE: "Read Message",
-        ECOM_CS_READ_MESSAGES: "Read Messages",
         ECOM_CS_GET_ORDER: "Get Order",
         ECOM_CS_LIST_ORDERS: "List Orders",
         ECOM_CS_GET_FULFILLMENT_TRACKING: "Get Tracking",
