@@ -140,9 +140,8 @@ const DesktopRootStoreModel = RootStoreModel.actions((self) => ({
       const idx = self.shops.findIndex((s) => s.id === u.id);
       if (idx >= 0) applySnapshot(self.shops[idx], data.updateShop as any);
     }
-    if (data.deleteShop && typeof data.deleteShop === "object") {
-      const d = data.deleteShop as { id: string };
-      const idx = self.shops.findIndex((s) => s.id === d.id);
+    if (data.deleteShop === true && variables?.id) {
+      const idx = self.shops.findIndex((s) => s.id === variables.id);
       if (idx >= 0) self.shops.splice(idx, 1);
     }
 
