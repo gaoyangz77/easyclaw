@@ -370,6 +370,7 @@ export const EcommercePage = observer(function EcommercePage() {
       await entityStore.updateShop(shopId, {
         services: { customerService: { enabled: !currentValue } },
       });
+      showToast(t(!currentValue ? "ecommerce.csEnabled" : "ecommerce.csDisabled"), "success");
       // If enabling CS, auto-download skill template if not already installed (fire-and-forget)
       if (!currentValue) {
         fetchInstalledSkills()
@@ -417,6 +418,7 @@ export const EcommercePage = observer(function EcommercePage() {
       await entityStore.updateShop(selectedShopId, {
         services: { customerService: { runProfileId: profileId } },
       });
+      showToast(t("common.saved"), "success");
     } catch (err) {
       handleError(err, "ecommerce.updateFailed");
     } finally {
@@ -433,6 +435,7 @@ export const EcommercePage = observer(function EcommercePage() {
       await entityStore.updateShop(selectedShopId, {
         services: { customerService: { csModelOverride: modelRef || null } },
       });
+      showToast(t("common.saved"), "success");
     } catch (err) {
       handleError(err, "ecommerce.updateFailed");
     } finally {
@@ -455,6 +458,7 @@ export const EcommercePage = observer(function EcommercePage() {
       await entityStore.updateShop(shopId, {
         services: { customerService: { csDeviceId: myDeviceId } },
       });
+      showToast(t("ecommerce.deviceBound"), "success");
     } catch {
       showToast(t("ecommerce.updateFailed"), "error");
     } finally {
@@ -471,6 +475,7 @@ export const EcommercePage = observer(function EcommercePage() {
       await entityStore.updateShop(shopId, {
         services: { customerService: { csDeviceId: myDeviceId } },
       });
+      showToast(t("ecommerce.deviceBound"), "success");
     } catch {
       showToast(t("ecommerce.updateFailed"), "error");
     } finally {
@@ -484,6 +489,7 @@ export const EcommercePage = observer(function EcommercePage() {
       await entityStore.updateShop(shopId, {
         services: { customerService: { csDeviceId: null } },
       });
+      showToast(t("ecommerce.deviceUnbound"), "success");
     } catch {
       showToast(t("ecommerce.updateFailed"), "error");
     } finally {

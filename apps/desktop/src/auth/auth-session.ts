@@ -145,7 +145,7 @@ export class AuthSessionManager {
   }
 
   /** Log in with email/password credentials. Desktop calls Cloud, stores tokens, returns user. */
-  async loginWithCredentials(input: { email: string; password: string; captchaToken?: string }): Promise<GQL.MeResponse> {
+  async loginWithCredentials(input: { email: string; password: string; captchaToken?: string; captchaAnswer?: string }): Promise<GQL.MeResponse> {
     const data = await this.graphqlFetch<{ login: GQL.AuthPayload }>(LOGIN_MUTATION, { input });
     await this.storeTokens(data.login.accessToken, data.login.refreshToken);
     await this.setUser(data.login.user);
@@ -153,7 +153,7 @@ export class AuthSessionManager {
   }
 
   /** Register with email/password credentials. Desktop calls Cloud, stores tokens, returns user. */
-  async registerWithCredentials(input: { email: string; password: string; name?: string; captchaToken?: string }): Promise<GQL.MeResponse> {
+  async registerWithCredentials(input: { email: string; password: string; name?: string; captchaToken?: string; captchaAnswer?: string }): Promise<GQL.MeResponse> {
     const data = await this.graphqlFetch<{ register: GQL.AuthPayload }>(REGISTER_MUTATION, { input });
     await this.storeTokens(data.register.accessToken, data.register.refreshToken);
     await this.setUser(data.register.user);

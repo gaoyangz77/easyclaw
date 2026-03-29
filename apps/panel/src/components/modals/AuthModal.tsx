@@ -32,7 +32,7 @@ const AUTO_REGISTER_ERRORS = new Set([
 function translateAuthError(err: unknown, t: TFunction): string {
   const raw = formatError(err);
   const key = AUTH_ERROR_MAP[raw];
-  return key ? t(key) : raw;
+  return key ? t(key) : t("auth.errorGeneric");
 }
 
 interface AuthModalProps {

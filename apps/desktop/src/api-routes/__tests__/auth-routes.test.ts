@@ -108,7 +108,7 @@ describe("POST /api/auth/login", () => {
     expect(res._body).toEqual({ error: "Missing email or password" });
   });
 
-  it("returns 401 when cloud returns an error", async () => {
+  it("returns 400 when cloud returns an error", async () => {
     const req = makeReq("POST", { email: "test@example.com", password: "wrong" });
     const res = makeRes();
     const ctx = {
@@ -120,7 +120,7 @@ describe("POST /api/auth/login", () => {
     const handled = await handleAuthRoutes(req, res, makeUrl("/api/auth/login"), "/api/auth/login", ctx);
 
     expect(handled).toBe(true);
-    expect(res._status).toBe(401);
+    expect(res._status).toBe(400);
     expect(res._body).toEqual({ error: "Invalid credentials" });
   });
 });
@@ -173,7 +173,7 @@ describe("POST /api/auth/register", () => {
     expect(res._body).toEqual({ error: "Missing email or password" });
   });
 
-  it("returns 401 when cloud returns an error", async () => {
+  it("returns 400 when cloud returns an error", async () => {
     const req = makeReq("POST", { email: "dup@example.com", password: "pass" });
     const res = makeRes();
     const ctx = {
@@ -185,7 +185,7 @@ describe("POST /api/auth/register", () => {
     const handled = await handleAuthRoutes(req, res, makeUrl("/api/auth/register"), "/api/auth/register", ctx);
 
     expect(handled).toBe(true);
-    expect(res._status).toBe(401);
+    expect(res._status).toBe(400);
     expect(res._body).toEqual({ error: "Email already exists" });
   });
 });

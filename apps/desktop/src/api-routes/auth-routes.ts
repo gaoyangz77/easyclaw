@@ -31,7 +31,7 @@ export const handleAuthRoutes: RouteHandler = async (req, res, _url, pathname, c
 
   // POST /api/auth/login — Desktop handles cloud login, stores tokens, returns user
   if (pathname === "/api/auth/login" && req.method === "POST") {
-    const body = await parseBody(req) as { email: string; password: string; captchaToken?: string };
+    const body = await parseBody(req) as { email: string; password: string; captchaToken?: string; captchaAnswer?: string };
     if (!body.email || !body.password) {
       sendJson(res, 400, { error: "Missing email or password" });
       return true;
@@ -42,14 +42,14 @@ export const handleAuthRoutes: RouteHandler = async (req, res, _url, pathname, c
       ctx.onAuthChange?.();
       sendJson(res, 200, { user });
     } catch (err) {
-      sendJson(res, 401, { error: err instanceof Error ? err.message : "Login failed" });
+      sendJson(res, 400, { error: err instanceof Error ? err.message : "Login failed" });
     }
     return true;
   }
 
   // POST /api/auth/register — Desktop handles cloud registration, stores tokens, returns user
   if (pathname === "/api/auth/register" && req.method === "POST") {
-    const body = await parseBody(req) as { email: string; password: string; name?: string; captchaToken?: string };
+    const body = await parseBody(req) as { email: string; password: string; name?: string; captchaToken?: string; captchaAnswer?: string };
     if (!body.email || !body.password) {
       sendJson(res, 400, { error: "Missing email or password" });
       return true;
@@ -60,7 +60,7 @@ export const handleAuthRoutes: RouteHandler = async (req, res, _url, pathname, c
       ctx.onAuthChange?.();
       sendJson(res, 200, { user });
     } catch (err) {
-      sendJson(res, 401, { error: err instanceof Error ? err.message : "Registration failed" });
+      sendJson(res, 400, { error: err instanceof Error ? err.message : "Registration failed" });
     }
     return true;
   }

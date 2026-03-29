@@ -1348,6 +1348,7 @@ export default {
     errorInvalidCredentials: "Invalid email or password.",
     errorLoginFailed: "Login failed. Please try again.",
     errorRegisterFailed: "Registration failed. Please try again.",
+    errorGeneric: "Something went wrong. Please try again.",
     captchaPlaceholder: "Enter captcha",
     captchaRefresh: "Refresh",
     captchaLoadFailed: "Failed to load captcha, click to retry",
@@ -2153,6 +2154,10 @@ export default {
     disconnect: "Disconnect",
     confirmDisconnect: "Disconnect this shop? Your service balance will be preserved and restored if you reconnect later.",
     disconnectSuccess: "Shop disconnected. Balance preserved.",
+    csEnabled: "AI Customer Service enabled.",
+    csDisabled: "AI Customer Service disabled.",
+    deviceBound: "Device bound to this shop.",
+    deviceUnbound: "Device unbound from this shop.",
     // Service toggles
     customerServiceLabel: "AI Customer Service",
     customerServiceActiveHint: "AI customer service is active for this shop. Configure skills in the Skills page.",

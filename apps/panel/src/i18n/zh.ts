@@ -1338,6 +1338,7 @@ export default {
     errorInvalidCredentials: "邮箱或密码错误。",
     errorLoginFailed: "登录失败，请重试。",
     errorRegisterFailed: "注册失败，请重试。",
+    errorGeneric: "操作失败，请重试。",
     captchaPlaceholder: "请输入验证码",
     captchaRefresh: "刷新",
     captchaLoadFailed: "验证码加载失败，点击重试",
@@ -2142,6 +2143,10 @@ export default {
     disconnect: "断开连接",
     confirmDisconnect: "断开此店铺的连接？您的服务余额将被保留，重新连接后可恢复。",
     disconnectSuccess: "店铺已断开连接。余额已保留。",
+    csEnabled: "AI 智能客服已启用。",
+    csDisabled: "AI 智能客服已关闭。",
+    deviceBound: "设备已绑定到此店铺。",
+    deviceUnbound: "设备已从此店铺解绑。",
     // Service toggles
     customerServiceLabel: "AI 智能客服",
     customerServiceActiveHint: "此店铺的 AI 客服已激活。可在技能页面配置客服技能。",
