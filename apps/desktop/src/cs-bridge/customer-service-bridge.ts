@@ -71,8 +71,6 @@ export class CustomerServiceBridge {
   /** Pending agent runs keyed by runId, used to auto-forward final text to buyer. */
   private pendingRuns = new Map<string, { shopObjectId: string; conversationId: string }>();
 
-  /** Conversations with an active agent run -- prevents duplicate dispatches. */
-  private activeConversations = new Set<string>();
 
   /** Entity cache subscription unsubscribe function. */
   private cacheUnsubscribe: (() => void) | null = null;
@@ -223,27 +221,35 @@ export class CustomerServiceBridge {
     const pending = this.pendingRuns.get(payload.runId);
     if (!pending) return;
 
-    if (payload.state === "final") {
-      this.activeConversations.delete(pending.conversationId);
+    if (payload.state === "final" || payload.state === "error") {
       this.pendingRuns.delete(payload.runId);
 
-      const agentText = payload.message?.content
-        ?.filter((c) => c.type === "text" && c.text)
-        .map((c) => c.text!.trim())
-        .join("\n")
-        .trim();
+      const session = this.sessions.get(pending.conversationId);
 
-      if (agentText) {
-        const session = this.sessions.get(pending.conversationId);
-        if (session) {
+      // Skip auto-forward for runs that were aborted (a newer message replaced them)
+      const wasAborted = session?.abortedRunIds.has(payload.runId);
+      if (wasAborted) {
+        session!.abortedRunIds.delete(payload.runId);
+        log.info(`Run ${payload.runId} was aborted, skipping auto-forward`);
+      } else if (payload.state === "final") {
+        const agentText = payload.message?.content
+          ?.filter((c) => c.type === "text" && c.text)
+          .map((c) => c.text!.trim())
+          .join("\n")
+          .trim();
+
+        if (agentText && session) {
           session.forwardTextToBuyer(agentText)
             .catch((err) => log.error("Failed to auto-forward agent text:", err));
         }
+      } else {
+        log.warn(`Agent run ${payload.runId} ended with error, skipping auto-forward`);
       }
-    } else if (payload.state === "error") {
-      this.activeConversations.delete(pending.conversationId);
-      this.pendingRuns.delete(payload.runId);
-      log.warn(`Agent run ${payload.runId} ended with error, skipping auto-forward`);
+
+      // Clear session's active run tracking
+      if (session) {
+        session.onRunCompleted(payload.runId);
+      }
     }
   }
 
@@ -430,16 +436,12 @@ export class CustomerServiceBridge {
       return;
     }
 
-    if (this.activeConversations.has(frame.conversationId)) {
-      log.info(`Conversation ${frame.conversationId} already has active run, queuing message`);
-      return;
-    }
-
     const session = this.getOrCreateSessionFromShop(shop, frame);
 
     try {
       await session.handleBuyerMessage(frame);
-      // onRunDispatched callback handles activeConversations + pendingRuns
+      // Session handles abort + queue + redispatch internally.
+      // onRunDispatched callback handles pendingRuns tracking.
     } catch (err) {
       log.error(`Failed to handle buyer message ${frame.messageId}:`, err);
     }
@@ -503,7 +505,6 @@ export class CustomerServiceBridge {
     const session = new CustomerServiceSession(shop, csContext, {
       defaultRunProfileId: this.opts.defaultRunProfileId,
       onRunDispatched: (runId) => {
-        this.activeConversations.add(params.conversationId);
         this.pendingRuns.set(runId, { shopObjectId, conversationId: params.conversationId });
       },
     });

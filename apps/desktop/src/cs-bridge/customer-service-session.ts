@@ -102,6 +102,22 @@ export class CustomerServiceSession {
   /** Whether a backend session has been created (balance checked). */
   private backendSessionReady = false;
 
+  /** Whether gateway session setup has been completed (cs_register_session + RunProfile + model). */
+  private gatewaySetupReady = false;
+
+  /**
+   * Currently active or pending run ID.
+   * Set synchronously to a placeholder BEFORE the async dispatch RPC, so the next
+   * incoming message can see it and abort. Replaced with the real runId after dispatch.
+   */
+  private activeRunId: string | null = null;
+
+  /** Run IDs that were aborted — their gateway events should be ignored (no auto-forward). */
+  readonly abortedRunIds = new Set<string>();
+
+  /** Number of runs aborted since the last successful delivery to the buyer. */
+  private undeliveredCount = 0;
+
   /** Escalations keyed by escalationId. Populated by addEscalation, resolved by resolveEscalation. */
   readonly escalations = new Map<string, Escalation>();
 
@@ -179,22 +195,68 @@ export class CustomerServiceSession {
   // -- Dispatch methods -----------------------------------------------------
 
   /**
-   * Handle an incoming buyer message frame end-to-end:
-   * parse content, fetch image attachment, ensure backend session, dispatch agent run.
+   * Handle an incoming buyer message.
+   *
+   * If any run is active or pending (activeRunId is set), aborts it and takes over.
+   * Uses JS single-threaded execution: activeRunId is set to a placeholder synchronously
+   * before any await, so the next incoming message always sees it and can abort.
    */
   async handleBuyerMessage(frame: CSNewMessageFrame): Promise<DispatchResult> {
+    // ── SYNC section (no await — cannot be interleaved) ──
+    if (this.activeRunId) {
+      log.info(`New message during active/pending run ${this.activeRunId}, aborting`);
+      this.abortedRunIds.add(this.activeRunId);
+      this.fireAbort();
+      this.undeliveredCount++;
+    }
+
+    // Claim the slot immediately with a placeholder so the next message can see it.
+    const placeholder = `pending:${frame.messageId}`;
+    this.activeRunId = placeholder;
+    const content = this.parseMessageContent(frame);
+    // ── END SYNC section ──
+
     if (!await this.ensureBackendSession()) {
+      if (this.activeRunId === placeholder) this.activeRunId = null;
       return { runId: undefined };
     }
 
-    const content = this.parseMessageContent(frame);
+    // If a newer message took over while we were awaiting, bail out.
+    if (this.activeRunId !== placeholder) {
+      return { runId: undefined };
+    }
+
     const attachments = await this.fetchImageAttachment(frame);
 
+    if (this.activeRunId !== placeholder) {
+      return { runId: undefined };
+    }
+
+    // If previous runs were aborted, tell the agent its prior replies were not delivered.
+    let message = `[External: Buyer]\n${content}`;
+    if (this.undeliveredCount > 0) {
+      const notice = this.undeliveredCount === 1
+        ? "[Internal: System]\nNote: Your previous reply was not delivered to the buyer because a new message arrived. The buyer has not seen it. Please incorporate all messages in your response."
+        : `[Internal: System]\nNote: Your last ${this.undeliveredCount} replies were not delivered to the buyer because new messages arrived while you were responding. The buyer has not seen them. Please incorporate all messages in your response.`;
+      message = `${notice}\n\n${message}`;
+    }
+
     return this.dispatch({
-      message: `[External: Buyer]\n${content}`,
+      message,
       idempotencyKey: `${this.platform}:${frame.messageId}`,
       attachments,
+      placeholder,
     });
+  }
+
+  /**
+   * Called by Bridge when an agent run completes (final or error).
+   * Clears active run tracking.
+   */
+  onRunCompleted(runId: string): void {
+    if (this.activeRunId === runId) {
+      this.activeRunId = null;
+    }
   }
 
   // -- Escalation lifecycle ---------------------------------------------------
@@ -259,6 +321,7 @@ export class CustomerServiceSession {
       type: "TEXT",
       content: JSON.stringify({ content: text }),
     });
+    this.undeliveredCount = 0;
     log.info(`Auto-forwarded agent text to buyer (${text.length} chars)`);
   }
 
@@ -320,9 +383,23 @@ export class CustomerServiceSession {
     return { ok: true, escalationId: escalation.id };
   }
 
-  // -- Private --------------------------------------------------------------
+  // -- Private — message queue ------------------------------------------------
+
+  /** Fire-and-forget abort of the active run. Synchronous call (RPC is async but we don't await). */
+  private fireAbort(): void {
+    const rpcClient = getRpcClient();
+    if (!rpcClient) return;
+
+    rpcClient.request("chat.abort", { sessionKey: this.scopeKey })
+      .then(() => log.info(`Aborted active run for session ${this.scopeKey}`))
+      .catch((err) => log.warn(`Failed to abort run: ${err instanceof Error ? err.message : String(err)}`));
+  }
+
+  // -- Private — gateway setup ------------------------------------------------
 
   private async setup(): Promise<void> {
+    if (this.gatewaySetupReady) return;
+
     const rpcClient = getRpcClient();
     if (!rpcClient) throw new Error("No RPC client available");
 
@@ -341,12 +418,16 @@ export class CustomerServiceSession {
       type: ScopeType.CS_SESSION,
       shopId: this.shop.objectId,
     });
+
+    this.gatewaySetupReady = true;
   }
 
   private async dispatch(params: {
     message: string;
     idempotencyKey: string;
     attachments?: Array<{ mimeType: string; content: string }>;
+    /** Placeholder activeRunId that was set before this dispatch. */
+    placeholder?: string;
   }): Promise<DispatchResult> {
     const rpcClient = getRpcClient();
     if (!rpcClient) throw new Error("No RPC client available");
@@ -363,8 +444,31 @@ export class CustomerServiceSession {
 
     const runId = response?.runId;
     if (runId) {
-      log.info(`Agent run dispatched: runId=${runId} conv=${this.csContext.conversationId}`);
-      this.opts?.onRunDispatched?.(runId);
+      // If the placeholder was aborted while dispatch was in flight,
+      // transfer the abort marker to the real runId so bridge can detect it.
+      // Don't overwrite activeRunId — a newer message already claimed the slot.
+      if (params.placeholder && this.abortedRunIds.has(params.placeholder)) {
+        this.abortedRunIds.delete(params.placeholder);
+        this.abortedRunIds.add(runId);
+        log.info(`Dispatch completed for aborted placeholder ${params.placeholder} → runId=${runId} (not tracking, newer message took over)`);
+        // Still register with bridge for pendingRuns cleanup, but run is marked aborted
+        this.opts?.onRunDispatched?.(runId);
+      } else if (params.placeholder && this.activeRunId !== params.placeholder) {
+        // Placeholder was replaced by a newer message (but not via abort — e.g., bailed before abort).
+        // Mark this run as aborted since it's stale.
+        this.abortedRunIds.add(runId);
+        log.info(`Dispatch completed but placeholder ${params.placeholder} was replaced, marking runId=${runId} as aborted`);
+        this.opts?.onRunDispatched?.(runId);
+      } else {
+        // Normal case: placeholder still matches, take ownership.
+        this.activeRunId = runId;
+        log.info(`Agent run dispatched: runId=${runId} conv=${this.csContext.conversationId}`);
+        this.opts?.onRunDispatched?.(runId);
+      }
+    } else {
+      if (params.placeholder && this.activeRunId === params.placeholder) {
+        this.activeRunId = null;
+      }
     }
     return { runId };
   }

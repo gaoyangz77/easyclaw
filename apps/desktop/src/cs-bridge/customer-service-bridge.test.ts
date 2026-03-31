@@ -1566,3 +1566,305 @@ describe("escalate", () => {
     );
   });
 });
+
+// ─── 13. Rapid buyer message handling (abort + redispatch) ────────────────────
+
+describe("rapid buyer messages (abort + redispatch)", () => {
+  /**
+   * These tests simulate rapid consecutive buyer messages to verify:
+   * - Active runs are aborted when new messages arrive
+   * - Aborted runs don't auto-forward to buyer
+   * - Only the latest message triggers the final agent run
+   * - No concurrent dispatches on the same session
+   */
+
+  /** Make the agent RPC return controllable promises (queue-based for concurrent calls). */
+  function createControllableRpc() {
+    const agentResolvers: Array<(val: { runId: string }) => void> = [];
+
+    mockRpcRequest.mockImplementation((method: string) => {
+      if (method === "agent") {
+        return new Promise<{ runId: string }>((resolve) => {
+          agentResolvers.push(resolve);
+        });
+      }
+      if (method === "chat.abort") return Promise.resolve({ aborted: true });
+      if (method === "cs_register_session") return Promise.resolve(true);
+      if (method === "sessions.patch") return Promise.resolve(true);
+      return Promise.resolve({ ok: true });
+    });
+
+    return {
+      get pendingCount() { return agentResolvers.length; },
+      /** Resolve the oldest pending agent RPC. */
+      resolveNext(runId: string) {
+        const resolve = agentResolvers.shift();
+        resolve?.({ runId });
+      },
+    };
+  }
+
+  it("two messages: first is aborted, second dispatches, only second auto-forwards", async () => {
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    const ctrl = createControllableRpc();
+
+    // Message A → dispatch starts, agent RPC in flight
+    const promiseA = triggerMessage(bridge, createFrame({ messageId: "msg-A" }));
+
+    // Wait a tick for A's async operations (ensureBackendSession) to proceed
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Message B → should abort A and dispatch B
+    const promiseB = triggerMessage(bridge, createFrame({ messageId: "msg-B" }));
+
+    // Resolve A's agent RPC (returns "run-A")
+    ctrl.resolveNext("run-A");
+    await promiseA;
+
+    // Wait for B's async operations
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Resolve B's agent RPC
+    ctrl.resolveNext("run-B");
+    await promiseB;
+
+    // chat.abort should have been called (for A's placeholder)
+    expect(mockRpcRequest).toHaveBeenCalledWith("chat.abort", expect.anything());
+
+    // Simulate gateway "final" event for run-A (completed before abort arrived)
+    bridge.onGatewayEvent({
+      event: "chat",
+      payload: { runId: "run-A", state: "final", message: { role: "assistant", content: [{ type: "text", text: "Stale response" }] } },
+    } as any);
+
+    // run-A was aborted — should NOT auto-forward
+    expect(mockGraphqlFetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("ecommerceSendMessage"),
+      expect.objectContaining({ content: expect.stringContaining("Stale response") }),
+    );
+
+    // Simulate gateway "final" event for run-B
+    bridge.onGatewayEvent({
+      event: "chat",
+      payload: { runId: "run-B", state: "final", message: { role: "assistant", content: [{ type: "text", text: "Correct response" }] } },
+    } as any);
+
+    // run-B should auto-forward
+    expect(mockGraphqlFetch).toHaveBeenCalledWith(
+      expect.stringContaining("ecommerceSendMessage"),
+      expect.objectContaining({ content: expect.stringContaining("Correct response") }),
+    );
+  });
+
+  it("message during active run aborts it (chat.abort called)", async () => {
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    mockRpcRequest.mockResolvedValue({ runId: "run-first" });
+
+    // First message dispatches normally
+    await triggerMessage(bridge, createFrame({ messageId: "msg-1" }));
+
+    // Second message should trigger abort
+    await triggerMessage(bridge, createFrame({ messageId: "msg-2" }));
+
+    expect(mockRpcRequest).toHaveBeenCalledWith("chat.abort", expect.objectContaining({
+      sessionKey: "agent:main:cs:tiktok:conv-789",
+    }));
+  });
+
+  it("aborted run error event does not auto-forward", async () => {
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    mockRpcRequest.mockResolvedValue({ runId: "run-aborted" });
+
+    // First message
+    await triggerMessage(bridge, createFrame({ messageId: "msg-1" }));
+
+    // Second message aborts first
+    mockRpcRequest.mockResolvedValue({ runId: "run-replacement" });
+    await triggerMessage(bridge, createFrame({ messageId: "msg-2" }));
+
+    // Gateway sends error for aborted run
+    bridge.onGatewayEvent({
+      event: "chat",
+      payload: { runId: "run-aborted", state: "error" },
+    } as any);
+
+    // Should not forward anything
+    expect(mockGraphqlFetch).not.toHaveBeenCalledWith(
+      expect.stringContaining("ecommerceSendMessage"),
+      expect.anything(),
+    );
+  });
+
+  it("single message (no abort) dispatches and auto-forwards normally", async () => {
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    mockRpcRequest.mockResolvedValue({ runId: "run-single" });
+
+    await triggerMessage(bridge, createFrame({ messageId: "msg-only" }));
+
+    // Should dispatch agent
+    expect(mockRpcRequest).toHaveBeenCalledWith("agent", expect.objectContaining({
+      message: expect.stringContaining("Hello"),
+    }));
+
+    // No abort should have been called
+    expect(mockRpcRequest).not.toHaveBeenCalledWith("chat.abort", expect.anything());
+
+    // Auto-forward works
+    bridge.onGatewayEvent({
+      event: "chat",
+      payload: { runId: "run-single", state: "final", message: { role: "assistant", content: [{ type: "text", text: "Reply" }] } },
+    } as any);
+
+    expect(mockGraphqlFetch).toHaveBeenCalledWith(
+      expect.stringContaining("ecommerceSendMessage"),
+      expect.objectContaining({ content: expect.stringContaining("Reply") }),
+    );
+  });
+
+  it("placeholder bail-out: earlier message bails when newer message took over", async () => {
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    const ctrl = createControllableRpc();
+
+    // A starts dispatching
+    const promiseA = triggerMessage(bridge, createFrame({ messageId: "msg-A" }));
+    await new Promise((r) => setTimeout(r, 10));
+
+    // B arrives and takes over
+    const promiseB = triggerMessage(bridge, createFrame({ messageId: "msg-B" }));
+    await new Promise((r) => setTimeout(r, 10));
+
+    // C arrives and takes over from B
+    const promiseC = triggerMessage(bridge, createFrame({ messageId: "msg-C" }));
+
+    // Resolve all pending agent RPCs
+    ctrl.resolveNext("run-A");
+    await promiseA;
+    await new Promise((r) => setTimeout(r, 10));
+
+    ctrl.resolveNext("run-B");
+    await promiseB;
+    await new Promise((r) => setTimeout(r, 10));
+
+    ctrl.resolveNext("run-C");
+    await promiseC;
+
+    // Only the final response (run-C) should auto-forward
+    bridge.onGatewayEvent({
+      event: "chat",
+      payload: { runId: "run-A", state: "final", message: { role: "assistant", content: [{ type: "text", text: "A response" }] } },
+    } as any);
+    bridge.onGatewayEvent({
+      event: "chat",
+      payload: { runId: "run-B", state: "final", message: { role: "assistant", content: [{ type: "text", text: "B response" }] } },
+    } as any);
+    bridge.onGatewayEvent({
+      event: "chat",
+      payload: { runId: "run-C", state: "final", message: { role: "assistant", content: [{ type: "text", text: "C response" }] } },
+    } as any);
+
+    // Only C's response should be forwarded
+    const forwardCalls = mockGraphqlFetch.mock.calls.filter(
+      (c: any[]) => typeof c[0] === "string" && c[0].includes("ecommerceSendMessage"),
+    );
+    expect(forwardCalls).toHaveLength(1);
+    expect(forwardCalls[0][1].content).toContain("C response");
+  });
+
+  it("undelivered notice: second message includes notice about 1 undelivered reply", async () => {
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    mockRpcRequest.mockResolvedValue({ runId: "run-1" });
+
+    // First message dispatches normally
+    await triggerMessage(bridge, createFrame({ messageId: "msg-1", content: JSON.stringify({ content: "First" }) }));
+
+    // Second message aborts first and dispatches with notice
+    mockRpcRequest.mockResolvedValue({ runId: "run-2" });
+    await triggerMessage(bridge, createFrame({ messageId: "msg-2", content: JSON.stringify({ content: "Second" }) }));
+
+    const agentCalls = mockRpcRequest.mock.calls.filter((c: any[]) => c[0] === "agent");
+    const lastAgentCall = agentCalls[agentCalls.length - 1];
+    const message = lastAgentCall[1].message as string;
+
+    expect(message).toContain("[Internal: System]");
+    expect(message).toContain("Your previous reply was not delivered");
+    expect(message).toContain("[External: Buyer]");
+    expect(message).toContain("Second");
+  });
+
+  it("undelivered notice: third message includes count of 2 undelivered replies", async () => {
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    mockRpcRequest.mockResolvedValue({ runId: "run-1" });
+
+    await triggerMessage(bridge, createFrame({ messageId: "msg-1", content: JSON.stringify({ content: "First" }) }));
+
+    mockRpcRequest.mockResolvedValue({ runId: "run-2" });
+    await triggerMessage(bridge, createFrame({ messageId: "msg-2", content: JSON.stringify({ content: "Second" }) }));
+
+    mockRpcRequest.mockResolvedValue({ runId: "run-3" });
+    await triggerMessage(bridge, createFrame({ messageId: "msg-3", content: JSON.stringify({ content: "Third" }) }));
+
+    const agentCalls = mockRpcRequest.mock.calls.filter((c: any[]) => c[0] === "agent");
+    const lastAgentCall = agentCalls[agentCalls.length - 1];
+    const message = lastAgentCall[1].message as string;
+
+    expect(message).toContain("last 2 replies were not delivered");
+    expect(message).toContain("Third");
+  });
+
+  it("undelivered count resets after successful delivery", async () => {
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    mockRpcRequest.mockResolvedValue({ runId: "run-1" });
+
+    // First message
+    await triggerMessage(bridge, createFrame({ messageId: "msg-1", content: JSON.stringify({ content: "First" }) }));
+
+    // Second message aborts first (undeliveredCount = 1)
+    mockRpcRequest.mockResolvedValue({ runId: "run-2" });
+    await triggerMessage(bridge, createFrame({ messageId: "msg-2", content: JSON.stringify({ content: "Second" }) }));
+
+    // Simulate successful delivery for run-2
+    bridge.onGatewayEvent({
+      event: "chat",
+      payload: { runId: "run-2", state: "final", message: { role: "assistant", content: [{ type: "text", text: "Reply" }] } },
+    } as any);
+
+    // Wait for async forwardTextToBuyer to complete
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Third message — should NOT have undelivered notice (count was reset)
+    mockRpcRequest.mockResolvedValue({ runId: "run-3" });
+    await triggerMessage(bridge, createFrame({ messageId: "msg-3", content: JSON.stringify({ content: "Third" }) }));
+
+    const agentCalls = mockRpcRequest.mock.calls.filter((c: any[]) => c[0] === "agent");
+    const lastAgentCall = agentCalls[agentCalls.length - 1];
+    const message = lastAgentCall[1].message as string;
+
+    expect(message).not.toContain("[Internal: System]");
+    expect(message).not.toContain("not delivered");
+    expect(message).toContain("[External: Buyer]");
+    expect(message).toContain("Third");
+  });
+
+  it("no undelivered notice on first message", async () => {
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    mockRpcRequest.mockResolvedValue({ runId: "run-1" });
+
+    await triggerMessage(bridge, createFrame({ messageId: "msg-1", content: JSON.stringify({ content: "Hello" }) }));
+
+    const agentCall = mockRpcRequest.mock.calls.find((c: any[]) => c[0] === "agent");
+    const message = agentCall![1].message as string;
+
+    expect(message).not.toContain("[Internal: System]");
+    expect(message).not.toContain("not delivered");
+    expect(message).toBe("[External: Buyer]\nHello");
+  });
+});
