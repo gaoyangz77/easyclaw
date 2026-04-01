@@ -41,6 +41,12 @@ export const chatSteps: TutorialStep[] = [
     bodyKey: "tutorial.chat.examplesBody",
     placement: "top",
   },
+  {
+    target: ".chat-example-edit",
+    titleKey: "tutorial.chat.exampleEditTitle",
+    bodyKey: "tutorial.chat.exampleEditBody",
+    placement: "top",
+  },
   // --- Status Bar ---
   {
     target: ".chat-status",
@@ -55,7 +61,7 @@ export const chatSteps: TutorialStep[] = [
     placement: "right",
   },
   {
-    target: ".chat-model-select",
+    target: ".key-model-selector",
     titleKey: "tutorial.chat.modelSelectTitle",
     bodyKey: "tutorial.chat.modelSelectBody",
     placement: "top",
@@ -64,6 +70,12 @@ export const chatSteps: TutorialStep[] = [
     target: ".chat-thinking-select",
     titleKey: "tutorial.chat.thinkingSelectTitle",
     bodyKey: "tutorial.chat.thinkingSelectBody",
+    placement: "top",
+  },
+  {
+    target: ".chat-context-usage",
+    titleKey: "tutorial.chat.contextUsageTitle",
+    bodyKey: "tutorial.chat.contextUsageBody",
     placement: "top",
   },
   {

@@ -123,6 +123,12 @@ export const accountSteps: TutorialStep[] = [
     placement: "bottom",
   },
   {
+    target: ".acct-default-profile",
+    titleKey: "tutorial.account.defaultProfileTitle",
+    bodyKey: "tutorial.account.defaultProfileBody",
+    placement: "bottom",
+  },
+  {
     target: ".account-page > .section-card:nth-of-type(3) .acct-item-list, .account-page > .section-card:nth-of-type(3) .empty-cell",
     titleKey: "tutorial.account.profileListTitle",
     bodyKey: "tutorial.account.profileListBody",
@@ -139,5 +145,19 @@ export const accountSteps: TutorialStep[] = [
     titleKey: "tutorial.account.profileToolChipsTitle",
     bodyKey: "tutorial.account.profileToolChipsBody",
     placement: "top",
+  },
+
+  // ── Section 5: Modules ──
+  {
+    target: ".account-page > .section-card:nth-of-type(4)",
+    titleKey: "tutorial.account.modulesSectionTitle",
+    bodyKey: "tutorial.account.modulesSectionBody",
+    placement: "bottom",
+  },
+  {
+    target: ".account-page > .section-card:nth-of-type(4) .module-card",
+    titleKey: "tutorial.account.moduleItemTitle",
+    bodyKey: "tutorial.account.moduleItemBody",
+    placement: "bottom",
   },
 ]
