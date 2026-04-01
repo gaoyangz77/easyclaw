@@ -1,4 +1,4 @@
-From 8c4679eea39817ba4ac4b6a72e4bdf8fc2e3fc81 Mon Sep 17 00:00:00 2001
+From 241dc64fa2ed050795e0d5c06f7d677d90c2303d Mon Sep 17 00:00:00 2001
 From: RivonClaw CI <ci@rivonclaw.com>
 Date: Tue, 31 Mar 2026 17:29:17 -0700
 Subject: [PATCH] vendor(openclaw): add promptMode "raw" for custom persona
@@ -31,11 +31,11 @@ Tests:
  src/agents/pi-embedded-runner/run/attempt.ts |  3 ++-
  src/agents/pi-embedded-runner/run/params.ts  |  2 ++
  src/agents/system-prompt.ts                  | 11 ++++++++++-
- src/commands/agent.ts                        |  2 ++
+ src/commands/agent.ts                        |  1 +
  src/commands/agent/types.ts                  |  1 +
  src/gateway/protocol/schema/agent.ts         |  1 +
  src/gateway/server-methods/agent.ts          |  2 ++
- 9 files changed, 26 insertions(+), 4 deletions(-)
+ 9 files changed, 25 insertions(+), 4 deletions(-)
 
 diff --git a/src/agents/pi-embedded-runner/compact.ts b/src/agents/pi-embedded-runner/compact.ts
 index dac68d5e36..25abe59aac 100644
@@ -140,18 +140,10 @@ index 848222b788..c3417ce41e 100644
    if (promptMode === "none") {
      return "You are a personal assistant running inside OpenClaw.";
 diff --git a/src/commands/agent.ts b/src/commands/agent.ts
-index ab690b3766..4ed02a7233 100644
+index ab690b3766..9ea0f23a11 100644
 --- a/src/commands/agent.ts
 +++ b/src/commands/agent.ts
-@@ -371,6 +371,7 @@ function runAgentAttempt(params: {
-         timeoutMs: params.timeoutMs,
-         runId: params.runId,
-         extraSystemPrompt: params.opts.extraSystemPrompt,
-+        promptMode: params.opts.promptMode,
-         cliSessionId: nextCliSessionId,
-         bootstrapPromptWarningSignaturesSeen,
-         bootstrapPromptWarningSignature,
-@@ -491,6 +492,7 @@ function runAgentAttempt(params: {
+@@ -491,6 +491,7 @@ function runAgentAttempt(params: {
      lane: params.opts.lane,
      abortSignal: params.opts.abortSignal,
      extraSystemPrompt: params.opts.extraSystemPrompt,
