@@ -34,6 +34,15 @@ const SEND_MESSAGE_MUTATION = `
   }
 `;
 
+const GET_CONVERSATION_DETAILS_QUERY = `
+  query($shopId: String!, $conversationId: String!) {
+    ecommerceGetConversationDetails(shopId: $shopId, conversationId: $conversationId) {
+      code message
+      customer { userId nickname }
+    }
+  }
+`;
+
 const CS_GET_OR_CREATE_SESSION_MUTATION = `
   mutation CsGetOrCreateSession($shopId: ID!, $conversationId: String!, $buyerUserId: String!) {
     csGetOrCreateSession(shopId: $shopId, conversationId: $conversationId, buyerUserId: $buyerUserId) {
@@ -54,6 +63,8 @@ export interface CSShopContext {
   objectId: string;
   /** Platform shop ID (TikTok's ID) — matches webhook shop_id. */
   platformShopId: string;
+  /** Human-readable shop name (e.g., "My Store"). */
+  shopName: string;
   /** Normalized short platform name for session keys (e.g., "tiktok"). */
   platform?: string;
   /** Assembled CS system prompt for this shop. */
@@ -405,6 +416,23 @@ export class CustomerServiceSession {
     // Create escalation record
     const escalation = this.addEscalation(params);
 
+    // Fetch buyer nickname from conversation details
+    let buyerNickname: string | undefined;
+    try {
+      const authSession = getAuthSession();
+      if (authSession) {
+        const detailsResult = await authSession.graphqlFetch<{
+          ecommerceGetConversationDetails: { customer?: { userId: string; nickname: string } };
+        }>(GET_CONVERSATION_DETAILS_QUERY, {
+          shopId: this.csContext.shopId,
+          conversationId: this.csContext.conversationId,
+        });
+        buyerNickname = detailsResult.ecommerceGetConversationDetails.customer?.nickname;
+      }
+    } catch (err) {
+      log.warn("Failed to fetch conversation details for escalation enrichment:", err);
+    }
+
     const colonIdx = escalationChannelId.indexOf(":");
     const channel = escalationChannelId.slice(0, colonIdx);
     const accountId = escalationChannelId.slice(colonIdx + 1);
@@ -413,8 +441,9 @@ export class CustomerServiceSession {
       "CS Escalation",
       "",
       `Escalation ID: ${escalation.id}`,
+      `Shop: ${this.shop.shopName}`,
       `Conversation: ${this.csContext.conversationId}`,
-      `Buyer: ${this.csContext.buyerUserId}`,
+      `Buyer: ${buyerNickname ?? this.csContext.buyerUserId}`,
     ];
     if (this.csContext.orderId) lines.push(`Order: ${this.csContext.orderId}`);
     lines.push(`Reason: ${params.reason}`);

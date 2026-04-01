@@ -147,6 +147,20 @@ export interface CaptchaResponse {
   token: Scalars['String']['output'];
 }
 
+/** Customer info extracted from conversation participants */
+export interface ConversationCustomer {
+  nickname: Scalars['String']['output'];
+  userId: Scalars['String']['output'];
+}
+
+/** Conversation details with typed customer info */
+export interface ConversationDetailsResult {
+  code: Scalars['Float']['output'];
+  customer?: Maybe<ConversationCustomer>;
+  data?: Maybe<Scalars['String']['output']>;
+  message: Scalars['String']['output'];
+}
+
 /** Input for creating a new RunProfile */
 export interface CreateRunProfileInput {
   name: Scalars['String']['input'];
@@ -628,14 +642,14 @@ export interface Query {
   /** Get customer service performance metrics */
   ecommerceGetCSPerformance: EcommerceApiResult;
   /** Get conversation details */
-  ecommerceGetConversationDetails: EcommerceApiResult;
-  /** Get messages in a conversation */
+  ecommerceGetConversationDetails: ConversationDetailsResult;
+  /** Get messages of a conversation */
   ecommerceGetConversationMessages: EcommerceApiResult;
   /** Get conversations for a shop */
   ecommerceGetConversations: EcommerceApiResult;
   /** Get fulfillment tracking for an order. Optional buyerUserId for buyer scoping. */
   ecommerceGetFulfillmentTracking: EcommerceApiResult;
-  /** Get order details. Optional buyerUserId for platform-level buyer scoping. */
+  /** Get order details by order ID. */
   ecommerceGetOrder: EcommerceApiResult;
   /** List/search orders. Optional buyerUserId for buyer-scoped queries. */
   ecommerceGetOrders: EcommerceApiResult;
@@ -643,6 +657,8 @@ export interface Query {
   ecommerceGetPackageDetail: EcommerceApiResult;
   /** Get shipping document for a package */
   ecommerceGetPackageShippingDocument: EcommerceApiResult;
+  /** Get conversations pending seller reply */
+  ecommerceGetPendingConversations: EcommerceApiResult;
   /** Get product details */
   ecommerceGetProduct: EcommerceApiResult;
   /** Search fulfillment packages with optional filters */
@@ -770,9 +786,9 @@ export interface QueryEcommerceGetFulfillmentTrackingArgs {
 
 
 export interface QueryEcommerceGetOrderArgs {
-  buyerUserId?: InputMaybe<Scalars['String']['input']>;
   orderId: Scalars['String']['input'];
   shopId: Scalars['String']['input'];
+  userId?: InputMaybe<Scalars['String']['input']>;
 }
 
 
@@ -796,6 +812,12 @@ export interface QueryEcommerceGetPackageShippingDocumentArgs {
   documentSize?: InputMaybe<Scalars['String']['input']>;
   documentType: Scalars['String']['input'];
   packageId: Scalars['String']['input'];
+  shopId: Scalars['String']['input'];
+}
+
+
+export interface QueryEcommerceGetPendingConversationsArgs {
+  locale?: InputMaybe<Scalars['String']['input']>;
   shopId: Scalars['String']['input'];
 }
 
@@ -1211,6 +1233,7 @@ export const ToolId = {
   EcomGetFulfillmentTracking: 'ECOM_GET_FULFILLMENT_TRACKING',
   EcomGetOrder: 'ECOM_GET_ORDER',
   EcomGetPackageDetail: 'ECOM_GET_PACKAGE_DETAIL',
+  EcomGetPendingConversations: 'ECOM_GET_PENDING_CONVERSATIONS',
   EcomGetProduct: 'ECOM_GET_PRODUCT',
   EcomGetShippingDocument: 'ECOM_GET_SHIPPING_DOCUMENT',
   EcomListOrders: 'ECOM_LIST_ORDERS',

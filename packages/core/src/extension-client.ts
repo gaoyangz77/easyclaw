@@ -12,7 +12,7 @@ export async function extensionGraphqlFetch<T>(
 ): Promise<{ data?: T | null; errors?: Array<{ message: string }> }> {
   const res = await fetch(`${getPanelUrl()}${DEFAULTS.api.cloudGraphql}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", "X-Request-Source": "extension" },
     body: JSON.stringify({ query, variables }),
   });
   if (!res.ok) throw new Error(`GraphQL HTTP error: ${res.status} ${res.statusText}`);

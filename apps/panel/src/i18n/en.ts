@@ -1552,6 +1552,7 @@ export default {
         browser_profiles_test_proxy: "Test Proxy",
         // E-commerce Ops — Operations
         ECOM_GET_CONVERSATIONS: "Get Conversations",
+        ECOM_GET_PENDING_CONVERSATIONS: "Get Pending Conversations",
         ECOM_GET_CONVERSATION_MESSAGES: "Get Messages",
         ECOM_GET_CONVERSATION_DETAILS: "Get Conversation Details",
         ECOM_GET_CS_PERFORMANCE: "CS Performance",

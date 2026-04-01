@@ -22,7 +22,7 @@ describe("extensionGraphqlFetch", () => {
     const [url, init] = fetchSpy.mock.calls[0];
     expect(url).toBe(`http://127.0.0.1:${DEFAULTS.ports.panel}/api/cloud/graphql`);
     expect(init.method).toBe("POST");
-    expect(init.headers).toEqual({ "Content-Type": "application/json" });
+    expect(init.headers).toEqual({ "Content-Type": "application/json", "X-Request-Source": "extension" });
     expect(JSON.parse(init.body)).toEqual({ query: "query { hello }", variables: { id: "1" } });
     expect(result).toEqual({ data: { hello: "world" } });
   });

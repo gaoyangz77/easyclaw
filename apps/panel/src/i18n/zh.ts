@@ -1540,6 +1540,7 @@ export default {
         browser_profiles_test_proxy: "测试代理",
         // 电商运营 — 运营管理
         ECOM_GET_CONVERSATIONS: "获取会话列表",
+        ECOM_GET_PENDING_CONVERSATIONS: "获取待处理会话",
         ECOM_GET_CONVERSATION_MESSAGES: "获取会话消息",
         ECOM_GET_CONVERSATION_DETAILS: "获取会话详情",
         ECOM_GET_CS_PERFORMANCE: "客服绩效",

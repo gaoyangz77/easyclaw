@@ -58,6 +58,8 @@ export class CustomerServiceBridge {
   private authenticated = false;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempt = 0;
+  /** Set to true when the last WebSocket close was code 4003 (auth failure). */
+  private lastCloseWasAuthFailure = false;
 
   /** Shop context keyed by platformShopId (from webhook). */
   private shopContexts = new Map<string, CSShopContext>();
@@ -113,6 +115,7 @@ export class CustomerServiceBridge {
       this.reconnectTimer = null;
     }
     this.reconnectAttempt = 0;
+    this.lastCloseWasAuthFailure = false;
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -186,6 +189,7 @@ export class CustomerServiceBridge {
       const newCtx: CSShopContext = {
         objectId: shop.id,
         platformShopId,
+        shopName: shop.shopName ?? platformShopId,
         platform: normalizePlatform(shop.platform),
         systemPrompt: cs.assembledPrompt,
         csProviderOverride: cs.csProviderOverride ?? undefined,
@@ -370,7 +374,25 @@ export class CustomerServiceBridge {
   private async connect(): Promise<void> {
     if (this.closed) return;
 
-    const token = getAuthSession()?.getAccessToken() ?? null;
+    let token = getAuthSession()?.getAccessToken() ?? null;
+
+    // If the last connection was rejected with 4003 (auth failure), the cached
+    // token is likely expired. Attempt a refresh before reconnecting, following
+    // the same pattern as CloudClient.rest() (auto-refresh on 401).
+    if (token && this.lastCloseWasAuthFailure) {
+      log.info("Last close was auth failure (4003), refreshing access token before reconnect");
+      try {
+        token = await getAuthSession()!.refresh();
+        this.lastCloseWasAuthFailure = false;
+      } catch (err) {
+        // Refresh failed — auth is permanently broken (e.g. refresh token
+        // expired/revoked). Stop reconnecting to avoid an infinite loop.
+        log.error("Token refresh failed, stopping CS bridge reconnect:", err);
+        this.lastCloseWasAuthFailure = false;
+        return;
+      }
+    }
+
     if (!token) {
       log.warn("No auth token available, scheduling reconnect");
       this.scheduleReconnect();
@@ -406,6 +428,7 @@ export class CustomerServiceBridge {
         log.info(`CS relay WebSocket closed: ${code} ${reason.toString()}`);
         this.ws = null;
         this.authenticated = false;
+        this.lastCloseWasAuthFailure = code === 4003;
         if (!this.closed) {
           this.scheduleReconnect();
         }
@@ -422,7 +445,7 @@ export class CustomerServiceBridge {
     if (this.closed) return;
 
     const baseDelay = 1000;
-    const maxDelay = 30000;
+    const maxDelay = 5000;
     const delay = Math.min(baseDelay * Math.pow(2, this.reconnectAttempt), maxDelay);
     this.reconnectAttempt++;
 

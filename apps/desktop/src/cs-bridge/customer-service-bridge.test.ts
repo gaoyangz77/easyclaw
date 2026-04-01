@@ -67,6 +67,7 @@ function createBridge(overrides?: Partial<{ defaultRunProfileId: string }>): Cus
 const defaultShop: CSShopContext = {
   objectId: "mongo-id-123",
   platformShopId: "tiktok-shop-456",
+  shopName: "Test Shop",
   systemPrompt: "You are a CS assistant.",
   runProfileId: "CUSTOMER_SERVICE",
 };
@@ -583,6 +584,7 @@ describe("session registration", () => {
     bridge.setShopContext({
       objectId: "actual-mongo-object-id",
       platformShopId: "platform-id-999",
+      shopName: "Test Shop",
       systemPrompt: "prompt",
     });
 
@@ -783,11 +785,13 @@ describe("error scenarios", () => {
     const shopA: CSShopContext = {
       objectId: "mongo-A",
       platformShopId: "platform-A",
+      shopName: "Shop A",
       systemPrompt: "Prompt A",
     };
     const shopB: CSShopContext = {
       objectId: "mongo-B",
       platformShopId: "platform-B",
+      shopName: "Shop B",
       systemPrompt: "Prompt B",
     };
     bridge.setShopContext(shopA);
@@ -937,6 +941,7 @@ describe("reactive entity cache sync", () => {
     bridge.setShopContext({
       objectId: "shop-1",
       platformShopId: "ps-1",
+      shopName: "Test Shop",
       platform: "tiktok",
       systemPrompt: "Old prompt",
     });
@@ -1467,6 +1472,7 @@ describe("multi-provider model override", () => {
 const escalationShop: CSShopContext = {
   objectId: "shop-esc-001",
   platformShopId: "plat-esc-001",
+  shopName: "Escalation Test Shop",
   systemPrompt: "You are a CS assistant.",
   runProfileId: "CUSTOMER_SERVICE",
 };

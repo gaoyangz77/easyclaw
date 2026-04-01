@@ -69,7 +69,13 @@ export const handleCloudGraphqlRoutes: RouteHandler = async (req, res, _url, pat
       }
 
       const data = await fetchPromise;
-      rootStore.ingestGraphQLResponse(data as Record<string, unknown>);
+
+      // Only ingest Panel responses into MST. Extension (agent tool) responses
+      // return partial entities that would overwrite complete store data.
+      const isExtension = req.headers["x-request-source"] === "extension";
+      if (!isExtension) {
+        rootStore.ingestGraphQLResponse(data as Record<string, unknown>);
+      }
 
       // Delete mutations return booleans, which ingestGraphQLResponse skips.
       // Use the explicit map to remove the entity from Desktop MST → SSE patch → Panel.

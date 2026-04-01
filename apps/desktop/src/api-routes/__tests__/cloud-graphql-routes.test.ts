@@ -15,6 +15,7 @@ function makeReq(method: string, body?: unknown): IncomingMessage {
   }
   readable.push(null);
   (readable as any).method = method;
+  (readable as any).headers = {};
   return readable as unknown as IncomingMessage;
 }
 

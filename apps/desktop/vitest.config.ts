@@ -9,6 +9,7 @@ const graphqlPath = createRequire(graphqlWsPath).resolve("graphql");
 
 export default defineConfig({
   test: {
+    include: ["src/**/*.{test,spec}.{ts,tsx}", "test/**/*.{test,spec}.{ts,tsx}"],
     exclude: ["**/node_modules/**", "**/release/**", "**/.git/**", "**/e2e/**"],
     alias: {
       "@rivonclaw/logger": resolve(__dirname, "../../packages/logger/src/index.ts"),
