@@ -133,6 +133,7 @@ beforeAll(async () => {
     writeProxyRouterConfig: async () => {},
     writeDefaultModelToConfig: () => {},
     writeFullGatewayConfig: async () => {},
+    restartGateway: async () => {},
     stateDir,
     getLastSystemProxy: () => null,
   });

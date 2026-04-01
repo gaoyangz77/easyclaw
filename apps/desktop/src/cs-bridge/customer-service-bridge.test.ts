@@ -124,6 +124,7 @@ beforeEach(() => {
     writeProxyRouterConfig: async () => {},
     writeFullGatewayConfig: async () => {},
     writeDefaultModelToConfig: () => {},
+    restartGateway: async () => {},
     stateDir: "/tmp/test-state",
     getLastSystemProxy: () => null,
   });

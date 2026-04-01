@@ -745,15 +745,16 @@ export const EcommercePage = observer(function EcommercePage() {
       .then((data) => {
         if (cancelled) return;
         setRecipientData({ allowlist: data.allowlist, labels: data.labels });
-        // Auto-select first recipient and save immediately
+        // Auto-select first recipient and save only if values actually changed
         const firstRecipient = data.allowlist[0];
         if (firstRecipient) {
           setDraftEscalationRecipient(firstRecipient);
-          // Trigger save with the new channel + first recipient
+          // Only save if channel or recipient changed from what's already persisted
           const shopId = selectedShopId;
           if (shopId) {
             const shop = shops.find((s) => s.id === shopId);
-            if (shop) {
+            const cs = shop?.services?.customerService;
+            if (shop && (cs?.escalationChannelId !== draftEscalationChannel || cs?.escalationRecipientId !== firstRecipient)) {
               setSavingEscalation(true);
               shop.update({
                 services: {

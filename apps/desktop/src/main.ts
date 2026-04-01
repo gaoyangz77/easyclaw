@@ -1494,6 +1494,10 @@ app.whenReady().then(async () => {
     writeFullGatewayConfig: async () => {
       writeGatewayConfig(await buildFullGatewayConfig(actualGatewayPort));
     },
+    restartGateway: async () => {
+      await launcher.stop();
+      await launcher.start();
+    },
     stateDir,
     getLastSystemProxy: () => lastSystemProxy,
   });

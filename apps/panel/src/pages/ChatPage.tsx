@@ -355,9 +355,6 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
           const rawStreaming = flushRun?.streaming ?? null;
           const currentOffset = flushRun?.flushedOffset ?? 0;
           const flushedText = rawStreaming && currentOffset > 0 ? rawStreaming.slice(currentOffset) : rawStreaming;
-          // DEBUG: log tool_start flush state
-          console.info("[chat] tool_start: tool=%s flushedText=%s offset=%d runId=%s",
-            name, flushedText ? `"${flushedText.slice(0, 40)}..." (${flushedText.length}ch)` : "null", currentOffset, agentRunId);
           const args = agentPayload.data?.args as Record<string, unknown> | undefined;
           const toolEvt: ChatMessage = { role: "tool-event", text: name, toolName: name, toolArgs: args, timestamp: Date.now() };
           if (flushedText) {
@@ -546,12 +543,8 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
           break;
         }
         case "final": {
-          // DEBUG: log final event state
           const localRun = tracker.getRun(chatRunId!);
-          const localStreaming = localRun?.streaming;
           const flushedOffset = localRun?.flushedOffset ?? 0;
-          console.info("[chat] final: runId=%s streaming=%s flushedOffset=%d",
-            chatRunId, localStreaming ? `"${localStreaming.slice(0, 40)}..."` : "null", flushedOffset);
           const finalText = extractText(payload.message?.content);
           if (finalText) {
             // When tool calls occurred during this run, pre-tool text was

@@ -63,8 +63,9 @@ export const handleCloudGraphqlRoutes: RouteHandler = async (req, res, _url, pat
     try {
       const fetchPromise = ctx.authSession.graphqlFetch(body.query, body.variables);
 
+      const prevCache = opName === TOOLSPECS_OP_NAME ? toolSpecsCache : null;
       if (opName === TOOLSPECS_OP_NAME) {
-        toolSpecsCache = { data: null, ts: 0, inflight: fetchPromise };
+        toolSpecsCache = { data: prevCache?.data ?? null, ts: prevCache?.ts ?? 0, inflight: fetchPromise };
       }
 
       const data = await fetchPromise;
@@ -78,7 +79,15 @@ export const handleCloudGraphqlRoutes: RouteHandler = async (req, res, _url, pat
       }
 
       if (opName === TOOLSPECS_OP_NAME) {
-        toolSpecsCache = { data, ts: Date.now() };
+        // Only update cache if we got real data — preserve previous good cache on empty results
+        const specs = (data as Record<string, unknown>)?.toolSpecs;
+        const hasData = Array.isArray(specs) && specs.length > 0;
+        if (hasData || !prevCache?.data) {
+          toolSpecsCache = { data, ts: Date.now() };
+        } else {
+          // Restore previous good cache — backend returned empty (likely auth not ready after hot reload)
+          toolSpecsCache = prevCache;
+        }
       }
 
       sendJson(res, 200, { data });

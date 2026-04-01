@@ -26,6 +26,8 @@ export interface LLMProviderManagerEnv {
   writeDefaultModelToConfig: (gwProvider: string, modelId: string) => void;
   /** Rewrite the full gateway config (used when provider-level config changes, e.g., new custom provider added). */
   writeFullGatewayConfig: () => Promise<void>;
+  /** Full gateway restart (stop + start). Reloads plugins. */
+  restartGateway: () => Promise<void>;
   stateDir: string;
   getLastSystemProxy: () => string | null;
 }
@@ -725,6 +727,13 @@ export const LLMProviderManagerModel = types
 
         // Sync auth + proxy + full config (new cloud provider added)
         yield syncAuthProxyAndConfig();
+
+        // Full gateway restart — plugins (including cloud-tools) need to re-initialize
+        // to discover the new provider and fetch dynamic tools from backend.
+        const { restartGateway } = getEnvDeps();
+        restartGateway().catch((err: unknown) => {
+          log.warn("Gateway restart after cloud key creation failed (best-effort):", err);
+        });
 
         log.info(`Created cloud provider key (activated: ${shouldActivate})`);
       }),
