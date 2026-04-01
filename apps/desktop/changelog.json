@@ -1,32 +1,28 @@
 [
   {
     "version": "1.7.8",
-    "date": "2026-03-27",
+    "date": "2026-04-01",
     "en": [
-      "Add customer service bridge with per-device binding and shop-level relay routing",
-      "Add three-layer data architecture with entity cache and passthrough sync",
+      "Add customer service system with many-to-many escalation, behavior guidelines, per-turn delivery, and session lifecycle",
       "Add ecommerce management page with shop table, billing, and service credits",
-      "Add merchant extension bytecode compilation for packaged builds",
-      "Add sidebar brand name toggle in App Settings",
-      "Improve tool authority with CS/Ops split and CapabilityResolver as single source of truth",
-      "Rewrite rivonclaw-policy as config-driven plugin",
-      "Fix RunProfile selection not preserved across session tab switches",
-      "Fix GraphQL auth error handling in token refresh mechanism",
-      "Fix Linux Electron binary detection by ELF header",
-      "Fix e2e test reliability: replace browser profile tests with system tools"
+      "Dynamic port allocation for all local services — no more port conflicts",
+      "Smart model switch: only reset active sessions when changing global default",
+      "Add global toast notifications for all operations",
+      "Add generic cloud REST proxy with centralized API routing",
+      "Fix exec tool approval dialog appearing when ask mode is off",
+      "Fix OAuth subscription reconnection loop and auth error handling",
+      "Fix modal accidentally closing when dragging from content to backdrop"
     ],
     "zh": [
-      "新增客服桥接功能，支持设备绑定和店铺级消息路由",
-      "新增三层数据架构，实体缓存与透传同步",
+      "新增完整客服系统，支持多对多升级转接、行为准则、逐条消息投递和会话生命周期",
       "新增电商管理页面，包含店铺列表、账单和服务积分",
-      "新增商户扩展字节码编译保护（打包构建）",
-      "新增侧边栏品牌名称显示开关",
-      "改进工具权限体系，客服/运营分离，统一能力解析器",
-      "重构策略插件为配置驱动模式",
-      "修复切换会话标签时运行配置选择丢失的问题",
-      "修复 Token 刷新时 GraphQL 认证错误处理",
-      "修复 Linux 下 Electron 二进制文件检测方式",
-      "修复 E2E 测试稳定性问题"
+      "所有本地服务动态端口分配，彻底告别端口冲突",
+      "智能模型切换：更改全局默认模型时只重置活跃会话",
+      "新增全局操作反馈通知",
+      "新增通用云端 REST 代理，统一 API 路由",
+      "修复关闭 ask 模式后仍弹出执行工具审批对话框",
+      "修复 OAuth 订阅重连循环及认证错误",
+      "修复从弹窗内容区拖拽到背景时意外关闭的问题"
     ]
   },
   {
