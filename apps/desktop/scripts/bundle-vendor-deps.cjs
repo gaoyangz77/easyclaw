@@ -66,6 +66,11 @@ const EXTERNAL_PACKAGES = [
   "esbuild",
   "node-llama-cpp",
 
+  // Packages with exports-map incompatibility (file-type v19+ doesn't export ./core.js
+  // but @jimp/core still imports it — keep external so esbuild skips it)
+  "file-type",
+  "file-type/*",
+
   // Proxy dependency (needed by proxy-setup.cjs via createRequire)
   "undici",
 
@@ -79,6 +84,7 @@ const EXTERNAL_PACKAGES = [
 // import of @mariozechner/pi-ai/dist/models.generated.js at runtime.
 const VENDOR_MODELS_JSON = path.join(distDir, "vendor-models.json");
 const VENDOR_CODEX_OAUTH_JS = path.join(distDir, "vendor-codex-oauth.js");
+const VENDOR_CODEX_OAUTH_PAGE_JS = path.join(distDir, "vendor-codex-oauth-page.js");
 const VENDOR_CODEX_PKCE_JS = path.join(distDir, "vendor-codex-pkce.js");
 
 // Files to preserve in dist/ (everything else is a chunk file to delete).
@@ -90,6 +96,7 @@ const KEEP_DIST_FILES = new Set([
   ".bundled",
   "vendor-models.json",
   "vendor-codex-oauth.js",
+  "vendor-codex-oauth-page.js",
   "vendor-codex-pkce.js",
   "warning-filter.js",
   "warning-filter.mjs",
@@ -347,19 +354,24 @@ function extractVendorCodexOAuthHelper() {
 
   const oauthDir = path.join(nmDir, "@mariozechner", "pi-ai", "dist", "utils", "oauth");
   const sourceOauth = path.join(oauthDir, "openai-codex.js");
+  const sourceOauthPage = path.join(oauthDir, "oauth-page.js");
   const sourcePkce = path.join(oauthDir, "pkce.js");
 
-  if (!fs.existsSync(sourceOauth) || !fs.existsSync(sourcePkce)) {
+  if (!fs.existsSync(sourceOauth) || !fs.existsSync(sourceOauthPage) || !fs.existsSync(sourcePkce)) {
     throw new Error(
-      "Missing vendor Codex OAuth helper files. Expected pi-ai dist/utils/oauth/openai-codex.js and pkce.js.",
+      "Missing vendor Codex OAuth helper files. Expected pi-ai dist/utils/oauth/openai-codex.js, oauth-page.js, and pkce.js.",
     );
   }
 
   const oauthSource = fs.readFileSync(sourceOauth, "utf8");
+  const oauthPageSource = fs.readFileSync(sourceOauthPage, "utf8");
   const pkceSource = fs.readFileSync(sourcePkce, "utf8");
 
+  // openai-codex.js should import exactly ./oauth-page.js and ./pkce.js
+  const ALLOWED_IMPORTS = new Set(["./oauth-page.js", "./pkce.js"]);
   const relativeImports = [...oauthSource.matchAll(/^import\s+.*?from\s+["'](.+?)["'];?$/gmu)].map((m) => m[1]);
-  if (relativeImports.length !== 1 || relativeImports[0] !== "./pkce.js") {
+  const unexpected = relativeImports.filter((imp) => !ALLOWED_IMPORTS.has(imp));
+  if (relativeImports.length !== ALLOWED_IMPORTS.size || unexpected.length > 0) {
     throw new Error(
       `Unexpected Codex OAuth helper imports: ${relativeImports.join(", ") || "(none)"}. Review upstream pi-ai changes before bundling.`,
     );
@@ -367,20 +379,29 @@ function extractVendorCodexOAuthHelper() {
   if (!oauthSource.includes("export async function loginOpenAICodex(")) {
     throw new Error("Vendor Codex OAuth helper no longer exports loginOpenAICodex. Review upstream pi-ai changes.");
   }
+  // oauth-page.js and pkce.js must be leaf modules (no imports of their own)
+  if ([...oauthPageSource.matchAll(/^import\s+.*?from\s+["'](.+?)["'];?$/gmu)].length > 0) {
+    throw new Error("Vendor Codex OAuth page helper gained imports. Review upstream pi-ai changes before bundling.");
+  }
   if ([...pkceSource.matchAll(/^import\s+.*?from\s+["'](.+?)["'];?$/gmu)].length > 0) {
     throw new Error("Vendor Codex PKCE helper gained imports. Review upstream pi-ai changes before bundling.");
   }
 
   const rewrittenOauth = stripSourceMapComment(
-    oauthSource.replace('./pkce.js', "./vendor-codex-pkce.js"),
+    oauthSource
+      .replace('./oauth-page.js', "./vendor-codex-oauth-page.js")
+      .replace('./pkce.js', "./vendor-codex-pkce.js"),
   );
+  const rewrittenOauthPage = stripSourceMapComment(oauthPageSource);
   const rewrittenPkce = stripSourceMapComment(pkceSource);
 
   fs.writeFileSync(VENDOR_CODEX_OAUTH_JS, rewrittenOauth, "utf8");
+  fs.writeFileSync(VENDOR_CODEX_OAUTH_PAGE_JS, rewrittenOauthPage, "utf8");
   fs.writeFileSync(VENDOR_CODEX_PKCE_JS, rewrittenPkce, "utf8");
 
   console.log(
-    `[bundle-vendor-deps] Wrote vendor-codex-oauth.js (${(fs.statSync(VENDOR_CODEX_OAUTH_JS).size / 1024).toFixed(1)}KB) ` +
+    `[bundle-vendor-deps] Wrote vendor-codex-oauth.js (${(fs.statSync(VENDOR_CODEX_OAUTH_JS).size / 1024).toFixed(1)}KB), ` +
+      `vendor-codex-oauth-page.js (${(fs.statSync(VENDOR_CODEX_OAUTH_PAGE_JS).size / 1024).toFixed(1)}KB), ` +
       `and vendor-codex-pkce.js (${(fs.statSync(VENDOR_CODEX_PKCE_JS).size / 1024).toFixed(1)}KB)`,
   );
 }
@@ -737,6 +758,69 @@ function prebundleExtensions() {
     }
   }
 
+  // ── Pre-bundle public surface artifacts ──
+  // plugin-sdk facades load surface artifacts at runtime via
+  // loadBundledPluginPublicSurfaceModuleSync().  Bundle each known
+  // surface file into the staging dir so dist/extensions/<ext>/api.js
+  // etc. are self-contained CJS modules.
+  const SURFACE_BASENAMES = [
+    "api", "runtime-api", "helper-api", "light-runtime-api",
+    "session-key-api", "timeouts", "constants", "thread-bindings-runtime",
+  ];
+  let surfaceBundled = 0;
+  let surfaceWarnings = 0;
+
+  for (const ext of extDirs) {
+    for (const baseName of SURFACE_BASENAMES) {
+      const surfaceTs = path.join(ext.dir, `${baseName}.ts`);
+      if (!fs.existsSync(surfaceTs)) continue;
+
+      const stagingExtDir = path.join(extStagingDir, ext.name);
+      fs.mkdirSync(stagingExtDir, { recursive: true });
+      const surfaceJs = path.join(stagingExtDir, `${baseName}.js`);
+
+      try {
+        // First attempt: inline plugin-sdk (tree-shaken).
+        let result = buildExtension(surfaceTs, surfaceJs, { inline: true });
+
+        // If too large, rebuild with plugin-sdk external.
+        const outSize = fs.statSync(surfaceJs).size;
+        if (outSize > INLINE_SIZE_LIMIT) {
+          result = buildExtension(surfaceTs, surfaceJs, { inline: false });
+        }
+
+        // Collect externals from metafile
+        if (result.metafile) {
+          for (const output of Object.values(result.metafile.outputs)) {
+            for (const imp of output.imports || []) {
+              if (imp.external) {
+                const parts = imp.path.split("/");
+                const pkgName = imp.path.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
+                allExtPkgs.add(pkgName);
+              }
+            }
+          }
+        }
+
+        surfaceBundled++;
+      } catch (err) {
+        // Non-fatal: warn but do not fail the build
+        console.warn(
+          `[bundle-vendor-deps] WARN: Failed to bundle surface artifact ${ext.name}/${baseName}.ts: ` +
+            /** @type {Error} */ (err).message.substring(0, 200),
+        );
+        surfaceWarnings++;
+      }
+    }
+  }
+
+  if (surfaceBundled > 0 || surfaceWarnings > 0) {
+    console.log(
+      `[bundle-vendor-deps] Pre-bundled ${surfaceBundled} surface artifact(s)` +
+        (surfaceWarnings > 0 ? ` (${surfaceWarnings} warnings)` : ""),
+    );
+  }
+
   // Ensure ALL staged extension directories have a package.json that does
   // NOT declare "type": "module".  Without one, the CJS .js file would
   // inherit "type": "module" from the vendor root → slow babel transform.
@@ -772,6 +856,63 @@ function prebundleExtensions() {
   }
 
   return { externals: allExtPkgs, inlinedCount };
+}
+
+// ─── Phase 0.5c: Pre-bundle dist/bundled/ hook handlers ───
+// v2026.4.1 introduced dist/bundled/ with hook handler.js files that import
+// from dist/ chunk files (../../subsystem-*.js etc.).  Phase 1+2 replaces
+// all dist chunks, breaking those imports.  Pre-bundle each handler into
+// a self-contained CJS file so it survives the chunk replacement.
+
+function prebundleDistBundledHandlers() {
+  const bundledDir = path.join(distDir, "bundled");
+  if (!fs.existsSync(bundledDir)) {
+    return;
+  }
+
+  console.log("[bundle-vendor-deps] Phase 0.5c: Pre-bundling dist/bundled/ hook handlers...");
+
+  const esbuild = loadEsbuild();
+  let count = 0;
+
+  for (const entry of fs.readdirSync(bundledDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const handlerPath = path.join(bundledDir, entry.name, "handler.js");
+    if (!fs.existsSync(handlerPath)) continue;
+
+    const tmpOut = handlerPath + ".bundled.cjs";
+    try {
+      esbuild.buildSync({
+        entryPoints: [handlerPath],
+        outfile: tmpOut,
+        bundle: true,
+        format: "cjs",
+        platform: "node",
+        target: "node22",
+        define: { "import.meta.url": "__import_meta_url" },
+        banner: {
+          js: 'var __import_meta_url = require("url").pathToFileURL(__filename).href;',
+        },
+        external: EXTERNAL_PACKAGES,
+        minify: true,
+        logLevel: "warning",
+      });
+      fs.unlinkSync(handlerPath);
+      fs.renameSync(tmpOut, handlerPath);
+      count++;
+    } catch (err) {
+      // Clean up temp file on failure
+      try { fs.unlinkSync(tmpOut); } catch {}
+      throw new Error(
+        `Failed to pre-bundle dist/bundled/${entry.name}/handler.js: ` +
+          /** @type {Error} */ (err).message,
+      );
+    }
+  }
+
+  if (count > 0) {
+    console.log(`[bundle-vendor-deps] Pre-bundled ${count} dist/bundled/ hook handler(s)`);
+  }
 }
 
 // ─── Phase 1: esbuild bundle with code splitting ───
@@ -963,6 +1104,34 @@ function replaceEntryWithBundle() {
     fs.copyFileSync(babelSrc, babelDst);
     console.log("[bundle-vendor-deps] Copied babel.cjs to dist/ (safety net for jiti)");
   }
+}
+
+// ─── Phase 2.1: Populate dist/extensions/ from pre-bundled staging ───
+// Phase 2 deletes dist/extensions/ (not in KEEP_DIST_DIRS).  This phase
+// repopulates it from the staging dir so plugin-sdk facades find
+// self-contained artifacts at dist/extensions/<ext>/api.js etc.
+
+function populateDistExtensions() {
+  console.log("[bundle-vendor-deps] Phase 2.1: Populating dist/extensions/ from staging...");
+
+  if (!fs.existsSync(extStagingDir)) {
+    console.log("[bundle-vendor-deps] No staging dir, skipping dist/extensions/ population.");
+    return;
+  }
+
+  const distExtDir = path.join(distDir, "extensions");
+  fs.mkdirSync(distExtDir, { recursive: true });
+
+  let copied = 0;
+  for (const entry of fs.readdirSync(extStagingDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const src = path.join(extStagingDir, entry.name);
+    const dst = path.join(distExtDir, entry.name);
+    fs.cpSync(src, dst, { recursive: true });
+    copied++;
+  }
+
+  console.log(`[bundle-vendor-deps] Copied ${copied} extension(s) to dist/extensions/`);
 }
 
 // ─── Phase 2.5: Patch isMainModule for code splitting ───
@@ -1330,8 +1499,9 @@ function smokeTestGateway() {
 
   // Write a minimal config so the gateway can start.
   // Use a high ephemeral port to avoid conflicts with running services.
-  // Point OPENCLAW_BUNDLED_PLUGINS_DIR at the staging dir so the gateway
-  // discovers pre-bundled CJS extensions (not vendor .ts source files).
+  // Point OPENCLAW_BUNDLED_PLUGINS_DIR at dist/extensions/ so the gateway
+  // discovers pre-bundled CJS extensions and resolves external packages
+  // from vendor/openclaw/node_modules/ via normal Node.js resolution.
   const minimalConfig = {
     gateway: { port: 59999, mode: "local" },
     models: {},
@@ -1355,7 +1525,7 @@ function smokeTestGateway() {
         ...process.env,
         OPENCLAW_CONFIG_PATH: path.join(tmpDir, "openclaw.json"),
         OPENCLAW_STATE_DIR: tmpDir,
-        OPENCLAW_BUNDLED_PLUGINS_DIR: extStagingDir,
+        OPENCLAW_BUNDLED_PLUGINS_DIR: path.join(distDir, "extensions"),
         NODE_COMPILE_CACHE: undefined,
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -1547,7 +1717,7 @@ function generateCompileCache() {
         NODE_COMPILE_CACHE: cacheDir,
         OPENCLAW_CONFIG_PATH: path.join(tmpDir, "openclaw.json"),
         OPENCLAW_STATE_DIR: tmpDir,
-        OPENCLAW_BUNDLED_PLUGINS_DIR: extStagingDir,
+        OPENCLAW_BUNDLED_PLUGINS_DIR: path.join(distDir, "extensions"),
       },
       stdio: ["ignore", "pipe", "pipe"],
       killSignal: "SIGTERM",
@@ -1717,9 +1887,11 @@ if (!fs.existsSync(nmDir)) {
   extractVendorCodexOAuthHelper();
   const { externals: extExternals, inlinedCount } = prebundleExtensions();
   bundlePluginSdk();
+  prebundleDistBundledHandlers();
   patchVendorConstants();
   const bundleExternals = bundleWithEsbuild();
   replaceEntryWithBundle();
+  populateDistExtensions();
   patchIsMainModule();
   // Phase 2.6 (plugin-sdk preload injection) removed — see comment above.
   // Plugin-sdk preload is now handled by launcher.ts via --require flag.

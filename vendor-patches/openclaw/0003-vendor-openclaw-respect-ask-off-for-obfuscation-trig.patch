@@ -1,8 +1,8 @@
-From 598d3fb1e91dd341eaed40ccd03d99644c59e446 Mon Sep 17 00:00:00 2001
+From 3e20ec2ffd8ea60f515cea21387b1cc2508aafb8 Mon Sep 17 00:00:00 2001
 From: RivonClaw CI <ci@rivonclaw.com>
-Date: Sun, 29 Mar 2026 00:32:35 -0700
-Subject: [PATCH] vendor(openclaw): respect ask=off for obfuscation-triggered
- approvals
+Date: Thu, 2 Apr 2026 01:14:07 -0700
+Subject: [PATCH 3/4] vendor(openclaw): respect ask=off for
+ obfuscation-triggered approvals
 
 Why:
 - EasyClaw sets exec.ask=off and exec.security=full for the local Chat Page
@@ -23,28 +23,28 @@ Tests:
  2 files changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/src/agents/bash-tools.exec-host-gateway.ts b/src/agents/bash-tools.exec-host-gateway.ts
-index 149a4785dd..eed3314a8a 100644
+index caeb1ac7dd..c2efc4ba89 100644
 --- a/src/agents/bash-tools.exec-host-gateway.ts
 +++ b/src/agents/bash-tools.exec-host-gateway.ts
-@@ -133,7 +133,7 @@ export async function processGatewayAllowlist(
-       allowlistSatisfied,
-     }) ||
+@@ -179,7 +179,7 @@ export async function processGatewayAllowlist(
+     requiresAllowlistPlanApproval ||
      requiresHeredocApproval ||
+     requiresInlineEvalApproval ||
 -    obfuscation.detected;
 +    (obfuscation.detected && hostAsk !== "off");
    if (requiresHeredocApproval) {
      params.warnings.push(
        "Warning: heredoc execution requires explicit approval in allowlist mode.",
 diff --git a/src/agents/bash-tools.exec-host-node.ts b/src/agents/bash-tools.exec-host-node.ts
-index 16af23590b..23ac55dfa8 100644
+index 8b29109ae0..d611757e78 100644
 --- a/src/agents/bash-tools.exec-host-node.ts
 +++ b/src/agents/bash-tools.exec-host-node.ts
-@@ -176,7 +176,7 @@ export async function executeNodeHostCommand(
-       security: hostSecurity,
-       analysisOk,
-       allowlistSatisfied,
--    }) || obfuscation.detected;
-+    }) || (obfuscation.detected && hostAsk !== "off");
+@@ -208,7 +208,7 @@ export async function executeNodeHostCommand(
+       durableApprovalSatisfied,
+     }) ||
+     inlineEvalHit !== null ||
+-    obfuscation.detected;
++    (obfuscation.detected && hostAsk !== "off");
    const invokeTimeoutMs = Math.max(
      10_000,
      (typeof params.timeoutSec === "number" ? params.timeoutSec : params.defaultTimeoutSec) * 1000 +

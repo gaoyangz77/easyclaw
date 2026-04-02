@@ -276,6 +276,31 @@ describe("config-writer", () => {
       expect(raw.endsWith("\n")).toBe(true);
       expect(() => JSON.parse(raw)).not.toThrow();
     });
+
+    it("writes controlUi.root when controlUiRoot is provided", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({
+        configPath,
+        gatewayPort: 18789,
+        controlUiRoot: "/vendor/openclaw/dist/control-ui",
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.gateway.controlUi.root).toBe("/vendor/openclaw/dist/control-ui");
+      expect(config.gateway.controlUi.dangerouslyDisableDeviceAuth).toBe(true);
+    });
+
+    it("omits controlUi.root when controlUiRoot is not provided", () => {
+      const configPath = join(tmpDir, "openclaw.json");
+      writeGatewayConfig({
+        configPath,
+        gatewayPort: 18789,
+      });
+
+      const config = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(config.gateway.controlUi.dangerouslyDisableDeviceAuth).toBe(true);
+      expect(config.gateway.controlUi.root).toBeUndefined();
+    });
   });
 
   describe("writeGatewayConfig - unknown key sanitisation", () => {
@@ -941,7 +966,11 @@ describe("config-writer", () => {
   });
 
   describe("writeGatewayConfig - nested unknown key sanitisation", () => {
-    it("strips unrecognised nested keys inside a channel config", () => {
+    it("migrates single-account channel keys into accounts.default", () => {
+      // Since vendor v2026.4.1, channel configs are validated via a schema
+      // transform (not static object keys).  Unknown keys in a channel config
+      // cause fixSemanticErrors to remove the entire channel entry.  This test
+      // verifies the migration path for a channel with only valid keys.
       const configPath = join(tmpDir, "openclaw.json");
       writeFileSync(
         configPath,
@@ -949,9 +978,8 @@ describe("config-writer", () => {
           channels: {
             telegram: {
               botToken: "123:ABC",
-              retryAttempts: 3,
-              retryDelayMs: 1000,
-              usePolling: true,
+              dmPolicy: "open",
+              allowFrom: ["*"],
             },
           },
         }),
@@ -960,11 +988,9 @@ describe("config-writer", () => {
       writeGatewayConfig({ configPath, gatewayPort: 18789 });
 
       const config = JSON.parse(readFileSync(configPath, "utf-8"));
-      // botToken is migrated into accounts.default by single-account migration
+      // botToken, dmPolicy, allowFrom are migrated into accounts.default
       expect(config.channels.telegram.accounts.default.botToken).toBe("123:ABC");
-      expect(config.channels.telegram.retryAttempts).toBeUndefined();
-      expect(config.channels.telegram.retryDelayMs).toBeUndefined();
-      expect(config.channels.telegram.usePolling).toBeUndefined();
+      expect(config.channels.telegram.accounts.default.dmPolicy).toBe("open");
     });
 
     it("strips deeply nested unrecognised keys", () => {

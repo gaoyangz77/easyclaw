@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { LLMProvider } from "@rivonclaw/core";
 import { resolveModelConfig, LOCAL_PROVIDER_IDS, getProviderMeta, getOllamaOpenAiBaseUrl } from "@rivonclaw/core";
@@ -16,6 +17,9 @@ export interface GatewayConfigDeps {
   extensionsDir: string;
   sttCliPath: string;
   filePermissionsPluginPath?: string;
+  /** Absolute path to the vendored OpenClaw directory (e.g. vendor/openclaw).
+   *  Used to resolve the Control UI assets path for gateway.controlUi.root. */
+  vendorDir?: string;
 }
 
 /**
@@ -23,7 +27,7 @@ export interface GatewayConfigDeps {
  * Returns closures that can be called without passing deps each time.
  */
 export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
-  const { storage, secretStore, locale, configPath, stateDir, extensionsDir, sttCliPath, filePermissionsPluginPath } = deps;
+  const { storage, secretStore, locale, configPath, stateDir, extensionsDir, sttCliPath, filePermissionsPluginPath, vendorDir } = deps;
 
   function isGeminiOAuthActive(): boolean {
     return storage.providerKeys.getAll()
@@ -135,6 +139,17 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
       ? !!(await secretStore.get(`embedding-${curEmbeddingProvider}-apikey`))
       : false;
 
+    // Resolve Control UI assets from vendor dist. When the index.html exists,
+    // pass the directory as controlUiRoot so the gateway skips its expensive
+    // auto-resolution + potential auto-build check during startup.
+    let controlUiRoot: string | undefined;
+    if (vendorDir) {
+      const controlUiDir = join(vendorDir, "dist", "control-ui");
+      if (existsSync(join(controlUiDir, "index.html"))) {
+        controlUiRoot = controlUiDir;
+      }
+    }
+
     return {
       configPath,
       gatewayPort,
@@ -142,6 +157,7 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
       commandsRestart: true,
       enableFilePermissions: true,
       ownerAllowFrom: buildOwnerAllowFrom(storage),
+      controlUiRoot,
       extensionsDir,
       plugins: {
         allow: [
@@ -161,7 +177,6 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
           },
         },
       },
-      enableGeminiCliAuth: isGeminiOAuthActive(),
       skipBootstrap: false,
       filePermissionsPluginPath,
       defaultModel: resolveGeminiOAuthModel(curModel.provider, curModel.modelId),

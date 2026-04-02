@@ -20,7 +20,7 @@ const VENDOR_HOOKS_FILE = resolve(
 );
 const VENDOR_BROWSER_TOOL_FILE = resolve(
   __dirname,
-  "../../../vendor/openclaw/src/agents/tools/browser-tool.ts",
+  "../../../vendor/openclaw/extensions/browser/src/browser-tool.ts",
 );
 
 /** Check if the vendor has browser lifecycle hooks patched in. */
@@ -259,7 +259,7 @@ runOrSkip("browser lifecycle hooks vendor patch sentinel", () => {
     });
 
     it("fires browser_session_end only after browserStop succeeds", () => {
-      const stopIndex = browserToolSource.indexOf('await browserStop(baseUrl, { profile });');
+      const stopIndex = browserToolSource.indexOf('await browserToolDeps.browserStop(baseUrl, { profile });');
       const sessionEndIndex = browserToolSource.indexOf(
         'hookRunner.runBrowserSessionEnd({ profile, action: "stop" }, browserHookCtx)',
       );
@@ -281,7 +281,7 @@ Missing browser hook: "${hookName}"
 Files:
 - vendor/openclaw/src/plugins/types.ts
 - vendor/openclaw/src/plugins/hooks.ts
-- vendor/openclaw/src/agents/tools/browser-tool.ts
+- vendor/openclaw/extensions/browser/src/browser-tool.ts
 
 RivonClaw requires 4 browser lifecycle hooks patched into the vendor:
   - browser_session_start

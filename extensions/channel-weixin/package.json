@@ -13,7 +13,7 @@
     "build": "tsdown"
   },
   "dependencies": {
-    "@tencent-weixin/openclaw-weixin": "^1.0.2"
+    "@tencent-weixin/openclaw-weixin": "^2.1.3"
   },
   "openclaw": {
     "extensions": [

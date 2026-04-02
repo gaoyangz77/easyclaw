@@ -129,6 +129,9 @@ const REMOVED_PLUGIN_IDS = new Set([
   // W31: tiktok-shop replaced by dynamic tool registration via @Tool decorator (ADR-035).
   // rivonclaw-ecommerce plugin was never shipped — removed during W31 refactor.
   "tiktok-shop", "rivonclaw-ecommerce",
+  // v2026.4.1: google-gemini-cli-auth merged into the google extension plugin;
+  // qwen-portal-auth removed (Qwen provider restructured).
+  "google-gemini-cli-auth", "qwen-portal-auth",
 ]);
 
 // TODO(cleanup): Remove after v1.8.0 — by then all users will have upgraded past the rebrand.
@@ -390,8 +393,6 @@ export interface WriteGatewayConfigOptions {
    *  In packaged Electron apps: set to process.resourcesPath + "extensions".
    *  In dev: auto-resolved from monorepo root if not provided. */
   extensionsDir?: string;
-  /** Enable the google-gemini-cli-auth plugin (bundled in OpenClaw extensions). */
-  enableGeminiCliAuth?: boolean;
   /** Skip OpenClaw bootstrap (prevents creating template files like AGENTS.md on first startup). */
   skipBootstrap?: boolean;
   /** Agent workspace directory. Written as agents.defaults.workspace so OpenClaw stores
@@ -400,6 +401,10 @@ export interface WriteGatewayConfigOptions {
   /** Explicit owner allowlist for commands.ownerAllowFrom.
    *  If provided, replaces the default ["openclaw-control-ui"]. */
   ownerAllowFrom?: string[];
+  /** Absolute path to the Control UI dist directory (containing index.html).
+   *  When provided, written as gateway.controlUi.root so the gateway skips
+   *  auto-resolution and avoids a ~2 s auto-build check on startup. */
+  controlUiRoot?: string;
   /** @deprecated Use browserMode instead. */
   forceStandaloneBrowser?: boolean;
   /**
@@ -493,7 +498,17 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
     // Allow the panel (control-ui) to connect without device identity while
     // preserving self-declared scopes. Without this flag the vendor clears
     // scopes to [] for non-device connections.
-    merged.controlUi = { dangerouslyDisableDeviceAuth: true };
+    //
+    // When controlUiRoot is provided, set gateway.controlUi.root so the
+    // gateway skips its expensive auto-resolution + auto-build check that
+    // costs ~2 s on every startup.
+    const controlUiConfig: Record<string, unknown> = {
+      dangerouslyDisableDeviceAuth: true,
+    };
+    if (options.controlUiRoot) {
+      controlUiConfig.root = options.controlUiRoot;
+    }
+    merged.controlUi = controlUiConfig;
 
     config.gateway = merged;
   }
@@ -673,7 +688,7 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
   }
 
   // Plugins configuration
-  if (options.plugins !== undefined || options.enableFilePermissions !== undefined || options.extensionsDir !== undefined || options.enableGeminiCliAuth !== undefined) {
+  if (options.plugins !== undefined || options.enableFilePermissions !== undefined || options.extensionsDir !== undefined) {
     const existingPlugins =
       typeof config.plugins === "object" && config.plugins !== null
         ? (config.plugins as Record<string, unknown>)
@@ -827,17 +842,6 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
       }
     }
 
-    // Enable google-gemini-cli-auth plugin (bundled in OpenClaw extensions/)
-    if (options.enableGeminiCliAuth !== undefined) {
-      const existingEntries =
-        typeof merged.entries === "object" && merged.entries !== null
-          ? (merged.entries as Record<string, unknown>)
-          : {};
-      merged.entries = {
-        ...existingEntries,
-        "google-gemini-cli-auth": { enabled: options.enableGeminiCliAuth },
-      };
-    }
 
     config.plugins = merged;
   }
@@ -1077,6 +1081,26 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
         docker.binds = sanitized;
       }
     }
+  }
+
+  // Ensure EasyClaw's channel plugins have a config presence so the vendor's
+  // startup plugin loader recognises them as configured channels.  Without this,
+  // OpenClaw v2026.4+ skips channel plugins whose channel ID is not in the
+  // configured-channels list, preventing their gateway methods from registering.
+  {
+    const existingChannels =
+      typeof config.channels === "object" && config.channels !== null
+        ? (config.channels as Record<string, unknown>)
+        : {};
+    const EASYCLAW_CHANNEL_IDS = ["mobile", "openclaw-weixin"];
+    for (const channelId of EASYCLAW_CHANNEL_IDS) {
+      const existing =
+        typeof existingChannels[channelId] === "object" && existingChannels[channelId] !== null
+          ? (existingChannels[channelId] as Record<string, unknown>)
+          : {};
+      existingChannels[channelId] = { ...existing, managed: true };
+    }
+    config.channels = existingChannels;
   }
 
   // Migrate old single-account channel configs (top-level botToken, etc.)

@@ -1,0 +1,356 @@
+From ec3a9365d1e6a91d4d79c0a3eafc7b8bf9c0ea0f Mon Sep 17 00:00:00 2001
+From: RivonClaw CI <ci@rivonclaw.com>
+Date: Thu, 2 Apr 2026 01:13:06 -0700
+Subject: [PATCH 2/4] vendor(openclaw): add before_tool_resolve hook for
+ per-session tool filtering
+
+Why:
+- RivonClaw's capability-manager extension needs to control which tools are
+  visible to the LLM on a per-session basis (ADR-031). The existing hook
+  points fire too late (after tool resolution), so the system prompt and
+  tool list are already built with all tools.
+
+Removal:
+- When upstream OpenClaw adds a native per-session tool filtering mechanism
+  (e.g. via plugin hook or config), this patch can be dropped.
+
+Tests:
+- extensions/rivonclaw-capability-manager/src/__tests__/
+---
+ src/agents/pi-embedded-runner/compact.ts     |  20 ++-
+ src/agents/pi-embedded-runner/run/attempt.ts | 139 +++++++++++--------
+ src/plugins/hooks.ts                         |  26 ++++
+ src/plugins/types.ts                         |  17 +++
+ 4 files changed, 140 insertions(+), 62 deletions(-)
+
+diff --git a/src/agents/pi-embedded-runner/compact.ts b/src/agents/pi-embedded-runner/compact.ts
+index cb26bbd13d..ab49786326 100644
+--- a/src/agents/pi-embedded-runner/compact.ts
++++ b/src/agents/pi-embedded-runner/compact.ts
+@@ -475,7 +475,7 @@ export async function compactEmbeddedPiSessionDirect(
+       modelAuthMode: resolveModelAuthMode(model.provider, params.config),
+     });
+     const toolsEnabled = supportsModelTools(runtimeModel);
+-    const tools = sanitizeToolsForGoogle({
++    let tools = sanitizeToolsForGoogle({
+       tools: toolsEnabled ? toolsRaw : [],
+       provider,
+     });
+@@ -600,6 +600,23 @@ export async function compactEmbeddedPiSessionDirect(
+     });
+     const ttsHint = params.config ? buildTtsSystemPromptHint(params.config) : undefined;
+     const ownerDisplay = resolveOwnerDisplaySetting(params.config);
++
++    // before_tool_resolve hook: filter tools BEFORE system prompt is built (ADR-031).
++    {
++      const earlyHookRunner = getGlobalHookRunner();
++      if (earlyHookRunner?.hasHooks("before_tool_resolve")) {
++        const toolNames = tools.map((t: { name: string }) => t.name);
++        const hookResult = await earlyHookRunner.runBeforeToolResolve(
++          { tools: toolNames },
++          { agentId: sessionAgentId, sessionKey: params.sessionKey?.trim() || params.sessionId },
++        );
++        if (hookResult?.tools) {
++          const allowed = new Set(hookResult.tools);
++          tools = tools.filter((t: { name: string }) => allowed.has(t.name));
++        }
++      }
++    }
++
+     const appendPrompt = buildEmbeddedSystemPrompt({
+       workspaceDir: effectiveWorkspace,
+       defaultThinkLevel: params.thinkLevel,
+@@ -684,6 +701,7 @@ export async function compactEmbeddedPiSessionDirect(
+         await resourceLoader.reload();
+       }
+ 
++      // Tools already filtered by before_tool_resolve hook above (before system prompt build).
+       const { builtInTools, customTools } = splitSdkTools({
+         tools: effectiveTools,
+         sandboxEnabled: !!sandbox?.enabled,
+diff --git a/src/agents/pi-embedded-runner/run/attempt.ts b/src/agents/pi-embedded-runner/run/attempt.ts
+index 8cb2549d30..e88b7430f2 100644
+--- a/src/agents/pi-embedded-runner/run/attempt.ts
++++ b/src/agents/pi-embedded-runner/run/attempt.ts
+@@ -419,64 +419,64 @@ export async function runEmbeddedAttempt(
+       ? []
+       : (() => {
+           const allTools = createOpenClawCodingTools({
+-          agentId: sessionAgentId,
+-          trigger: params.trigger,
+-          memoryFlushWritePath: params.memoryFlushWritePath,
+-          exec: {
+-            ...params.execOverrides,
+-            elevated: params.bashElevated,
+-          },
+-          sandbox,
+-          messageProvider: params.messageChannel ?? params.messageProvider,
+-          agentAccountId: params.agentAccountId,
+-          messageTo: params.messageTo,
+-          messageThreadId: params.messageThreadId,
+-          groupId: params.groupId,
+-          groupChannel: params.groupChannel,
+-          groupSpace: params.groupSpace,
+-          spawnedBy: params.spawnedBy,
+-          senderId: params.senderId,
+-          senderName: params.senderName,
+-          senderUsername: params.senderUsername,
+-          senderE164: params.senderE164,
+-          senderIsOwner: params.senderIsOwner,
+-          allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
+-          sessionKey: sandboxSessionKey,
+-          sessionId: params.sessionId,
+-          runId: params.runId,
+-          agentDir,
+-          workspaceDir: effectiveWorkspace,
+-          // When sandboxing uses a copied workspace (`ro` or `none`), effectiveWorkspace points
+-          // at the sandbox copy. Spawned subagents should inherit the real workspace instead.
+-          spawnWorkspaceDir: resolveAttemptSpawnWorkspaceDir({
++            agentId: sessionAgentId,
++            trigger: params.trigger,
++            memoryFlushWritePath: params.memoryFlushWritePath,
++            exec: {
++              ...params.execOverrides,
++              elevated: params.bashElevated,
++            },
+             sandbox,
+-            resolvedWorkspace,
+-          }),
+-          config: params.config,
+-          abortSignal: runAbortController.signal,
+-          modelProvider: params.model.provider,
+-          modelId: params.modelId,
+-          modelCompat: params.model.compat,
+-          modelApi: params.model.api,
+-          modelContextWindowTokens: params.model.contextWindow,
+-          modelAuthMode: resolveModelAuthMode(params.model.provider, params.config),
+-          currentChannelId: params.currentChannelId,
+-          currentThreadTs: params.currentThreadTs,
+-          currentMessageId: params.currentMessageId,
+-          replyToMode: params.replyToMode,
+-          hasRepliedRef: params.hasRepliedRef,
+-          modelHasVision,
+-          requireExplicitMessageTarget:
+-            params.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
+-          disableMessageTool: params.disableMessageTool,
+-          onYield: (message) => {
+-            yieldDetected = true;
+-            yieldMessage = message;
+-            queueYieldInterruptForSession?.();
+-            runAbortController.abort("sessions_yield");
+-            abortSessionForYield?.();
+-          },
+-        });
++            messageProvider: params.messageChannel ?? params.messageProvider,
++            agentAccountId: params.agentAccountId,
++            messageTo: params.messageTo,
++            messageThreadId: params.messageThreadId,
++            groupId: params.groupId,
++            groupChannel: params.groupChannel,
++            groupSpace: params.groupSpace,
++            spawnedBy: params.spawnedBy,
++            senderId: params.senderId,
++            senderName: params.senderName,
++            senderUsername: params.senderUsername,
++            senderE164: params.senderE164,
++            senderIsOwner: params.senderIsOwner,
++            allowGatewaySubagentBinding: params.allowGatewaySubagentBinding,
++            sessionKey: sandboxSessionKey,
++            sessionId: params.sessionId,
++            runId: params.runId,
++            agentDir,
++            workspaceDir: effectiveWorkspace,
++            // When sandboxing uses a copied workspace (`ro` or `none`), effectiveWorkspace points
++            // at the sandbox copy. Spawned subagents should inherit the real workspace instead.
++            spawnWorkspaceDir: resolveAttemptSpawnWorkspaceDir({
++              sandbox,
++              resolvedWorkspace,
++            }),
++            config: params.config,
++            abortSignal: runAbortController.signal,
++            modelProvider: params.model.provider,
++            modelId: params.modelId,
++            modelCompat: params.model.compat,
++            modelApi: params.model.api,
++            modelContextWindowTokens: params.model.contextWindow,
++            modelAuthMode: resolveModelAuthMode(params.model.provider, params.config),
++            currentChannelId: params.currentChannelId,
++            currentThreadTs: params.currentThreadTs,
++            currentMessageId: params.currentMessageId,
++            replyToMode: params.replyToMode,
++            hasRepliedRef: params.hasRepliedRef,
++            modelHasVision,
++            requireExplicitMessageTarget:
++              params.requireExplicitMessageTarget ?? isSubagentSessionKey(params.sessionKey),
++            disableMessageTool: params.disableMessageTool,
++            onYield: (message) => {
++              yieldDetected = true;
++              yieldMessage = message;
++              queueYieldInterruptForSession?.();
++              runAbortController.abort("sessions_yield");
++              abortSessionForYield?.();
++            },
++          });
+           if (params.toolsAllow && params.toolsAllow.length > 0) {
+             const allowSet = new Set(params.toolsAllow);
+             return allTools.filter((tool) => allowSet.has(tool.name));
+@@ -484,10 +484,28 @@ export async function runEmbeddedAttempt(
+           return allTools;
+         })();
+     const toolsEnabled = supportsModelTools(params.model);
+-    const tools = sanitizeToolsForGoogle({
++    let tools = sanitizeToolsForGoogle({
+       tools: toolsEnabled ? toolsRaw : [],
+       provider: params.provider,
+     });
++
++    // before_tool_resolve hook: filter tools BEFORE system prompt is built (ADR-031).
++    // This ensures both the tool list AND the system prompt only include selected tools.
++    {
++      const earlyHookRunner = getGlobalHookRunner();
++      if (earlyHookRunner?.hasHooks("before_tool_resolve")) {
++        const toolNames = tools.map((t: { name: string }) => t.name);
++        const hookResult = await earlyHookRunner.runBeforeToolResolve(
++          { tools: toolNames },
++          { agentId: sessionAgentId, sessionKey: sandboxSessionKey },
++        );
++        if (hookResult?.tools) {
++          const allowed = new Set(hookResult.tools);
++          tools = tools.filter((t: { name: string }) => allowed.has(t.name));
++        }
++      }
++    }
++
+     const clientTools = toolsEnabled ? params.clientTools : undefined;
+     const bundleMcpSessionRuntime = toolsEnabled
+       ? await getOrCreateSessionMcpRuntime({
+@@ -621,7 +639,7 @@ export async function runEmbeddedAttempt(
+     const promptMode = resolvePromptModeForSession(params.sessionKey);
+ 
+     // When toolsAllow is set, use minimal prompt and strip skills catalog
+-    const effectivePromptMode = params.toolsAllow?.length ? "minimal" as const : promptMode;
++    const effectivePromptMode = params.toolsAllow?.length ? ("minimal" as const) : promptMode;
+     const effectiveSkillsPrompt = params.toolsAllow?.length ? undefined : skillsPrompt;
+     const docsPath = await resolveOpenClawDocsPath({
+       workspaceDir: effectiveWorkspace,
+@@ -801,9 +819,8 @@ export async function runEmbeddedAttempt(
+         await resourceLoader.reload();
+       }
+ 
+-      // Get hook runner early so it's available when creating tools
++      // Tools already filtered by before_tool_resolve hook above (before system prompt build).
+       const hookRunner = getGlobalHookRunner();
+-
+       const { builtInTools, customTools } = splitSdkTools({
+         tools: effectiveTools,
+         sandboxEnabled: !!sandbox?.enabled,
+diff --git a/src/plugins/hooks.ts b/src/plugins/hooks.ts
+index 667ca8bdcb..b1862a52a6 100644
+--- a/src/plugins/hooks.ts
++++ b/src/plugins/hooks.ts
+@@ -62,6 +62,8 @@ import type {
+   PluginHookBeforeBrowserActionEvent,
+   PluginHookBeforeBrowserActionResult,
+   PluginHookAfterBrowserActionEvent,
++  PluginHookBeforeToolResolveEvent,
++  PluginHookBeforeToolResolveResult,
+ } from "./types.js";
+ 
+ // Re-export types for consumers
+@@ -112,6 +114,8 @@ export type {
+   PluginHookGatewayContext,
+   PluginHookGatewayStartEvent,
+   PluginHookGatewayStopEvent,
++  PluginHookBeforeToolResolveEvent,
++  PluginHookBeforeToolResolveResult,
+ };
+ 
+ export type HookRunnerLogger = {
+@@ -700,6 +704,27 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
+   // Tool Hooks
+   // =========================================================================
+ 
++  /**
++   * Run before_tool_resolve hook.
++   * Allows plugins to filter the tool list before session creation.
++   * Runs sequentially; last result wins for the tools array.
++   */
++  async function runBeforeToolResolve(
++    event: PluginHookBeforeToolResolveEvent,
++    ctx: PluginHookAgentContext,
++  ): Promise<PluginHookBeforeToolResolveResult | undefined> {
++    return runModifyingHook<"before_tool_resolve", PluginHookBeforeToolResolveResult>(
++      "before_tool_resolve",
++      event,
++      ctx,
++      {
++        mergeResults: (acc, next) => ({
++          tools: next.tools ?? acc?.tools,
++        }),
++      },
++    );
++  }
++
+   /**
+    * Run before_tool_call hook.
+    * Allows plugins to modify or block tool calls.
+@@ -1085,6 +1110,7 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
+     runMessageSending,
+     runMessageSent,
+     // Tool hooks
++    runBeforeToolResolve,
+     runBeforeToolCall,
+     runAfterToolCall,
+     runToolResultPersist,
+diff --git a/src/plugins/types.ts b/src/plugins/types.ts
+index 7a731654d1..6823e083b8 100644
+--- a/src/plugins/types.ts
++++ b/src/plugins/types.ts
+@@ -1820,6 +1820,7 @@ export type PluginHookName =
+   | "gateway_start"
+   | "gateway_stop"
+   | "before_dispatch"
++  | "before_tool_resolve"
+   | "browser_session_start"
+   | "browser_session_end"
+   | "before_browser_action"
+@@ -1852,6 +1853,7 @@ export const PLUGIN_HOOK_NAMES = [
+   "gateway_start",
+   "gateway_stop",
+   "before_dispatch",
++  "before_tool_resolve",
+   "browser_session_start",
+   "browser_session_end",
+   "before_browser_action",
+@@ -2156,6 +2158,17 @@ export type PluginHookToolContext = {
+   toolCallId?: string;
+ };
+ 
++// before_tool_resolve hook -- allows plugins to filter the tool list before session creation
++export type PluginHookBeforeToolResolveEvent = {
++  /** Tool names available for this session. */
++  tools: string[];
++};
++
++export type PluginHookBeforeToolResolveResult = {
++  /** Filtered tool names. Tools not in this list are removed from the session. */
++  tools?: string[];
++};
++
+ // before_tool_call hook
+ export type PluginHookBeforeToolCallEvent = {
+   toolName: string;
+@@ -2464,6 +2477,10 @@ export type PluginHookHandlerMap = {
+     event: PluginHookMessageSentEvent,
+     ctx: PluginHookMessageContext,
+   ) => Promise<void> | void;
++  before_tool_resolve: (
++    event: PluginHookBeforeToolResolveEvent,
++    ctx: PluginHookAgentContext,
++  ) => Promise<PluginHookBeforeToolResolveResult | void> | PluginHookBeforeToolResolveResult | void;
+   before_tool_call: (
+     event: PluginHookBeforeToolCallEvent,
+     ctx: PluginHookToolContext,
+-- 
+2.50.1 (Apple Git-155)
+

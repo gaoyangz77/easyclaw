@@ -145,6 +145,8 @@ describe("GatewayLauncher", () => {
       );
     });
 
+
+
     it("is a no-op when already running", async () => {
       const { spawn } = await import("node:child_process");
 

@@ -1,7 +1,7 @@
-From ad86140e180e731056c81bd897ed8f183de0b418 Mon Sep 17 00:00:00 2001
-From: Gaoyang Zhang <younglobalization@gmail.com>
-Date: Sun, 15 Mar 2026 13:04:09 -0700
-Subject: [PATCH] vendor(openclaw): add browser lifecycle hooks for plugin
+From d6f030a55ed5fccbc10c2441795ba75696fb6bb8 Mon Sep 17 00:00:00 2001
+From: RivonClaw CI <ci@rivonclaw.com>
+Date: Thu, 2 Apr 2026 01:09:28 -0700
+Subject: [PATCH 1/4] vendor(openclaw): add browser lifecycle hooks for plugin
  integration
 
 Why:
@@ -19,27 +19,105 @@ Removal:
 Tests:
 - extensions/browser-profiles-tools/src/browser-lifecycle-hooks.test.ts
 ---
- src/agents/tools/browser-tool.ts | 64 +++++++++++++++++++++++++++
- src/plugins/hooks.ts             | 74 ++++++++++++++++++++++++++++++++
- src/plugins/types.ts             | 67 ++++++++++++++++++++++++++++-
- 3 files changed, 204 insertions(+), 1 deletion(-)
+ extensions/browser/src/browser-tool.ts | 622 ++++++++++++++-----------
+ extensions/browser/src/core-api.ts     |   1 +
+ src/plugin-sdk/browser-support.ts      |   1 +
+ src/plugins/hooks.ts                   |  74 +++
+ src/plugins/types.ts                   |  70 ++-
+ 5 files changed, 489 insertions(+), 279 deletions(-)
 
-diff --git a/src/agents/tools/browser-tool.ts b/src/agents/tools/browser-tool.ts
-index 80faf99a1..7d2413805 100644
---- a/src/agents/tools/browser-tool.ts
-+++ b/src/agents/tools/browser-tool.ts
-@@ -24,6 +24,7 @@ import {
-   untrackSessionBrowserTab,
- } from "../../browser/session-tab-registry.js";
- import { loadConfig } from "../../config/config.js";
-+import { getGlobalHookRunner } from "../../plugins/hook-runner-global.js";
- import {
-   executeActAction,
-   executeConsoleAction,
-@@ -355,6 +356,35 @@ export function createBrowserTool(opts?: {
+diff --git a/extensions/browser/src/browser-tool.ts b/extensions/browser/src/browser-tool.ts
+index cf0792fe31..a045f632d8 100644
+--- a/extensions/browser/src/browser-tool.ts
++++ b/extensions/browser/src/browser-tool.ts
+@@ -11,6 +11,7 @@ import {
+   type NodeListNode,
+   DEFAULT_UPLOAD_DIR,
+   applyBrowserProxyPaths,
++  getGlobalHookRunner,
+   browserAct,
+   browserArmDialog,
+   browserArmFileChooser,
+@@ -453,302 +454,367 @@ export function createBrowserTool(opts?: {
            }
          : null;
  
+-      switch (action) {
+-        case "status":
+-          if (proxyRequest) {
+-            return jsonResult(
+-              await proxyRequest({
+-                method: "GET",
+-                path: "/",
+-                profile,
+-              }),
+-            );
+-          }
+-          return jsonResult(await browserToolDeps.browserStatus(baseUrl, { profile }));
+-        case "start":
+-          if (proxyRequest) {
+-            await proxyRequest({
+-              method: "POST",
+-              path: "/start",
+-              profile,
+-            });
+-            return jsonResult(
+-              await proxyRequest({
+-                method: "GET",
+-                path: "/",
+-                profile,
+-              }),
+-            );
+-          }
+-          await browserToolDeps.browserStart(baseUrl, { profile });
+-          return jsonResult(await browserToolDeps.browserStatus(baseUrl, { profile }));
+-        case "stop":
+-          if (proxyRequest) {
+-            await proxyRequest({
+-              method: "POST",
+-              path: "/stop",
+-              profile,
+-            });
+-            return jsonResult(
+-              await proxyRequest({
+-                method: "GET",
+-                path: "/",
+-                profile,
+-              }),
+-            );
+-          }
+-          await browserToolDeps.browserStop(baseUrl, { profile });
+-          return jsonResult(await browserToolDeps.browserStatus(baseUrl, { profile }));
+-        case "profiles":
+-          if (proxyRequest) {
+-            const result = await proxyRequest({
+-              method: "GET",
+-              path: "/profiles",
+-            });
+-            return jsonResult(result);
+-          }
+-          return jsonResult({ profiles: await browserToolDeps.browserProfiles(baseUrl) });
+-        case "tabs":
+-          return await executeTabsAction({ baseUrl, profile, proxyRequest });
+-        case "open": {
+-          const targetUrl = readTargetUrlParam(params);
+-          if (proxyRequest) {
+-            const result = await proxyRequest({
+-              method: "POST",
+-              path: "/tabs/open",
+-              profile,
+-              body: { url: targetUrl },
+-            });
+-            return jsonResult(result);
+-          }
+-          const opened = await browserToolDeps.browserOpenTab(baseUrl, targetUrl, { profile });
+-          browserToolDeps.trackSessionBrowserTab({
+-            sessionKey: opts?.agentSessionKey,
+-            targetId: opened.targetId,
+-            baseUrl,
+-            profile,
+-          });
+-          return jsonResult(opened);
 +      // --- Browser lifecycle hooks (RivonClaw patch) ---
 +      const hookRunner = getGlobalHookRunner();
 +      const browserHookCtx = { sessionKey: opts?.agentSessionKey, profile };
@@ -58,10 +136,32 @@ index 80faf99a1..7d2413805 100644
 +        );
 +        if (beforeResult?.block) {
 +          throw new Error(beforeResult.blockReason ?? "Browser action blocked by plugin");
-+        }
+         }
+-        case "focus": {
+-          const targetId = readStringParam(params, "targetId", {
+-            required: true,
+-          });
+-          if (proxyRequest) {
+-            const result = await proxyRequest({
+-              method: "POST",
+-              path: "/tabs/focus",
+-              profile,
+-              body: { targetId },
+-            });
+-            return jsonResult(result);
+-          }
+-          await browserToolDeps.browserFocusTab(baseUrl, targetId, { profile });
+-          return jsonResult({ ok: true });
 +        if (beforeResult?.params) {
 +          Object.assign(params, beforeResult.params);
-+        }
+         }
+-        case "close": {
+-          const targetId = readStringParam(params, "targetId");
+-          if (proxyRequest) {
+-            const result = targetId
+-              ? await proxyRequest({
+-                  method: "DELETE",
+-                  path: `/tabs/${encodeURIComponent(targetId)}`,
 +      }
 +
 +      // Wrap the action switch in try/finally so after_browser_action fires uniformly
@@ -69,23 +169,480 @@ index 80faf99a1..7d2413805 100644
 +      let actionError: string | undefined;
 +      try {
 +        const actionResult = await (async () => {
-       switch (action) {
-         case "status":
-           if (proxyRequest) {
-@@ -652,6 +682,40 @@ export function createBrowserTool(opts?: {
-         default:
-           throw new Error(`Unknown action: ${action}`);
-       }
++          switch (action) {
++            case "status":
++              if (proxyRequest) {
++                return jsonResult(
++                  await proxyRequest({
++                    method: "GET",
++                    path: "/",
++                    profile,
++                  }),
++                );
++              }
++              return jsonResult(await browserToolDeps.browserStatus(baseUrl, { profile }));
++            case "start":
++              if (proxyRequest) {
++                await proxyRequest({
++                  method: "POST",
++                  path: "/start",
+                   profile,
+-                })
+-              : await proxyRequest({
++                });
++                return jsonResult(
++                  await proxyRequest({
++                    method: "GET",
++                    path: "/",
++                    profile,
++                  }),
++                );
++              }
++              await browserToolDeps.browserStart(baseUrl, { profile });
++              return jsonResult(await browserToolDeps.browserStatus(baseUrl, { profile }));
++            case "stop":
++              if (proxyRequest) {
++                await proxyRequest({
+                   method: "POST",
+-                  path: "/act",
++                  path: "/stop",
+                   profile,
+-                  body: { kind: "close" },
+                 });
+-            return jsonResult(result);
+-          }
+-          if (targetId) {
+-            await browserToolDeps.browserCloseTab(baseUrl, targetId, { profile });
+-            browserToolDeps.untrackSessionBrowserTab({
+-              sessionKey: opts?.agentSessionKey,
+-              targetId,
+-              baseUrl,
+-              profile,
+-            });
+-          } else {
+-            await browserToolDeps.browserAct(baseUrl, { kind: "close" }, { profile });
+-          }
+-          return jsonResult({ ok: true });
+-        }
+-        case "snapshot":
+-          return await executeSnapshotAction({
+-            input: params,
+-            baseUrl,
+-            profile,
+-            proxyRequest,
+-          });
+-        case "screenshot": {
+-          const targetId = readStringParam(params, "targetId");
+-          const fullPage = Boolean(params.fullPage);
+-          const ref = readStringParam(params, "ref");
+-          const element = readStringParam(params, "element");
+-          const type = params.type === "jpeg" ? "jpeg" : "png";
+-          const result = proxyRequest
+-            ? ((await proxyRequest({
+-                method: "POST",
+-                path: "/screenshot",
++                return jsonResult(
++                  await proxyRequest({
++                    method: "GET",
++                    path: "/",
++                    profile,
++                  }),
++                );
++              }
++              await browserToolDeps.browserStop(baseUrl, { profile });
++              return jsonResult(await browserToolDeps.browserStatus(baseUrl, { profile }));
++            case "profiles":
++              if (proxyRequest) {
++                const result = await proxyRequest({
++                  method: "GET",
++                  path: "/profiles",
++                });
++                return jsonResult(result);
++              }
++              return jsonResult({ profiles: await browserToolDeps.browserProfiles(baseUrl) });
++            case "tabs":
++              return await executeTabsAction({ baseUrl, profile, proxyRequest });
++            case "open": {
++              const targetUrl = readTargetUrlParam(params);
++              if (proxyRequest) {
++                const result = await proxyRequest({
++                  method: "POST",
++                  path: "/tabs/open",
++                  profile,
++                  body: { url: targetUrl },
++                });
++                return jsonResult(result);
++              }
++              const opened = await browserToolDeps.browserOpenTab(baseUrl, targetUrl, { profile });
++              browserToolDeps.trackSessionBrowserTab({
++                sessionKey: opts?.agentSessionKey,
++                targetId: opened.targetId,
++                baseUrl,
+                 profile,
+-                body: {
++              });
++              return jsonResult(opened);
++            }
++            case "focus": {
++              const targetId = readStringParam(params, "targetId", {
++                required: true,
++              });
++              if (proxyRequest) {
++                const result = await proxyRequest({
++                  method: "POST",
++                  path: "/tabs/focus",
++                  profile,
++                  body: { targetId },
++                });
++                return jsonResult(result);
++              }
++              await browserToolDeps.browserFocusTab(baseUrl, targetId, { profile });
++              return jsonResult({ ok: true });
++            }
++            case "close": {
++              const targetId = readStringParam(params, "targetId");
++              if (proxyRequest) {
++                const result = targetId
++                  ? await proxyRequest({
++                      method: "DELETE",
++                      path: `/tabs/${encodeURIComponent(targetId)}`,
++                      profile,
++                    })
++                  : await proxyRequest({
++                      method: "POST",
++                      path: "/act",
++                      profile,
++                      body: { kind: "close" },
++                    });
++                return jsonResult(result);
++              }
++              if (targetId) {
++                await browserToolDeps.browserCloseTab(baseUrl, targetId, { profile });
++                browserToolDeps.untrackSessionBrowserTab({
++                  sessionKey: opts?.agentSessionKey,
+                   targetId,
+-                  fullPage,
++                  baseUrl,
++                  profile,
++                });
++              } else {
++                await browserToolDeps.browserAct(baseUrl, { kind: "close" }, { profile });
++              }
++              return jsonResult({ ok: true });
++            }
++            case "snapshot":
++              return await executeSnapshotAction({
++                input: params,
++                baseUrl,
++                profile,
++                proxyRequest,
++              });
++            case "screenshot": {
++              const targetId = readStringParam(params, "targetId");
++              const fullPage = Boolean(params.fullPage);
++              const ref = readStringParam(params, "ref");
++              const element = readStringParam(params, "element");
++              const type = params.type === "jpeg" ? "jpeg" : "png";
++              const result = proxyRequest
++                ? ((await proxyRequest({
++                    method: "POST",
++                    path: "/screenshot",
++                    profile,
++                    body: {
++                      targetId,
++                      fullPage,
++                      ref,
++                      element,
++                      type,
++                    },
++                  })) as Awaited<ReturnType<typeof browserScreenshotAction>>)
++                : await browserToolDeps.browserScreenshotAction(baseUrl, {
++                    targetId,
++                    fullPage,
++                    ref,
++                    element,
++                    type,
++                    profile,
++                  });
++              return await browserToolDeps.imageResultFromFile({
++                label: "browser:screenshot",
++                path: result.path,
++                details: result,
++              });
++            }
++            case "navigate": {
++              const targetUrl = readTargetUrlParam(params);
++              const targetId = readStringParam(params, "targetId");
++              if (proxyRequest) {
++                const result = await proxyRequest({
++                  method: "POST",
++                  path: "/navigate",
++                  profile,
++                  body: {
++                    url: targetUrl,
++                    targetId,
++                  },
++                });
++                return jsonResult(result);
++              }
++              return jsonResult(
++                await browserToolDeps.browserNavigate(baseUrl, {
++                  url: targetUrl,
++                  targetId,
++                  profile,
++                }),
++              );
++            }
++            case "console":
++              return await executeConsoleAction({
++                input: params,
++                baseUrl,
++                profile,
++                proxyRequest,
++              });
++            case "pdf": {
++              const targetId =
++                typeof params.targetId === "string" ? params.targetId.trim() : undefined;
++              const result = proxyRequest
++                ? ((await proxyRequest({
++                    method: "POST",
++                    path: "/pdf",
++                    profile,
++                    body: { targetId },
++                  })) as Awaited<ReturnType<typeof browserPdfSave>>)
++                : await browserToolDeps.browserPdfSave(baseUrl, { targetId, profile });
++              return {
++                content: [{ type: "text" as const, text: `FILE:${result.path}` }],
++                details: result,
++              };
++            }
++            case "upload": {
++              const paths = Array.isArray(params.paths) ? params.paths.map((p) => String(p)) : [];
++              if (paths.length === 0) {
++                throw new Error("paths required");
++              }
++              const uploadPathsResult = await resolveExistingPathsWithinRoot({
++                rootDir: DEFAULT_UPLOAD_DIR,
++                requestedPaths: paths,
++                scopeLabel: `uploads directory (${DEFAULT_UPLOAD_DIR})`,
++              });
++              if (!uploadPathsResult.ok) {
++                throw new Error(uploadPathsResult.error);
++              }
++              const normalizedPaths = uploadPathsResult.paths;
++              const ref = readStringParam(params, "ref");
++              const inputRef = readStringParam(params, "inputRef");
++              const element = readStringParam(params, "element");
++              const { targetId, timeoutMs } = readOptionalTargetAndTimeout(params);
++              if (proxyRequest) {
++                const result = await proxyRequest({
++                  method: "POST",
++                  path: "/hooks/file-chooser",
++                  profile,
++                  body: {
++                    paths: normalizedPaths,
++                    ref,
++                    inputRef,
++                    element,
++                    targetId,
++                    timeoutMs,
++                  },
++                });
++                return jsonResult(result);
++              }
++              return jsonResult(
++                await browserToolDeps.browserArmFileChooser(baseUrl, {
++                  paths: normalizedPaths,
+                   ref,
++                  inputRef,
+                   element,
+-                  type,
+-                },
+-              })) as Awaited<ReturnType<typeof browserScreenshotAction>>)
+-            : await browserToolDeps.browserScreenshotAction(baseUrl, {
+-                targetId,
+-                fullPage,
+-                ref,
+-                element,
+-                type,
++                  targetId,
++                  timeoutMs,
++                  profile,
++                }),
++              );
++            }
++            case "dialog": {
++              const accept = Boolean(params.accept);
++              const promptText =
++                typeof params.promptText === "string" ? params.promptText : undefined;
++              const { targetId, timeoutMs } = readOptionalTargetAndTimeout(params);
++              if (proxyRequest) {
++                const result = await proxyRequest({
++                  method: "POST",
++                  path: "/hooks/dialog",
++                  profile,
++                  body: {
++                    accept,
++                    promptText,
++                    targetId,
++                    timeoutMs,
++                  },
++                });
++                return jsonResult(result);
++              }
++              return jsonResult(
++                await browserToolDeps.browserArmDialog(baseUrl, {
++                  accept,
++                  promptText,
++                  targetId,
++                  timeoutMs,
++                  profile,
++                }),
++              );
++            }
++            case "act": {
++              const request = readActRequestParam(params);
++              if (!request) {
++                throw new Error("request required");
++              }
++              return await executeActAction({
++                request,
++                baseUrl,
+                 profile,
++                proxyRequest,
+               });
+-          return await browserToolDeps.imageResultFromFile({
+-            label: "browser:screenshot",
+-            path: result.path,
+-            details: result,
+-          });
+-        }
+-        case "navigate": {
+-          const targetUrl = readTargetUrlParam(params);
+-          const targetId = readStringParam(params, "targetId");
+-          if (proxyRequest) {
+-            const result = await proxyRequest({
+-              method: "POST",
+-              path: "/navigate",
+-              profile,
+-              body: {
+-                url: targetUrl,
+-                targetId,
+-              },
+-            });
+-            return jsonResult(result);
++            }
++            default:
++              throw new Error(`Unknown action: ${action}`);
+           }
+-          return jsonResult(
+-            await browserToolDeps.browserNavigate(baseUrl, {
+-              url: targetUrl,
+-              targetId,
+-              profile,
+-            }),
+-          );
 +        })();
 +
 +        // browser_session_start: fires after successful browser start
 +        if (action === "start" && hookRunner?.hasHooks("browser_session_start")) {
 +          void hookRunner.runBrowserSessionStart({ profile, action: "start" }, browserHookCtx);
-+        }
+         }
+-        case "console":
+-          return await executeConsoleAction({
+-            input: params,
+-            baseUrl,
+-            profile,
+-            proxyRequest,
+-          });
+-        case "pdf": {
+-          const targetId = typeof params.targetId === "string" ? params.targetId.trim() : undefined;
+-          const result = proxyRequest
+-            ? ((await proxyRequest({
+-                method: "POST",
+-                path: "/pdf",
+-                profile,
+-                body: { targetId },
+-              })) as Awaited<ReturnType<typeof browserPdfSave>>)
+-            : await browserToolDeps.browserPdfSave(baseUrl, { targetId, profile });
+-          return {
+-            content: [{ type: "text" as const, text: `FILE:${result.path}` }],
+-            details: result,
+-          };
 +        // browser_session_end: fires after successful browser stop
 +        if (action === "stop" && hookRunner?.hasHooks("browser_session_end")) {
 +          void hookRunner.runBrowserSessionEnd({ profile, action: "stop" }, browserHookCtx);
-+        }
+         }
+-        case "upload": {
+-          const paths = Array.isArray(params.paths) ? params.paths.map((p) => String(p)) : [];
+-          if (paths.length === 0) {
+-            throw new Error("paths required");
+-          }
+-          const uploadPathsResult = await resolveExistingPathsWithinRoot({
+-            rootDir: DEFAULT_UPLOAD_DIR,
+-            requestedPaths: paths,
+-            scopeLabel: `uploads directory (${DEFAULT_UPLOAD_DIR})`,
+-          });
+-          if (!uploadPathsResult.ok) {
+-            throw new Error(uploadPathsResult.error);
+-          }
+-          const normalizedPaths = uploadPathsResult.paths;
+-          const ref = readStringParam(params, "ref");
+-          const inputRef = readStringParam(params, "inputRef");
+-          const element = readStringParam(params, "element");
+-          const { targetId, timeoutMs } = readOptionalTargetAndTimeout(params);
+-          if (proxyRequest) {
+-            const result = await proxyRequest({
+-              method: "POST",
+-              path: "/hooks/file-chooser",
+-              profile,
+-              body: {
+-                paths: normalizedPaths,
+-                ref,
+-                inputRef,
+-                element,
+-                targetId,
+-                timeoutMs,
+-              },
+-            });
+-            return jsonResult(result);
+-          }
+-          return jsonResult(
+-            await browserToolDeps.browserArmFileChooser(baseUrl, {
+-              paths: normalizedPaths,
+-              ref,
+-              inputRef,
+-              element,
+-              targetId,
+-              timeoutMs,
+-              profile,
+-            }),
+-          );
+-        }
+-        case "dialog": {
+-          const accept = Boolean(params.accept);
+-          const promptText = typeof params.promptText === "string" ? params.promptText : undefined;
+-          const { targetId, timeoutMs } = readOptionalTargetAndTimeout(params);
+-          if (proxyRequest) {
+-            const result = await proxyRequest({
+-              method: "POST",
+-              path: "/hooks/dialog",
+-              profile,
+-              body: {
+-                accept,
+-                promptText,
+-                targetId,
+-                timeoutMs,
+-              },
+-            });
+-            return jsonResult(result);
+-          }
+-          return jsonResult(
+-            await browserToolDeps.browserArmDialog(baseUrl, {
+-              accept,
+-              promptText,
+-              targetId,
+-              timeoutMs,
 +
 +        return actionResult;
 +      } catch (err) {
@@ -102,22 +659,60 @@ index 80faf99a1..7d2413805 100644
 +            {
 +              action,
 +              params,
-+              profile,
+               profile,
+-            }),
 +              error: actionError,
 +              durationMs: Date.now() - actionStartTime,
 +            },
 +            browserHookCtx,
-+          );
-+        }
-+      }
+           );
+         }
+-        case "act": {
+-          const request = readActRequestParam(params);
+-          if (!request) {
+-            throw new Error("request required");
+-          }
+-          return await executeActAction({
+-            request,
+-            baseUrl,
+-            profile,
+-            proxyRequest,
+-          });
+-        }
+-        default:
+-          throw new Error(`Unknown action: ${action}`);
+       }
      },
    };
- }
+diff --git a/extensions/browser/src/core-api.ts b/extensions/browser/src/core-api.ts
+index a7e5f4595a..101a6289d4 100644
+--- a/extensions/browser/src/core-api.ts
++++ b/extensions/browser/src/core-api.ts
+@@ -65,6 +65,7 @@ export type {
+ export {
+   callGatewayTool,
+   createSubsystemLogger,
++  getGlobalHookRunner,
+   danger,
+   defaultRuntime,
+   detectMime,
+diff --git a/src/plugin-sdk/browser-support.ts b/src/plugin-sdk/browser-support.ts
+index 2a053f8f09..416b1d97a0 100644
+--- a/src/plugin-sdk/browser-support.ts
++++ b/src/plugin-sdk/browser-support.ts
+@@ -22,6 +22,7 @@ export {
+   resizeToJpeg,
+ } from "../media/image-ops.js";
+ export { ensureMediaDir, saveMediaBuffer } from "../media/store.js";
++export { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
+ export { normalizePluginsConfig, resolveEffectiveEnableState } from "../plugins/config-state.js";
+ export {
+   startLazyPluginServiceModule,
 diff --git a/src/plugins/hooks.ts b/src/plugins/hooks.ts
-index 4d74267d4..110d717d7 100644
+index 0583b22ce5..667ca8bdcb 100644
 --- a/src/plugins/hooks.ts
 +++ b/src/plugins/hooks.ts
-@@ -50,6 +50,12 @@ import type {
+@@ -56,6 +56,12 @@ import type {
    PluginHookToolResultPersistResult,
    PluginHookBeforeMessageWriteEvent,
    PluginHookBeforeMessageWriteResult,
@@ -130,7 +725,7 @@ index 4d74267d4..110d717d7 100644
  } from "./types.js";
  
  // Re-export types for consumers
-@@ -171,6 +177,15 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
+@@ -227,6 +233,15 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
      };
    };
  
@@ -146,7 +741,7 @@ index 4d74267d4..110d717d7 100644
    const mergeSubagentDeliveryTargetResult = (
      acc: PluginHookSubagentDeliveryTargetResult | undefined,
      next: PluginHookSubagentDeliveryTargetResult,
-@@ -704,6 +719,60 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
+@@ -978,6 +993,60 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
      return runVoidHook("gateway_stop", event, ctx);
    }
  
@@ -189,7 +784,7 @@ index 4d74267d4..110d717d7 100644
 +      "before_browser_action",
 +      event,
 +      ctx,
-+      mergeBeforeBrowserAction,
++      { mergeResults: mergeBeforeBrowserAction },
 +    );
 +  }
 +
@@ -207,7 +802,7 @@ index 4d74267d4..110d717d7 100644
    // =========================================================================
    // Utility
    // =========================================================================
-@@ -753,6 +822,11 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
+@@ -1031,6 +1100,11 @@ export function createHookRunner(registry: PluginRegistry, options: HookRunnerOp
      // Gateway hooks
      runGatewayStart,
      runGatewayStop,
@@ -220,15 +815,15 @@ index 4d74267d4..110d717d7 100644
      hasHooks,
      getHookCount,
 diff --git a/src/plugins/types.ts b/src/plugins/types.ts
-index 4c5894ddd..ca8cacc1d 100644
+index 02bb7f985c..7a731654d1 100644
 --- a/src/plugins/types.ts
 +++ b/src/plugins/types.ts
-@@ -342,7 +342,11 @@ export type PluginHookName =
-   | "subagent_spawned"
+@@ -1819,7 +1819,11 @@ export type PluginHookName =
    | "subagent_ended"
    | "gateway_start"
--  | "gateway_stop";
-+  | "gateway_stop"
+   | "gateway_stop"
+-  | "before_dispatch";
++  | "before_dispatch"
 +  | "browser_session_start"
 +  | "browser_session_end"
 +  | "before_browser_action"
@@ -236,10 +831,10 @@ index 4c5894ddd..ca8cacc1d 100644
  
  export const PLUGIN_HOOK_NAMES = [
    "before_model_resolve",
-@@ -369,6 +373,10 @@ export const PLUGIN_HOOK_NAMES = [
-   "subagent_ended",
+@@ -1848,6 +1852,10 @@ export const PLUGIN_HOOK_NAMES = [
    "gateway_start",
    "gateway_stop",
+   "before_dispatch",
 +  "browser_session_start",
 +  "browser_session_end",
 +  "before_browser_action",
@@ -247,7 +842,7 @@ index 4c5894ddd..ca8cacc1d 100644
  ] as const satisfies readonly PluginHookName[];
  
  type MissingPluginHookNames = Exclude<PluginHookName, (typeof PLUGIN_HOOK_NAMES)[number]>;
-@@ -783,6 +791,47 @@ export type PluginHookGatewayStopEvent = {
+@@ -2353,6 +2361,47 @@ export type PluginHookGatewayStopEvent = {
    reason?: string;
  };
  
@@ -292,10 +887,10 @@ index 4c5894ddd..ca8cacc1d 100644
 +  durationMs?: number;
 +};
 +
- // Hook handler types mapped by hook name
- export type PluginHookHandlerMap = {
-   before_model_resolve: (
-@@ -881,6 +930,22 @@ export type PluginHookHandlerMap = {
+ export type PluginInstallRequestKind =
+   | "skill-install"
+   | "plugin-dir"
+@@ -2466,6 +2515,25 @@ export type PluginHookHandlerMap = {
      event: PluginHookGatewayStopEvent,
      ctx: PluginHookGatewayContext,
    ) => Promise<void> | void;
@@ -310,7 +905,10 @@ index 4c5894ddd..ca8cacc1d 100644
 +  before_browser_action: (
 +    event: PluginHookBeforeBrowserActionEvent,
 +    ctx: PluginHookBrowserContext,
-+  ) => Promise<PluginHookBeforeBrowserActionResult | void> | PluginHookBeforeBrowserActionResult | void;
++  ) =>
++    | Promise<PluginHookBeforeBrowserActionResult | void>
++    | PluginHookBeforeBrowserActionResult
++    | void;
 +  after_browser_action: (
 +    event: PluginHookAfterBrowserActionEvent,
 +    ctx: PluginHookBrowserContext,

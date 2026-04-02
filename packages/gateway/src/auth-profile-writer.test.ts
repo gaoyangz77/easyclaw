@@ -392,32 +392,34 @@ describe("clearAllAuthProfiles", () => {
  * If the vendor changes its format, these tests fail BEFORE we ship a broken build.
  */
 describe("vendor contract: auth profile format", () => {
-  it("vendor's buildOAuthApiKey wraps google-gemini-cli credentials as JSON", () => {
+  it("vendor's google plugin wraps google-gemini-cli credentials as JSON", () => {
     // Our auth profiles use provider="google-gemini-cli" for Google OAuth.
-    // The vendor's buildOAuthApiKey must wrap this as JSON {token, projectId}
+    // The vendor's google plugin formatApiKey must wrap this as JSON {token, projectId}
     // for the google-gemini-cli streaming function to parse.
-    const oauthSrc = readFileSync(
-      join(VENDOR_ROOT, "src/agents/auth-profiles/oauth.ts"),
+    // In v2026.4.1 this moved from core oauth.ts to the google extension plugin.
+    const pluginSrc = readFileSync(
+      join(VENDOR_ROOT, "extensions/google/gemini-cli-provider.ts"),
       "utf-8",
     );
-    // Vendor checks for "google-gemini-cli" to decide JSON wrapping
-    expect(oauthSrc).toContain('"google-gemini-cli"');
-    expect(oauthSrc).toContain("credentials.access");
-    expect(oauthSrc).toContain("credentials.projectId");
+    // Plugin registers formatApiKey for "google-gemini-cli"
+    expect(pluginSrc).toContain("formatApiKey");
+    expect(pluginSrc).toContain("cred.access");
+    expect(pluginSrc).toContain("cred.projectId");
   });
 
   it("vendor's normalizeProviderId preserves google-gemini-cli", () => {
     // Profile lookup uses normalizeProviderId(cred.provider) === normalizeProviderId(model.provider).
     // Both sides must resolve to the same string for google-gemini-cli.
-    const selectionSrc = readFileSync(
-      join(VENDOR_ROOT, "src/agents/model-selection.ts"),
+    // In v2026.4.1 normalizeProviderId moved from model-selection.ts to provider-id.ts.
+    const providerIdSrc = readFileSync(
+      join(VENDOR_ROOT, "src/agents/provider-id.ts"),
       "utf-8",
     );
     // normalizeProviderId should NOT alias "google-gemini-cli" to something else.
     // Verify it's a simple toLowerCase passthrough (no special mapping for this ID).
-    expect(selectionSrc).toContain("export function normalizeProviderId");
+    expect(providerIdSrc).toContain("export function normalizeProviderId");
     // The function should not contain a mapping that changes "google-gemini-cli"
-    expect(selectionSrc).not.toContain('"google-gemini-cli"');
+    expect(providerIdSrc).not.toContain('"google-gemini-cli"');
   });
 
   it("OAuth credential fields match vendor's OAuthCredential type", () => {
@@ -447,8 +449,10 @@ describe("vendor contract: auth profile format", () => {
       join(import.meta.dirname, "auth-profile-writer.ts"),
       "utf-8",
     );
+    // In v2026.4.1 the OAuth credential construction moved from
+    // src/providers/qwen-portal-oauth.ts to src/agents/cli-credentials.ts.
     const vendorOauthSrc = readFileSync(
-      join(VENDOR_ROOT, "src/providers/qwen-portal-oauth.ts"),
+      join(VENDOR_ROOT, "src/agents/cli-credentials.ts"),
       "utf-8",
     );
 
@@ -456,10 +460,10 @@ describe("vendor contract: auth profile format", () => {
     expect(writerSrc).toContain("refresh: string");
     expect(writerSrc).toContain("expires: number");
 
-    expect(vendorOauthSrc).toContain("credentials.refresh");
+    // Vendor constructs OAuth credentials with the same field names
     expect(vendorOauthSrc).toContain("access: accessToken");
-    expect(vendorOauthSrc).toContain("refresh: newRefreshToken || refreshToken");
-    expect(vendorOauthSrc).toContain("expires: Date.now() + expiresIn * 1000");
+    expect(vendorOauthSrc).toContain("refresh: refreshToken");
+    expect(vendorOauthSrc).toContain("expires:");
   });
 
   it("google-gemini-cli models exist in vendor's model catalog", () => {

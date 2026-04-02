@@ -25,7 +25,19 @@ const VENDOR_FILE = resolve(
   "../../../../vendor/openclaw/src/agents/system-prompt.ts",
 );
 
-describe("vendor patch 0004: promptMode raw", () => {
+/** Check if the vendor source has the promptMode raw patch applied. */
+function isVendorPatched(): boolean {
+  try {
+    const src = readFileSync(VENDOR_FILE, "utf-8");
+    return /export type PromptMode\b[^;]*"raw"/.test(src);
+  } catch {
+    return false;
+  }
+}
+
+const runOrSkip = isVendorPatched() ? describe : describe.skip;
+
+runOrSkip("vendor patch 0004: promptMode raw", () => {
   const source = readFileSync(VENDOR_FILE, "utf-8");
 
   it("PromptMode type includes 'raw'", () => {

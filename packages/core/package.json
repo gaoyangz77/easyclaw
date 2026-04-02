@@ -33,6 +33,11 @@
     "./endpoints": {
       "import": "./dist/endpoints.mjs",
       "types": "./dist/endpoints.d.mts"
+    },
+    "./defaults": {
+      "import": "./dist/defaults.mjs",
+      "default": "./dist/defaults.mjs",
+      "types": "./dist/defaults.d.mts"
     }
   },
   "scripts": {

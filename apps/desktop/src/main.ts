@@ -508,13 +508,6 @@ app.whenReady().then(async () => {
   const { backfillOwnerMigration } = await import("./auth/owner-migration.js");
   await backfillOwnerMigration(storage, stateDir, configPath);
 
-  // Build gateway config helpers (closures bound to current settings)
-  const { buildFullGatewayConfig } = createGatewayConfigBuilder({
-    storage, secretStore, locale, configPath, stateDir, extensionsDir, sttCliPath, filePermissionsPluginPath,
-  });
-
-  writeGatewayConfig(await buildFullGatewayConfig(actualGatewayPort));
-
   // Clean up any stale openclaw processes before starting.
   // With dynamic ports, orphaned processes won't block new instances,
   // so we skip TCP port probing entirely. Only do process-name-based cleanup
@@ -545,6 +538,13 @@ app.whenReady().then(async () => {
     ? join(process.resourcesPath, "vendor", "openclaw")
     : join(import.meta.dirname, "..", "..", "..", "vendor", "openclaw");
   setVendorDir(vendorDir);
+
+  // Build gateway config helpers (closures bound to current settings)
+  const { buildFullGatewayConfig } = createGatewayConfigBuilder({
+    storage, secretStore, locale, configPath, stateDir, extensionsDir, sttCliPath, filePermissionsPluginPath, vendorDir,
+  });
+
+  writeGatewayConfig(await buildFullGatewayConfig(actualGatewayPort));
 
   const launcher = new GatewayLauncher({
     entryPath: resolveVendorEntryPath(vendorDir),

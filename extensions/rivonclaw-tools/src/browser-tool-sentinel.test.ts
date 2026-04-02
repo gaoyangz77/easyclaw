@@ -10,11 +10,11 @@ import { resolve } from "path";
  */
 
 const EXPECTED_HASH =
-  "e1ee7144c7e5645060462a42f083be83d70feb067a57cea09a4fb8ed8e531351";
+  "79c65c52e5c7dfd698de90c6b8e124d9d7a75d48bb879ac8475b896cfacb6ef7";
 
 const VENDOR_FILE = resolve(
   __dirname,
-  "../../../vendor/openclaw/src/agents/tools/browser-tool.ts",
+  "../../../vendor/openclaw/extensions/browser/src/browser-tool.ts",
 );
 
 function extractDescriptionArray(source: string): string | null {
@@ -44,25 +44,8 @@ describe("browser tool description sentinel", () => {
     ).toContain('profile="user"');
   });
 
-  it('contains sentinel string: profile="chrome-relay"', () => {
-    expect(
-      descriptionSource,
-      formatSentinelMessage(
-        'Missing sentinel string profile="chrome-relay"',
-        descriptionSource,
-      ),
-    ).toContain('profile="chrome-relay"');
-  });
-
-  it("contains sentinel string: Browser Relay", () => {
-    expect(
-      descriptionSource,
-      formatSentinelMessage(
-        "Missing sentinel string 'Browser Relay'",
-        descriptionSource,
-      ),
-    ).toContain("Browser Relay");
-  });
+  // chrome-relay profile and Browser Relay removed in v2026.4.1
+  // (browser refactored to bundled plugin architecture)
 
   it("matches the expected SHA-256 hash", () => {
     const actualHash = createHash("sha256")
@@ -80,7 +63,7 @@ function formatHashFailureMessage(actualHash: string): string {
 === BROWSER TOOL DESCRIPTION SENTINEL FAILURE ===
 
 The upstream OpenClaw browser tool description has changed.
-File: vendor/openclaw/src/agents/tools/browser-tool.ts
+File: vendor/openclaw/extensions/browser/src/browser-tool.ts
 
 RivonClaw overrides this description via prependContext in:
   extensions/rivonclaw-tools/src/browser-mode-context.ts
@@ -112,7 +95,7 @@ function formatSentinelMessage(
 === BROWSER TOOL DESCRIPTION SENTINEL FAILURE ===
 
 ${reason}
-File: vendor/openclaw/src/agents/tools/browser-tool.ts
+File: vendor/openclaw/extensions/browser/src/browser-tool.ts
 
 RivonClaw overrides this description via prependContext in:
   extensions/rivonclaw-tools/src/browser-mode-context.ts
