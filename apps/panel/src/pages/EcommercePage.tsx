@@ -740,9 +740,10 @@ export const EcommercePage = observer(function EcommercePage() {
     const colonIdx = draftEscalationChannel.indexOf(":");
     if (colonIdx === -1) return;
     const channelId = draftEscalationChannel.slice(0, colonIdx);
+    const accountId = draftEscalationChannel.slice(colonIdx + 1);
 
     let cancelled = false;
-    fetchAllowlist(channelId)
+    fetchAllowlist(channelId, accountId)
       .then((data) => {
         if (cancelled) return;
         setRecipientData({ allowlist: data.allowlist, labels: data.labels });

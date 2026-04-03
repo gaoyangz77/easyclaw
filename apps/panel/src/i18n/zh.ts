@@ -728,6 +728,8 @@ export default {
     retry: "重试",
     expired: "二维码已过期，请重试。",
     gatewayUnavailable: "网关未连接，请先启动网关。",
+    autoRefresh: "{{seconds}}秒后自动刷新",
+    refreshing: "正在刷新二维码...",
   },
   mobile: {
     description: "扫码直连手机，零配置零门槛，随时随地与AI助手对话。",

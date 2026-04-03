@@ -3,105 +3,11 @@ import { join } from "node:path";
 import type { LLMProvider } from "@rivonclaw/core";
 import { resolveModelConfig, LOCAL_PROVIDER_IDS, getProviderMeta, getOllamaOpenAiBaseUrl } from "@rivonclaw/core";
 import { resolveUserSkillsDir } from "@rivonclaw/core/node";
-import { buildExtraProviderConfigs, writeGatewayConfig, readExistingConfig } from "@rivonclaw/gateway";
+import { buildExtraProviderConfigs, writeGatewayConfig } from "@rivonclaw/gateway";
 import type { Storage } from "@rivonclaw/storage";
 import type { SecretStore } from "@rivonclaw/secrets";
 import { buildOwnerAllowFrom } from "../auth/owner-sync.js";
 import { OUR_PLUGIN_IDS } from "../generated/our-plugin-ids.js";
-
-/**
- * Build plugin entries for channels that have at least one account in SQLite.
- * This makes SQLite the source of truth for which channel plugins should be
- * enabled, instead of relying on config file state that can be overwritten.
- */
-function buildChannelPluginEntries(storage: Storage): Record<string, { enabled: boolean }> {
-  const accounts = storage.channelAccounts.list();
-  const channelIds = new Set(accounts.map(a => a.channelId));
-  const entries: Record<string, { enabled: boolean }> = {};
-  for (const channelId of channelIds) {
-    entries[channelId] = { enabled: true };
-  }
-  return entries;
-}
-
-/**
- * Bidirectional sync between SQLite and config for channel accounts.
- *
- * SQLite is the source of truth. This function ensures:
- *  1. Accounts in config but not SQLite → imported into SQLite (first-run upgrade)
- *  2. Accounts in SQLite missing fields that config has → enriched (secret backfill
- *     from older versions that stored secrets only in config/keychain)
- *
- * Returns the merged account list for writeGatewayConfig to write back to config.
- */
-function syncChannelAccounts(
-  storage: Storage,
-  configPath: string,
-): Array<{ channelId: string; accountId: string; config: Record<string, unknown> }> {
-  let existingConfig: Record<string, unknown>;
-  try {
-    existingConfig = readExistingConfig(configPath);
-  } catch {
-    // No config file — just return SQLite contents
-    return storage.channelAccounts.list().map(a => ({
-      channelId: a.channelId, accountId: a.accountId, config: a.config,
-    }));
-  }
-
-  const channels = existingConfig.channels;
-  const sqliteAccounts = storage.channelAccounts.list();
-  const sqliteMap = new Map(sqliteAccounts.map(a => [`${a.channelId}:${a.accountId}`, a]));
-
-  // Channels managed outside of channel_accounts (e.g. mobile uses mobile_pairings).
-  // These should not be synced to/from SQLite channel_accounts.
-  const EXCLUDED_CHANNELS = new Set(["mobile"]);
-
-  if (channels && typeof channels === "object") {
-    for (const [channelId, channelData] of Object.entries(channels as Record<string, unknown>)) {
-      if (EXCLUDED_CHANNELS.has(channelId)) continue;
-      if (!channelData || typeof channelData !== "object") continue;
-      const accounts = (channelData as Record<string, unknown>).accounts;
-      if (!accounts || typeof accounts !== "object") continue;
-
-      for (const [accountId, accountData] of Object.entries(accounts as Record<string, unknown>)) {
-        const configObj = typeof accountData === "object" && accountData !== null
-          ? (accountData as Record<string, unknown>)
-          : {};
-        const key = `${channelId}:${accountId}`;
-        const sqliteRecord = sqliteMap.get(key);
-
-        if (!sqliteRecord) {
-          // Config has account that SQLite doesn't → import
-          storage.channelAccounts.upsert(
-            channelId, accountId,
-            typeof configObj.name === "string" ? configObj.name : null,
-            configObj,
-          );
-          sqliteMap.set(key, { channelId, accountId, name: null, config: configObj, createdAt: 0, updatedAt: 0 });
-        } else {
-          // Both have it — merge any fields config has that SQLite lacks
-          let needsUpdate = false;
-          const merged = { ...sqliteRecord.config };
-          for (const [k, v] of Object.entries(configObj)) {
-            if (v !== undefined && v !== null && !(k in merged)) {
-              merged[k] = v;
-              needsUpdate = true;
-            }
-          }
-          if (needsUpdate) {
-            storage.channelAccounts.upsert(channelId, accountId, sqliteRecord.name, merged);
-            sqliteMap.set(key, { ...sqliteRecord, config: merged });
-          }
-        }
-      }
-    }
-  }
-
-  // Return all SQLite accounts (now enriched) for config write-back
-  return [...sqliteMap.values()].map(a => ({
-    channelId: a.channelId, accountId: a.accountId, config: a.config,
-  }));
-}
 
 export interface GatewayConfigDeps {
   storage: Storage;
@@ -115,6 +21,10 @@ export interface GatewayConfigDeps {
   /** Absolute path to the vendored OpenClaw directory (e.g. vendor/openclaw).
    *  Used to resolve the Control UI assets path for gateway.controlUi.root. */
   vendorDir?: string;
+  /** Returns plugin entries for channels with at least one account (from ChannelManager). */
+  channelPluginEntries: () => Record<string, { enabled: boolean }>;
+  /** Returns channel account configs for gateway config write-back (from ChannelManager). */
+  channelConfigAccounts: () => Array<{ channelId: string; accountId: string; config: Record<string, unknown> }>;
 }
 
 /**
@@ -269,16 +179,15 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
           "rivonclaw-policy": {
             config: buildPolicyPluginConfig(),
           },
-          // Derive channel plugin entries from SQLite — each channel with at
+          // Channel plugin entries from ChannelManager -- each channel with at
           // least one account gets enabled so the vendor's two-phase plugin
-          // loader includes it. SQLite is the source of truth for channel setup.
-          ...buildChannelPluginEntries(storage),
+          // loader includes it. ChannelManager is the single owner.
+          ...deps.channelPluginEntries(),
         },
       },
-      // Bidirectional sync: config ↔ SQLite. Imports missing accounts from
-      // config into SQLite (upgrade), enriches SQLite with secrets from config
-      // (older versions), and returns the merged list for config write-back.
-      channelAccounts: syncChannelAccounts(storage, configPath),
+      // Channel accounts from ChannelManager for config write-back.
+      // ChannelManager owns the SQLite source of truth and handles migration.
+      channelAccounts: deps.channelConfigAccounts(),
       skipBootstrap: false,
       filePermissionsPluginPath,
       defaultModel: resolveGeminiOAuthModel(curModel.provider, curModel.modelId),

@@ -1091,23 +1091,21 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
     }
   }
 
-  // Ensure EasyClaw's channel plugins have a config presence so the vendor's
-  // startup plugin loader recognises them as configured channels.  Without this,
-  // OpenClaw v2026.4+ skips channel plugins whose channel ID is not in the
-  // configured-channels list, preventing their gateway methods from registering.
+  // Mobile channel uses a separate pairing system (mobile_pairings table),
+  // not channel_accounts. Mark it as managed so the vendor's plugin loader
+  // recognises it as a configured channel. Other channels (e.g. openclaw-weixin)
+  // are managed by ChannelManager and get their config presence via
+  // channelAccounts written below.
   {
     const existingChannels =
       typeof config.channels === "object" && config.channels !== null
         ? (config.channels as Record<string, unknown>)
         : {};
-    const EASYCLAW_CHANNEL_IDS = ["mobile", "openclaw-weixin"];
-    for (const channelId of EASYCLAW_CHANNEL_IDS) {
-      const existing =
-        typeof existingChannels[channelId] === "object" && existingChannels[channelId] !== null
-          ? (existingChannels[channelId] as Record<string, unknown>)
-          : {};
-      existingChannels[channelId] = { ...existing, managed: true };
-    }
+    const existing =
+      typeof existingChannels.mobile === "object" && existingChannels.mobile !== null
+        ? (existingChannels.mobile as Record<string, unknown>)
+        : {};
+    existingChannels.mobile = { ...existing, managed: true };
     config.channels = existingChannels;
   }
 

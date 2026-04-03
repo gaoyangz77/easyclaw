@@ -307,15 +307,6 @@ describe("panel-server API", () => {
     });
   });
 
-  // --- Channels ---
-  describe("Channels", () => {
-    it("GET /api/channels returns empty channels initially", async () => {
-      const { status, body } = await fetchJson<{ channels: unknown[] }>("/api/channels");
-      expect(status).toBe(200);
-      expect(body.channels).toEqual([]);
-    });
-  });
-
   // --- Status with data ---
   describe("Status with data", () => {
     it("reflects correct rule and artifact counts", async () => {

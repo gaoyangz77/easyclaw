@@ -3,11 +3,12 @@ import type { Storage } from "@rivonclaw/storage";
 import type { SecretStore } from "@rivonclaw/secrets";
 import type { UsageSnapshotEngine } from "../usage/usage-snapshot-engine.js";
 import type { UsageQueryService } from "../usage/usage-query-service.js";
-import type { MobileManager } from "../mobile/mobile-manager.js";
+import type { MobileManagerInstance } from "../store/mobile-manager.js";
 import type { AuthSessionManager } from "../auth/auth-session.js";
 import type { SessionLifecycleManager } from "../browser-profiles/session-lifecycle-manager.js";
 import type { ManagedBrowserService } from "../browser-profiles/managed-browser-service.js";
 import type { CloudClient } from "../clients/cloud-client.js";
+import type { ChannelManagerInstance } from "../store/channel-manager.js";
 
 export interface ApiContext {
   storage: Storage;
@@ -49,11 +50,12 @@ export interface ApiContext {
   getGatewayInfo?: () => { wsUrl: string; token?: string };
   snapshotEngine?: UsageSnapshotEngine;
   queryService?: UsageQueryService;
-  mobileManager?: MobileManager;
+  mobileManager?: MobileManagerInstance;
   authSession?: AuthSessionManager;
   cloudClient?: CloudClient;
   sessionLifecycleManager?: SessionLifecycleManager;
   managedBrowserService?: ManagedBrowserService;
+  channelManager?: ChannelManagerInstance;
 }
 
 export type RouteHandler = (

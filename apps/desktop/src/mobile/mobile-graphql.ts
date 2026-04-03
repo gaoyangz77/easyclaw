@@ -5,13 +5,6 @@ import type {
   RegisterPairingResult,
 } from "@rivonclaw/core";
 import type { ApiContext } from "../api-routes/api-context.js";
-import {
-  readMobileAllowlist,
-  writeMobileAllowlist,
-} from "../api-routes/mobile-chat-routes.js";
-import { resolveOpenClawConfigPath } from "@rivonclaw/gateway";
-import { syncOwnerAllowFrom } from "../auth/owner-sync.js";
-import { getRpcClient } from "../gateway/rpc-client-ref.js";
 
 interface RegisterPairingData extends Record<string, unknown> {
   registerPairing: RegisterPairingResult;
@@ -63,68 +56,21 @@ async function handleRegisterPairing(
     ) as MobileGraphQLResponse<RegisterPairingData>;
   }
 
-  const newPairing = ctx.storage.mobilePairings.setPairing({
-    pairingId: input.pairingId,
-    deviceId: input.desktopDeviceId,
+  // Delegate to MobileManager — single code path for pairing persistence,
+  // allowlist, channel_recipients, owner sync, and RPC sync start.
+  ctx.mobileManager.completePairing({
     accessToken: input.accessToken,
     relayUrl: input.relayUrl,
+    pairingId: input.pairingId,
+    desktopDeviceId: input.desktopDeviceId,
     mobileDeviceId: input.mobileDeviceId,
   });
 
-  ctx.mobileManager.clearActiveCode();
-
-  // Add the pairing as a recipient in the mobile channel allowlist (keyed by pairingId)
-  const recipientId = newPairing.pairingId || newPairing.id;
-  try {
-    const allowlist = await readMobileAllowlist();
-    if (!allowlist.includes(recipientId)) {
-      allowlist.push(recipientId);
-      await writeMobileAllowlist(allowlist);
-    }
-    // Create channel_recipients record for label/owner management
-    const isFirstRecipient = !ctx.storage.channelRecipients.hasAnyOwner();
-    ctx.storage.channelRecipients.ensureExists(
-      "mobile",
-      recipientId,
-      isFirstRecipient,
-    );
-    if (isFirstRecipient) {
-      const configPath = resolveOpenClawConfigPath();
-      syncOwnerAllowFrom(ctx.storage, configPath);
-    }
-    console.log(
-      "[MobileChat] Added recipient to mobile allowlist:",
-      recipientId,
-    );
-  } catch (err: any) {
-    console.error("[MobileChat] Failed to update mobile allowlist:", err);
-  }
-
-  const rpcClient = getRpcClient();
-  if (rpcClient?.isConnected()) {
-    console.log(
-      "[MobileChat] Sending mobile_chat_start_sync RPC. relayUrl:",
-      input.relayUrl,
-    );
-    rpcClient
-      .request("mobile_chat_start_sync", {
-        pairingId: newPairing.pairingId || newPairing.id,
-        accessToken: input.accessToken,
-        relayUrl: input.relayUrl,
-        desktopDeviceId: newPairing.deviceId,
-        mobileDeviceId: newPairing.mobileDeviceId || newPairing.id,
-      })
-      .catch((err: any) => {
-        console.error(
-          "[MobileChat] Failed to start mobile sync via RPC:",
-          err,
-        );
-      });
-  } else {
-    console.warn(
-      "[MobileChat] RPC client not connected — cannot start sync engine. It will start on next gateway reconnect.",
-    );
-  }
+  // completePairing stores the pairing and returns via addPairing; read the
+  // recipientId from MST so we can return it in the GraphQL response.
+  const latest = ctx.mobileManager.root.mobilePairings;
+  const last = latest.length > 0 ? latest[latest.length - 1] : null;
+  const recipientId = (last as any)?.pairingId || (last as any)?.id || "";
 
   return {
     data: {

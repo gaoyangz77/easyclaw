@@ -3,6 +3,8 @@ import { createLogger } from "@rivonclaw/logger";
 import { RootStoreModel } from "@rivonclaw/core/models";
 import { SYSTEM_TOOL_CATALOG } from "../generated/system-tool-catalog.js";
 import { LLMProviderManagerModel, type LLMProviderManagerEnv } from "./llm-provider-manager.js";
+import { ChannelManagerModel, type ChannelManagerEnv } from "./channel-manager.js";
+import { MobileManagerModel, type MobileManagerEnv } from "./mobile-manager.js";
 
 const log = createLogger("desktop-store");
 
@@ -39,8 +41,20 @@ export function initLLMProviderManagerEnv(env: LLMProviderManagerEnv): void {
   rootStore.llmManager.initFromStorage();
 }
 
-// Re-export the env type for main.ts convenience
-export type { LLMProviderManagerEnv };
+/** Initialize the Channel Manager environment. Called once during startup in main.ts. */
+export function initChannelManagerEnv(env: ChannelManagerEnv): void {
+  rootStore.channelManager.setEnv(env);
+  rootStore.channelManager.init();
+}
+
+/** Initialize the Mobile Manager environment. Called once during startup in panel-server.ts. */
+export function initMobileManagerEnv(env: MobileManagerEnv): void {
+  rootStore.mobileManager.setEnv(env);
+  rootStore.mobileManager.init();
+}
+
+// Re-export the env types for main.ts convenience
+export type { LLMProviderManagerEnv, ChannelManagerEnv, MobileManagerEnv };
 
 // ---------------------------------------------------------------------------
 // Desktop-specific RootStore: extends shared model with ingestion actions
@@ -241,10 +255,60 @@ const DesktopRootStoreModel = RootStoreModel.actions((self) => ({
     const idx = self.providerKeys.findIndex((k) => k.id === id);
     if (idx >= 0) self.providerKeys.splice(idx, 1);
   },
+
+  /** Replace all channel accounts in the MST store (bulk load from storage). */
+  loadChannelAccounts(accounts: any[]) {
+    applySnapshot(self.channelAccounts, accounts);
+  },
+
+  /** Upsert a single channel account (after create/update). */
+  upsertChannelAccount(account: any) {
+    const idx = self.channelAccounts.findIndex(
+      (a) => a.channelId === account.channelId && a.accountId === account.accountId,
+    );
+    if (idx >= 0) {
+      applySnapshot(self.channelAccounts[idx], account);
+    } else {
+      self.channelAccounts.push(account);
+    }
+  },
+
+  /** Remove a channel account by composite key. */
+  removeChannelAccount(channelId: string, accountId: string) {
+    const idx = self.channelAccounts.findIndex(
+      (a) => a.channelId === channelId && a.accountId === accountId,
+    );
+    if (idx >= 0) self.channelAccounts.splice(idx, 1);
+  },
+
+  /** Replace all mobile pairings in the MST store (bulk load from storage). */
+  loadMobilePairings(pairings: any[]) {
+    applySnapshot(self.mobilePairings, pairings);
+  },
+
+  /** Upsert a single mobile pairing. */
+  upsertMobilePairing(pairing: any) {
+    const idx = self.mobilePairings.findIndex((p) => p.id === pairing.id);
+    if (idx >= 0) {
+      applySnapshot(self.mobilePairings[idx], pairing);
+    } else {
+      self.mobilePairings.push(pairing);
+    }
+  },
+
+  /** Remove a mobile pairing by ID. */
+  removeMobilePairing(id: string) {
+    const idx = self.mobilePairings.findIndex((p) => p.id === id);
+    if (idx >= 0) self.mobilePairings.splice(idx, 1);
+  },
 }))
 .props({
   /** LLM Provider Manager — encapsulates provider key transaction actions. */
   llmManager: types.optional(LLMProviderManagerModel, {}),
+  /** Channel Manager — encapsulates channel account CRUD and plugin entry computation. */
+  channelManager: types.optional(ChannelManagerModel, {}),
+  /** Mobile Manager — encapsulates mobile pairing lifecycle and sync engine coordination. */
+  mobileManager: types.optional(MobileManagerModel, {}),
 });
 
 /** Singleton MST store instance for the Desktop process. */

@@ -145,3 +145,21 @@ prompt injections in raw mode.
 
 **Removal:** Drop when upstream OpenClaw adds a native way to fully suppress
 all default system prompt sections.
+
+### 0005 — Skip `stopChannel` for new-account QR logins
+
+**File:** `0005-vendor-openclaw-skip-stopChannel-for-new-account-QR-.patch`
+
+**Why:** OpenClaw's `web.login.start` RPC handler unconditionally calls
+`context.stopChannel(provider.id, accountId)` before generating a QR code.
+When `accountId` is undefined (new account login), this stops ALL running
+accounts for the channel — killing live WeChat bots the moment the QR code
+is displayed, before anyone scans it. EasyClaw supports multiple WeChat
+accounts; starting a QR login for a new account must not disconnect existing
+accounts.
+
+**Change:** Wrap `stopChannel` in `if (accountId)` so it only fires for
+re-login of an existing account, not for new-account logins.
+
+**Removal:** Drop when upstream OpenClaw makes `stopChannel` conditional on
+re-login vs new-account login, or adds an option to skip channel stop.

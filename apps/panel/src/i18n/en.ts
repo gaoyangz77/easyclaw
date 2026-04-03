@@ -740,6 +740,8 @@ export default {
     retry: "Try Again",
     expired: "QR code has expired. Please try again.",
     gatewayUnavailable: "Gateway is not connected. Please start the gateway first.",
+    autoRefresh: "Auto-refresh in {{seconds}}s",
+    refreshing: "Refreshing QR code...",
   },
   mobile: {
     description: "Scan to connect your phone — zero config, zero hassle. Chat with your AI agent anytime, anywhere.",

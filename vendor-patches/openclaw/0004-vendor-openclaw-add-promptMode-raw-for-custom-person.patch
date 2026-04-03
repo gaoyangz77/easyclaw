@@ -1,7 +1,7 @@
-From d9ba88576df5ffc6170b406c44b35a314ec6c101 Mon Sep 17 00:00:00 2001
+From a389144084606918eb1a34ec304e7817d35552cc Mon Sep 17 00:00:00 2001
 From: RivonClaw CI <ci@rivonclaw.com>
 Date: Thu, 2 Apr 2026 01:21:53 -0700
-Subject: [PATCH 4/4] vendor(openclaw): add promptMode "raw" for custom persona
+Subject: [PATCH 4/5] vendor(openclaw): add promptMode "raw" for custom persona
  agents
 
 Why:

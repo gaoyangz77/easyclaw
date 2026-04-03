@@ -1,0 +1,50 @@
+From 21b830d43c2d94af7f34c94526ce59c6e89faeba Mon Sep 17 00:00:00 2001
+From: Gaoyang Zhang <younglobalization@gmail.com>
+Date: Fri, 3 Apr 2026 02:46:19 -0700
+Subject: [PATCH 5/5] vendor(openclaw): skip stopChannel for new-account QR
+ logins
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Why:
+- OpenClaw's web.login.start handler unconditionally calls
+  context.stopChannel(provider.id, accountId) before generating a QR
+  code. When accountId is undefined (new account login), this stops ALL
+  running accounts for the channel, killing live WeChat bots the moment
+  the QR code is displayed — before anyone even scans it.
+- EasyClaw supports multiple WeChat accounts. Starting a QR login for a
+  new account must not disconnect existing accounts.
+
+Removal:
+- Drop when upstream OpenClaw makes stopChannel conditional on re-login
+  vs new-account login, or adds an option to skip channel stop.
+
+Tests:
+- apps/desktop/src/gateway/vendor-web-login-no-stop.sentinel.test.ts
+---
+ src/gateway/server-methods/web.ts | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/src/gateway/server-methods/web.ts b/src/gateway/server-methods/web.ts
+index 26f6f44ea8..561d1c8dab 100644
+--- a/src/gateway/server-methods/web.ts
++++ b/src/gateway/server-methods/web.ts
+@@ -58,7 +58,13 @@ export const webHandlers: GatewayRequestHandlers = {
+         respondProviderUnavailable(respond);
+         return;
+       }
+-      await context.stopChannel(provider.id, accountId);
++      // Only stop the channel when re-logging an existing account (accountId
++      // provided).  For new-account logins (no accountId) the existing running
++      // accounts must stay connected — stopping them here kills live bots the
++      // moment the QR code is displayed.
++      if (accountId) {
++        await context.stopChannel(provider.id, accountId);
++      }
+       if (!provider.gateway?.loginWithQrStart) {
+         respondProviderUnsupported(respond, provider.id);
+         return;
+-- 
+2.50.1 (Apple Git-155)
+

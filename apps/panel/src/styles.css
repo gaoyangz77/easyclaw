@@ -3551,6 +3551,12 @@ tbody td {
   color: var(--color-text-secondary);
 }
 
+.qr-login-countdown {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+}
+
 .select-min-w-200 {
   min-width: 200px;
 }
@@ -7644,6 +7650,11 @@ tbody td {
 .escalation-cascade-col-disabled {
   opacity: 0.45;
   pointer-events: none;
+}
+
+.escalation-cascade-row-flush {
+  padding: 0;
+  margin-top: 16px;
 }
 
 /* Hint text inside shop-info-card — padded to align with card content */

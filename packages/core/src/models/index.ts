@@ -10,6 +10,10 @@ export { QuotaCircleModel, LlmQuotaStatusModel, UserSubscriptionModel } from "./
 export type { QuotaCircle, LlmQuotaStatus, UserSubscription } from "./Subscription.js";
 export { ProviderKeyModel } from "./ProviderKey.js";
 export type { ProviderKey } from "./ProviderKey.js";
+export { ChannelAccountModel } from "./ChannelAccount.js";
+export type { ChannelAccount } from "./ChannelAccount.js";
+export { MobilePairingModel } from "./MobilePairing.js";
+export type { MobilePairing } from "./MobilePairing.js";
 export { ToolCapabilityModel, toolIdMatch } from "./ToolCapability.js";
 export type { ToolCapability, AvailableTool, SurfaceInfo, RunProfileInfo } from "./ToolCapability.js";
 export { UserModel } from "./User.js";

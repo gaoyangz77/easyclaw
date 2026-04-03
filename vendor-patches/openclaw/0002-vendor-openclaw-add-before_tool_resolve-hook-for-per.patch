@@ -1,7 +1,7 @@
-From ef9cf702d1a8c943d6e6d29055edd5e20c4ecba4 Mon Sep 17 00:00:00 2001
+From cacb43fe4b39ee10df9e217e7a7ebf17c41ab49b Mon Sep 17 00:00:00 2001
 From: RivonClaw CI <ci@rivonclaw.com>
 Date: Thu, 2 Apr 2026 01:13:06 -0700
-Subject: [PATCH 2/4] vendor(openclaw): add before_tool_resolve hook for
+Subject: [PATCH 2/5] vendor(openclaw): add before_tool_resolve hook for
  per-session tool filtering
 
 Why:

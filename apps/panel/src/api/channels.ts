@@ -2,15 +2,6 @@ import { fetchJson } from "./client.js";
 import type { ChannelAccountSnapshot, ChannelsStatusSnapshot } from "@rivonclaw/core";
 export type { ChannelAccountSnapshot, ChannelsStatusSnapshot };
 
-/** Legacy channel interface (SQLite-backed, not in GQL) */
-interface Channel {
-  id: string;
-  channelType: string;
-  enabled: boolean;
-  accountId: string;
-  settings: Record<string, unknown>;
-}
-
 /**
  * Fetch real-time channel status from OpenClaw gateway via RPC.
  * @param probe - If true, trigger health checks for all channels
@@ -26,32 +17,8 @@ export async function fetchChannelStatus(probe = false): Promise<ChannelsStatusS
 }
 
 /**
- * @deprecated Legacy SQLite-backed channels (Phase 0). Use fetchChannelStatus instead.
- */
-export async function fetchChannels(): Promise<Channel[]> {
-  const data = await fetchJson<{ channels: Channel[] }>("/channels");
-  return data.channels;
-}
-
-/**
- * @deprecated Legacy SQLite-backed channels (Phase 0). Use OpenClaw config instead.
- */
-export async function createChannel(channel: Omit<Channel, "id">): Promise<Channel> {
-  return fetchJson<Channel>("/channels", {
-    method: "POST",
-    body: JSON.stringify(channel),
-  });
-}
-
-/**
- * @deprecated Legacy SQLite-backed channels (Phase 0). Use OpenClaw config instead.
- */
-export async function deleteChannel(id: string): Promise<void> {
-  await fetchJson("/channels/" + id, { method: "DELETE" });
-}
-
-/**
  * Create a new channel account in OpenClaw config.
+ * @deprecated Use entityStore.channelManager.createAccount() instead for MST sync.
  */
 export async function createChannelAccount(data: {
   channelId: string;
@@ -68,6 +35,7 @@ export async function createChannelAccount(data: {
 
 /**
  * Update an existing channel account in OpenClaw config.
+ * @deprecated Use channelAccount.update() on the MST model instead for MST sync.
  */
 export async function updateChannelAccount(
   channelId: string,
@@ -86,6 +54,7 @@ export async function updateChannelAccount(
 
 /**
  * Delete a channel account from OpenClaw config.
+ * @deprecated Use channelAccount.delete() on the MST model instead for MST sync.
  */
 export async function deleteChannelAccount(
   channelId: string,
@@ -127,8 +96,9 @@ export interface AllowlistResult {
   owners: Record<string, boolean>;
 }
 
-export async function fetchAllowlist(channelId: string): Promise<AllowlistResult> {
-  return fetchJson<AllowlistResult>(`/pairing/allowlist/${channelId}`);
+export async function fetchAllowlist(channelId: string, accountId?: string): Promise<AllowlistResult> {
+  const qs = accountId ? `?accountId=${encodeURIComponent(accountId)}` : "";
+  return fetchJson<AllowlistResult>(`/pairing/allowlist/${channelId}${qs}`);
 }
 
 export async function setRecipientLabel(channelId: string, recipientId: string, label: string): Promise<void> {

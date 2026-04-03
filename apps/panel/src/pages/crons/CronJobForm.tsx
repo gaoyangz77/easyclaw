@@ -6,6 +6,7 @@ import { Select } from "../../components/inputs/Select.js";
 import { RunProfileSelector } from "../../components/inputs/RunProfileSelector.js";
 import { ChevronRightIcon } from "../../components/icons.js";
 import { fetchChannelStatus, fetchAllowlist, setRecipientLabel, type ChannelsStatusSnapshot } from "../../api/channels.js";
+import { KNOWN_CHANNELS } from "../channels/channel-defs.js";
 import { observer } from "mobx-react-lite";
 import { useEntityStore } from "../../store/EntityStoreProvider.js";
 import { setRunProfileForScope } from "../../api/tool-registry.js";
@@ -134,11 +135,15 @@ export const CronJobForm = observer(function CronJobForm({ mode, initialData, on
     }
     let cancelled = false;
     setAllowlistLoading(true);
-    fetchAllowlist(form.deliveryChannel).then((result) => {
+    fetchAllowlist(form.deliveryChannel, form.deliveryAccountId || undefined).then((result) => {
       if (!cancelled) {
         setAllowlist(result.allowlist);
         setRecipientLabels(result.labels);
         setAllowlistLoading(false);
+        // Auto-select first recipient if none selected
+        if (!form.deliveryTo && result.allowlist.length > 0) {
+          update("deliveryTo", result.allowlist[0]);
+        }
       }
     }).catch(() => {
       if (!cancelled) {
@@ -148,7 +153,7 @@ export const CronJobForm = observer(function CronJobForm({ mode, initialData, on
       }
     });
     return () => { cancelled = true; };
-  }, [form.deliveryChannel, form.deliveryMode]);
+  }, [form.deliveryChannel, form.deliveryAccountId, form.deliveryMode]);
 
   const update = useCallback(<K extends keyof CronJobFormData>(key: K, value: CronJobFormData[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -239,32 +244,62 @@ export const CronJobForm = observer(function CronJobForm({ mode, initialData, on
     update("cronExpr", parts.join(" "));
   }, [form.cronExpr, update]);
 
-  /** Channels that have at least one connected/enabled account. */
+  /** Channel account options as `channelId:accountId` pairs, matching EcommercePage pattern. */
   const connectedChannelOptions = useMemo(() => {
     if (!channelSnapshot) return [];
-    const connected: { value: string; label: string }[] = [];
+    const options: { value: string; label: string }[] = [];
     for (const [channelId, accounts] of Object.entries(channelSnapshot.channelAccounts)) {
-      const hasActive = accounts.some((a) => a.connected === true || a.enabled === true);
-      if (!hasActive) continue;
-      connected.push({
-        value: channelId,
-        label: channelSnapshot.channelLabels[channelId] || channelId,
-      });
+      const knownChannel = KNOWN_CHANNELS.find((c) => c.id === channelId);
+      const channelLabel = knownChannel
+        ? t(knownChannel.labelKey)
+        : channelSnapshot.channelLabels[channelId] || channelId;
+      for (const account of accounts) {
+        if (account.enabled === false) continue;
+        const isSyntheticDefault =
+          account.accountId === "default" &&
+          account.configured === false &&
+          !account.name &&
+          (account as any).tokenSource === "none";
+        if (isSyntheticDefault) continue;
+        options.push({
+          value: `${channelId}:${account.accountId}`,
+          label: `${channelLabel} - ${account.name || account.accountId}`,
+        });
+      }
     }
     const orderMap = new Map(channelSnapshot.channelOrder.map((id, i) => [id, i]));
-    connected.sort((a, b) => (orderMap.get(a.value) ?? 999) - (orderMap.get(b.value) ?? 999));
-    return connected;
-  }, [channelSnapshot]);
+    options.sort((a, b) => {
+      const aChannel = a.value.split(":")[0];
+      const bChannel = b.value.split(":")[0];
+      return (orderMap.get(aChannel) ?? 999) - (orderMap.get(bChannel) ?? 999);
+    });
+    return options;
+  }, [channelSnapshot, t]);
+
+  // Legacy cron jobs store bare channelId without accountId — auto-migrate
+  // by matching the first connected account for that channel.
+  useEffect(() => {
+    if (form.deliveryChannel && !form.deliveryAccountId && connectedChannelOptions.length > 0) {
+      const match = connectedChannelOptions.find((o) => o.value.startsWith(`${form.deliveryChannel}:`));
+      if (match) {
+        const colonIdx = match.value.indexOf(":");
+        update("deliveryAccountId", match.value.slice(colonIdx + 1));
+      }
+    }
+  }, [form.deliveryChannel, form.deliveryAccountId, connectedChannelOptions]);
 
   /** Channel options with fallback for disconnected current selection (edit mode). */
   const channelOptions = useMemo(() => {
-    if (!form.deliveryChannel) return connectedChannelOptions;
-    if (connectedChannelOptions.some((o) => o.value === form.deliveryChannel)) return connectedChannelOptions;
+    const compositeValue = form.deliveryChannel && form.deliveryAccountId
+      ? `${form.deliveryChannel}:${form.deliveryAccountId}`
+      : form.deliveryChannel;
+    if (!compositeValue) return connectedChannelOptions;
+    if (connectedChannelOptions.some((o) => o.value === compositeValue)) return connectedChannelOptions;
     return [
-      { value: form.deliveryChannel, label: `${form.deliveryChannel} (${t("crons.channelDisconnected")})` },
+      { value: compositeValue, label: `${compositeValue} (${t("crons.channelDisconnected")})` },
       ...connectedChannelOptions,
     ];
-  }, [connectedChannelOptions, form.deliveryChannel, t]);
+  }, [connectedChannelOptions, form.deliveryChannel, form.deliveryAccountId, t]);
 
   /** Recipient options from allowlist, showing label (id) when available. */
   const recipientOptions = useMemo(() => {
@@ -280,7 +315,14 @@ export const CronJobForm = observer(function CronJobForm({ mode, initialData, on
   }, [allowlist, form.deliveryTo, recipientLabels]);
 
   const handleChannelChange = useCallback((v: string) => {
-    update("deliveryChannel", v);
+    const colonIdx = v.indexOf(":");
+    if (colonIdx === -1) {
+      update("deliveryChannel", v);
+      update("deliveryAccountId", "");
+    } else {
+      update("deliveryChannel", v.slice(0, colonIdx));
+      update("deliveryAccountId", v.slice(colonIdx + 1));
+    }
     update("deliveryTo", "");
   }, [update]);
 
@@ -543,8 +585,8 @@ export const CronJobForm = observer(function CronJobForm({ mode, initialData, on
                 }))}
               />
               {form.deliveryMode === "announce" && (
-                <>
-                  <div className="form-group">
+                <div className="escalation-cascade-row escalation-cascade-row-flush">
+                  <div className="escalation-cascade-col">
                     <label className="form-label-block">{t("crons.fieldDeliveryChannel")}</label>
                     {channelStatusLoading ? (
                       <Select
@@ -557,7 +599,7 @@ export const CronJobForm = observer(function CronJobForm({ mode, initialData, on
                     ) : (
                       <>
                         <Select
-                          value={form.deliveryChannel}
+                          value={form.deliveryChannel && form.deliveryAccountId ? `${form.deliveryChannel}:${form.deliveryAccountId}` : form.deliveryChannel}
                           onChange={handleChannelChange}
                           options={channelOptions}
                           placeholder={t("crons.fieldDeliveryChannel")}
@@ -568,37 +610,16 @@ export const CronJobForm = observer(function CronJobForm({ mode, initialData, on
                       </>
                     )}
                   </div>
-                  {form.deliveryChannel && (
-                    <div className="form-group">
-                      <label className="form-label-block">{t("crons.fieldDeliveryRecipient")}</label>
-                      <Select
-                        searchable
-                        creatable
-                        value={form.deliveryTo}
-                        onChange={(v) => update("deliveryTo", v)}
-                        options={recipientOptions}
-                        placeholder={
-                          allowlistLoading
-                            ? t("crons.channelStatusLoading")
-                            : t("crons.recipientSelectOrType")
-                        }
-                        disabled={allowlistLoading}
-                      />
-                      {form.deliveryTo && (
-                        <input
-                          className="input-full"
-                          value={recipientLabels[form.deliveryTo] ?? ""}
-                          onChange={(e) => setRecipientLabels((prev) => ({ ...prev, [form.deliveryTo]: e.target.value }))}
-                          onBlur={() => {
-                            const label = recipientLabels[form.deliveryTo] ?? "";
-                            setRecipientLabel(form.deliveryChannel, form.deliveryTo, label).catch(() => { });
-                          }}
-                          placeholder={t("crons.recipientLabelPlaceholder")}
-                        />
-                      )}
-                    </div>
-                  )}
-                </>
+                  <div className={`escalation-cascade-col${!form.deliveryChannel ? " escalation-cascade-col-disabled" : ""}`}>
+                    <label className="form-label-block">{t("crons.fieldDeliveryRecipient")}</label>
+                    <Select
+                      value={form.deliveryTo}
+                      onChange={(v) => update("deliveryTo", v)}
+                      options={recipientOptions}
+                      disabled={!form.deliveryChannel}
+                    />
+                  </div>
+                </div>
               )}
               {form.deliveryMode === "webhook" && (
                 <div className="form-group">

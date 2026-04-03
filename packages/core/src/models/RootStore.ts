@@ -5,6 +5,8 @@ import { RunProfileModel } from "./RunProfile.js";
 import { ShopModel } from "./Shop.js";
 import { UserSubscriptionModel, LlmQuotaStatusModel } from "./Subscription.js";
 import { ProviderKeyModel } from "./ProviderKey.js";
+import { ChannelAccountModel } from "./ChannelAccount.js";
+import { MobilePairingModel } from "./MobilePairing.js";
 import { ToolCapabilityModel } from "./ToolCapability.js";
 import { UserModel } from "./User.js";
 import { PlatformAppModel } from "./PlatformApp.js";
@@ -23,6 +25,8 @@ export const RootStoreModel = types
     runProfiles: types.optional(types.array(RunProfileModel), []),
     shops: types.optional(types.array(ShopModel), []),
     providerKeys: types.optional(types.array(ProviderKeyModel), []),
+    channelAccounts: types.optional(types.array(ChannelAccountModel), []),
+    mobilePairings: types.optional(types.array(MobilePairingModel), []),
     subscriptionStatus: types.maybeNull(UserSubscriptionModel),
     llmQuotaStatus: types.maybeNull(LlmQuotaStatusModel),
     toolCapability: types.optional(ToolCapabilityModel, {}),
@@ -86,6 +90,15 @@ export const RootStoreModel = types
       return this.mergedToolSpecs
         .filter((spec) => spec.runProfiles.some((rp: string) => rp.toUpperCase() === target))
         .map((spec) => spec.id);
+    },
+    getChannelAccount(channelId: string, accountId: string) {
+      return self.channelAccounts.find((a) => a.channelId === channelId && a.accountId === accountId);
+    },
+    getMobilePairing(id: string) {
+      return self.mobilePairings.find((p) => p.id === id);
+    },
+    getMobilePairingByPairingId(pairingId: string) {
+      return self.mobilePairings.find((p) => p.pairingId === pairingId);
     },
     getShop(id: string) {
       return self.shops.find((s) => s.id === id);

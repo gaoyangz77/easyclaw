@@ -12,7 +12,7 @@ import {
 } from "../../api/channels.js";
 import { fetchMobileDeviceStatus, disconnectMobilePairing, getMobilePairingStatus, type MobileDeviceStatusResponse, type MobilePairingInfo } from "../../api/mobile-chat.js";
 import { ConfirmDialog } from "../../components/modals/ConfirmDialog.js";
-import { StatusBadge, QR_LOGIN_CHANNELS, type AccountEntry } from "./channel-defs.jsx";
+import { StatusBadge, type AccountEntry } from "./channel-defs.jsx";
 
 /** Show last 3 chars of an ID with a copy-to-clipboard button. */
 function TruncatedId({ value, t }: { value: string; t: (key: string) => string }) {
@@ -60,19 +60,20 @@ export function ChannelAccountsTable({
   onEdit: (channelId: string, account: ChannelAccountSnapshot) => void;
   onDelete: (channelId: string, accountId: string) => void;
 }) {
-  const [expandedChannels, setExpandedChannels] = useState<Set<string>>(new Set());
+  const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
   const [recipientData, setRecipientData] = useState<Record<string, RecipientData>>({});
   const [processing, setProcessing] = useState<string | null>(null);
-  const [removeConfirm, setRemoveConfirm] = useState<{ channelId: string; entry: string } | null>(null);
+  const [removeConfirm, setRemoveConfirm] = useState<{ compositeKey: string; channelId: string; entry: string } | null>(null);
   const [mobileDeviceStatus, setMobileDeviceStatus] = useState<MobileDeviceStatusResponse["devices"]>({});
   const [mobilePairings, setMobilePairings] = useState<MobilePairingInfo[]>([]);
 
   // Track in-flight label saves to show subtle feedback
   const savingLabelsRef = useRef<Set<string>>(new Set());
 
-  // Poll mobile device status and fetch pairings while the mobile channel is expanded
+  // Poll mobile device status and fetch pairings while any mobile account is expanded
+  const hasMobileExpanded = Array.from(expandedAccounts).some(key => key.startsWith("mobile:"));
   useEffect(() => {
-    if (!expandedChannels.has("mobile")) return;
+    if (!hasMobileExpanded) return;
 
     let cancelled = false;
     async function poll() {
@@ -90,18 +91,19 @@ export function ChannelAccountsTable({
     poll();
     const timer = setInterval(poll, 10_000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, [expandedChannels.has("mobile")]);
+  }, [hasMobileExpanded]);
 
   // Background refresh: update recipient data without resetting to loading state
-  async function refreshRecipientData(channelId: string) {
+  async function refreshRecipientData(channelId: string, accountId: string) {
+    const compositeKey = `${channelId}:${accountId}`;
     try {
       const [result, requests] = await Promise.all([
-        fetchAllowlist(channelId),
+        fetchAllowlist(channelId, accountId),
         fetchPairingRequests(channelId),
       ]);
       setRecipientData(prev => ({
         ...prev,
-        [channelId]: {
+        [compositeKey]: {
           loading: false,
           error: null,
           allowlist: result.allowlist,
@@ -115,9 +117,9 @@ export function ChannelAccountsTable({
     }
   }
 
-  // Listen for SSE pairing-update events to refresh expanded channels in real-time
+  // Listen for SSE pairing-update events to refresh expanded accounts in real-time
   useEffect(() => {
-    const nonMobileExpanded = Array.from(expandedChannels).filter(ch => ch !== "mobile");
+    const nonMobileExpanded = Array.from(expandedAccounts).filter(key => !key.startsWith("mobile:"));
     if (nonMobileExpanded.length === 0) return;
 
     const sse = new EventSource("/api/chat/events");
@@ -125,29 +127,34 @@ export function ChannelAccountsTable({
     sse.addEventListener("pairing-update", (e: MessageEvent) => {
       try {
         const { channelId } = JSON.parse(e.data) as { channelId: string };
-        if (nonMobileExpanded.includes(channelId)) {
-          refreshRecipientData(channelId);
+        // Find all expanded composite keys matching this channelId and refresh each
+        for (const key of nonMobileExpanded) {
+          const [keyChannelId, keyAccountId] = key.split(":", 2);
+          if (keyChannelId === channelId) {
+            refreshRecipientData(channelId, keyAccountId);
+          }
         }
       } catch { /* ignore malformed events */ }
     });
 
     return () => sse.close();
-  }, [expandedChannels]);
+  }, [expandedAccounts]);
 
-  async function loadRecipientData(channelId: string) {
+  async function loadRecipientData(channelId: string, accountId: string) {
+    const compositeKey = `${channelId}:${accountId}`;
     setRecipientData(prev => ({
       ...prev,
-      [channelId]: { loading: true, error: null, allowlist: [], labels: {}, owners: {}, pairingRequests: [] },
+      [compositeKey]: { loading: true, error: null, allowlist: [], labels: {}, owners: {}, pairingRequests: [] },
     }));
 
     try {
       const [result, requests] = await Promise.all([
-        fetchAllowlist(channelId),
+        fetchAllowlist(channelId, accountId),
         fetchPairingRequests(channelId),
       ]);
       setRecipientData(prev => ({
         ...prev,
-        [channelId]: {
+        [compositeKey]: {
           loading: false,
           error: null,
           allowlist: result.allowlist,
@@ -159,8 +166,8 @@ export function ChannelAccountsTable({
     } catch (err) {
       setRecipientData(prev => ({
         ...prev,
-        [channelId]: {
-          ...prev[channelId],
+        [compositeKey]: {
+          ...prev[compositeKey],
           loading: false,
           error: String(err),
         },
@@ -168,32 +175,33 @@ export function ChannelAccountsTable({
     }
   }
 
-  function toggleExpand(channelId: string) {
-    setExpandedChannels(prev => {
+  function toggleExpand(channelId: string, accountId: string) {
+    const compositeKey = `${channelId}:${accountId}`;
+    setExpandedAccounts(prev => {
       const next = new Set(prev);
-      if (next.has(channelId)) {
-        next.delete(channelId);
+      if (next.has(compositeKey)) {
+        next.delete(compositeKey);
       } else {
-        next.add(channelId);
+        next.add(compositeKey);
         // Lazy load data on first expand
-        if (!recipientData[channelId]) {
-          loadRecipientData(channelId);
+        if (!recipientData[compositeKey]) {
+          loadRecipientData(channelId, accountId);
         }
       }
       return next;
     });
   }
 
-  async function handleApprove(channelId: string, code: string) {
+  async function handleApprove(compositeKey: string, channelId: string, code: string) {
     setProcessing(code);
     try {
       const result = await approvePairing(channelId, code, i18nLang);
       setRecipientData(prev => {
-        const data = prev[channelId];
+        const data = prev[compositeKey];
         if (!data) return prev;
         return {
           ...prev,
-          [channelId]: {
+          [compositeKey]: {
             ...data,
             pairingRequests: data.pairingRequests.filter(r => r.code !== code),
             allowlist: [...data.allowlist, result.id],
@@ -202,22 +210,22 @@ export function ChannelAccountsTable({
       });
     } catch (err) {
       setRecipientData(prev => {
-        const data = prev[channelId];
+        const data = prev[compositeKey];
         if (!data) return prev;
-        return { ...prev, [channelId]: { ...data, error: `${t("pairing.failedToApprove")} ${String(err)}` } };
+        return { ...prev, [compositeKey]: { ...data, error: `${t("pairing.failedToApprove")} ${String(err)}` } };
       });
     } finally {
       setProcessing(null);
     }
   }
 
-  function requestRemove(channelId: string, entry: string) {
-    setRemoveConfirm({ channelId, entry });
+  function requestRemove(compositeKey: string, channelId: string, entry: string) {
+    setRemoveConfirm({ compositeKey, channelId, entry });
   }
 
   async function confirmRemove() {
     if (!removeConfirm) return;
-    const { channelId, entry } = removeConfirm;
+    const { compositeKey, channelId, entry } = removeConfirm;
     setRemoveConfirm(null);
     setProcessing(entry);
 
@@ -232,11 +240,11 @@ export function ChannelAccountsTable({
         await removeFromAllowlist(channelId, entry);
       }
       setRecipientData(prev => {
-        const data = prev[channelId];
+        const data = prev[compositeKey];
         if (!data) return prev;
         return {
           ...prev,
-          [channelId]: {
+          [compositeKey]: {
             ...data,
             allowlist: data.allowlist.filter(e => e !== entry),
           },
@@ -252,17 +260,17 @@ export function ChannelAccountsTable({
       }
     } catch (err) {
       setRecipientData(prev => {
-        const data = prev[channelId];
+        const data = prev[compositeKey];
         if (!data) return prev;
-        return { ...prev, [channelId]: { ...data, error: `${t("pairing.failedToRemove")} ${String(err)}` } };
+        return { ...prev, [compositeKey]: { ...data, error: `${t("pairing.failedToRemove")} ${String(err)}` } };
       });
     } finally {
       setProcessing(null);
     }
   }
 
-  async function handleOwnerToggle(channelId: string, recipientId: string, newValue: boolean) {
-    const data = recipientData[channelId];
+  async function handleOwnerToggle(compositeKey: string, channelId: string, recipientId: string, newValue: boolean) {
+    const data = recipientData[compositeKey];
     if (!data) return;
 
     const oldValue = data.owners[recipientId] ?? false;
@@ -270,9 +278,9 @@ export function ChannelAccountsTable({
     // Optimistic update
     setRecipientData(prev => ({
       ...prev,
-      [channelId]: {
-        ...prev[channelId],
-        owners: { ...prev[channelId].owners, [recipientId]: newValue },
+      [compositeKey]: {
+        ...prev[compositeKey],
+        owners: { ...prev[compositeKey].owners, [recipientId]: newValue },
       },
     }));
 
@@ -282,30 +290,30 @@ export function ChannelAccountsTable({
       // Revert on failure
       setRecipientData(prev => ({
         ...prev,
-        [channelId]: {
-          ...prev[channelId],
-          owners: { ...prev[channelId].owners, [recipientId]: oldValue },
+        [compositeKey]: {
+          ...prev[compositeKey],
+          owners: { ...prev[compositeKey].owners, [recipientId]: oldValue },
         },
       }));
     }
   }
 
-  async function handleLabelBlur(channelId: string, recipientId: string, newLabel: string) {
-    const data = recipientData[channelId];
+  async function handleLabelBlur(compositeKey: string, channelId: string, recipientId: string, newLabel: string) {
+    const data = recipientData[compositeKey];
     if (!data) return;
 
     const oldLabel = data.labels[recipientId] || "";
     if (newLabel === oldLabel) return;
 
-    const saveKey = `${channelId}:${recipientId}`;
+    const saveKey = `${compositeKey}:${recipientId}`;
     savingLabelsRef.current.add(saveKey);
 
     // Optimistic update
     setRecipientData(prev => ({
       ...prev,
-      [channelId]: {
-        ...prev[channelId],
-        labels: { ...prev[channelId].labels, [recipientId]: newLabel },
+      [compositeKey]: {
+        ...prev[compositeKey],
+        labels: { ...prev[compositeKey].labels, [recipientId]: newLabel },
       },
     }));
 
@@ -315,9 +323,9 @@ export function ChannelAccountsTable({
       // Revert on failure
       setRecipientData(prev => ({
         ...prev,
-        [channelId]: {
-          ...prev[channelId],
-          labels: { ...prev[channelId].labels, [recipientId]: oldLabel },
+        [compositeKey]: {
+          ...prev[compositeKey],
+          labels: { ...prev[compositeKey].labels, [recipientId]: oldLabel },
         },
       }));
     } finally {
@@ -341,8 +349,8 @@ export function ChannelAccountsTable({
     return t("pairing.timeDaysAgo", { count: diffDays });
   }
 
-  function renderExpandedRow(channelId: string) {
-    const data = recipientData[channelId];
+  function renderExpandedRow(compositeKey: string, channelId: string) {
+    const data = recipientData[compositeKey];
     if (!data) return null;
 
     if (data.loading) {
@@ -396,7 +404,7 @@ export function ChannelAccountsTable({
                         <td className="text-right">
                           <button
                             className="btn btn-primary btn-sm"
-                            onClick={() => handleApprove(channelId, request.code)}
+                            onClick={() => handleApprove(compositeKey, channelId, request.code)}
                             disabled={processing === request.code}
                           >
                             {processing === request.code ? t("pairing.approving") : t("pairing.approve")}
@@ -457,20 +465,20 @@ export function ChannelAccountsTable({
                               className="recipient-label-input"
                               defaultValue={data.labels[entry] || ""}
                               placeholder={t("pairing.labelPlaceholder")}
-                              onBlur={e => handleLabelBlur(channelId, entry, e.target.value.trim())}
+                              onBlur={e => handleLabelBlur(compositeKey, channelId, entry, e.target.value.trim())}
                             />
                           </td>
                           <td>
                             <div className="perm-switcher">
                               <button
                                 className={`perm-switcher-btn perm-switcher-btn-left ${isOwner ? "perm-switcher-btn-active" : "perm-switcher-btn-inactive"}`}
-                                onClick={() => !isOwner && handleOwnerToggle(channelId, entry, true)}
+                                onClick={() => !isOwner && handleOwnerToggle(compositeKey, channelId, entry, true)}
                               >
                                 {t("pairing.ownerBadge")}
                               </button>
                               <button
                                 className={`perm-switcher-btn perm-switcher-btn-right ${!isOwner ? "perm-switcher-btn-active" : "perm-switcher-btn-inactive"}`}
-                                onClick={() => isOwner && handleOwnerToggle(channelId, entry, false)}
+                                onClick={() => isOwner && handleOwnerToggle(compositeKey, channelId, entry, false)}
                               >
                                 {t("pairing.nonOwnerBadge")}
                               </button>
@@ -479,7 +487,7 @@ export function ChannelAccountsTable({
                           <td className="text-right">
                             <button
                               className="btn btn-danger btn-sm"
-                              onClick={() => requestRemove(channelId, entry)}
+                              onClick={() => requestRemove(compositeKey, channelId, entry)}
                               disabled={processing === entry}
                             >
                               {processing === entry ? t("pairing.removing") : t("common.remove")}
@@ -524,9 +532,10 @@ export function ChannelAccountsTable({
             ) : (
               allAccounts.map(({ channelId, channelLabel, account }) => {
                 const rowKey = `${channelId}-${account.accountId}`;
+                const compositeKey = `${channelId}:${account.accountId}`;
                 const isDeleting = deletingKey === rowKey;
-                const isExpanded = expandedChannels.has(channelId);
-                const canExpand = !QR_LOGIN_CHANNELS.has(channelId);
+                const isExpanded = expandedAccounts.has(compositeKey);
+                const canExpand = true;
                 const canEdit = channelId !== "mobile";
                 return (
                   <Fragment key={rowKey}>
@@ -537,7 +546,7 @@ export function ChannelAccountsTable({
                         // Don't toggle when clicking buttons or inputs
                         const target = e.target as HTMLElement;
                         if (target.closest("button, a, input, select")) return;
-                        toggleExpand(channelId);
+                        toggleExpand(channelId, account.accountId);
                       }}
                     >
                       <td className="channel-expand-col">
@@ -571,7 +580,7 @@ export function ChannelAccountsTable({
                         </div>
                       </td>
                     </tr>
-                    {isExpanded && canExpand && renderExpandedRow(channelId)}
+                    {isExpanded && canExpand && renderExpandedRow(compositeKey, channelId)}
                   </Fragment>
                 );
               })

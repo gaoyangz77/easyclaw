@@ -1,7 +1,7 @@
-From e7a75dfb510103f20f55c1634c7fb2cb9cd101d3 Mon Sep 17 00:00:00 2001
+From 1b038b7f74d15a72c6c2be7634a3557ed169afc4 Mon Sep 17 00:00:00 2001
 From: RivonClaw CI <ci@rivonclaw.com>
 Date: Thu, 2 Apr 2026 01:09:28 -0700
-Subject: [PATCH 1/4] vendor(openclaw): add browser lifecycle hooks for plugin
+Subject: [PATCH 1/5] vendor(openclaw): add browser lifecycle hooks for plugin
  integration
 
 Why:

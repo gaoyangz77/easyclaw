@@ -25,14 +25,24 @@ export type WorkerPorts = {
   proxy: number;
 };
 
+/** Check if a port is currently in use (TCP connect probe). */
+async function isPortInUse(port: number): Promise<boolean> {
+  return new Promise<boolean>((resolve) => {
+    const sock = createConnection({ port, host: "127.0.0.1" });
+    sock.once("connect", () => { sock.destroy(); resolve(true); });
+    sock.once("error", () => resolve(false));
+  });
+}
+
 /**
- * Kill any process listening on the given port, then wait until free.
+ * Get PIDs of processes LISTENING on a port (servers only, not clients).
  *
- * In parallel mode each worker uses unique ports, so we ONLY kill by port —
- * never by process name (killall/taskkill /IM) as that would kill gateways
- * belonging to other workers.
+ * Using -sTCP:LISTEN is critical for parallel safety: without it, lsof
+ * returns client connections too (e.g. Electron's WebSocket to its own
+ * gateway), and kill -9 on the Electron PID tears down the entire process
+ * tree — including unrelated tests sharing that Electron worker.
  */
-async function ensurePortFree(port: number): Promise<void> {
+function getListeningPids(port: number): string[] {
   if (process.platform === "win32") {
     try {
       const out = execSync("netstat -ano", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "cmd.exe" });
@@ -44,23 +54,63 @@ async function ensurePortFree(port: number): Promise<void> {
           if (pid && /^\d+$/.test(pid)) pids.add(pid);
         }
       }
-      for (const pid of pids) {
-        try { execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore", shell: "cmd.exe" }); } catch {}
-      }
-    } catch {}
+      return [...pids];
+    } catch { return []; }
+  }
+  try {
+    // -sTCP:LISTEN → only server/listening sockets, never client connections
+    return execSync(`lsof -ti :${port} -sTCP:LISTEN 2>/dev/null`, { encoding: "utf-8" })
+      .trim().split("\n").filter(Boolean);
+  } catch { return []; }
+}
+
+/**
+ * Ensure a port is free, killing the listener if necessary.
+ *
+ * Strategy: SIGTERM first (graceful), wait up to 3s, then SIGKILL.
+ * On Windows: taskkill /F (always forceful, no graceful alternative).
+ *
+ * Only targets LISTENING processes — never client connections — so parallel
+ * workers that happen to have WebSocket clients on another worker's port
+ * are never affected.
+ */
+async function ensurePortFree(port: number): Promise<void> {
+  // Quick check — skip the lsof/kill overhead if already free
+  if (!await isPortInUse(port)) return;
+
+  const pids = getListeningPids(port);
+  if (pids.length === 0) {
+    // Port in use but no listener found (transient state) — wait briefly
+    await new Promise((r) => setTimeout(r, 500));
+    if (!await isPortInUse(port)) return;
+  }
+
+  if (process.platform === "win32") {
+    for (const pid of pids) {
+      try { execSync(`taskkill /T /F /PID ${pid}`, { stdio: "ignore", shell: "cmd.exe" }); } catch {}
+    }
   } else {
-    // Kill by port (lsof is fast — ~100ms on macOS)
-    try { execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null || true`, { stdio: "ignore" }); } catch {}
+    // Phase 1: SIGTERM (graceful shutdown — lets gateway close sockets cleanly)
+    for (const pid of pids) {
+      try { process.kill(Number(pid), "SIGTERM"); } catch {}
+    }
+
+    // Wait up to 3s for graceful exit
+    for (let i = 0; i < 30; i++) {
+      if (!await isPortInUse(port)) return;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+
+    // Phase 2: SIGKILL (force — only if SIGTERM didn't work)
+    const remaining = getListeningPids(port);
+    for (const pid of remaining) {
+      try { process.kill(Number(pid), "SIGKILL"); } catch {}
+    }
   }
 
   // Wait until the port is actually free (up to 5s)
   for (let i = 0; i < 50; i++) {
-    const inUse = await new Promise<boolean>((resolve) => {
-      const sock = createConnection({ port, host: "127.0.0.1" });
-      sock.once("connect", () => { sock.destroy(); resolve(true); });
-      sock.once("error", () => resolve(false));
-    });
-    if (!inUse) return;
+    if (!await isPortInUse(port)) return;
     await new Promise((r) => setTimeout(r, 100));
   }
 }
@@ -139,6 +189,12 @@ function buildEnv(tempDir: string, ports: WorkerPorts): Record<string, string> {
   // In E2E each test already has its own state dir, so the file lock adds no
   // safety — the port bind (EADDRINUSE) is sufficient.
   env.OPENCLAW_ALLOW_MULTI_GATEWAY = "1";
+
+  // Disable Bonjour/mDNS service advertisement.  mDNS service names are
+  // global (multicast DNS, not scoped by port), so parallel gateways cause
+  // name conflicts → @homebridge/ciao throws "Can't probe for a service
+  // which is announced already" → unhandled rejection → exit code 1.
+  env.OPENCLAW_DISABLE_BONJOUR = "1";
 
   return env;
 }
@@ -245,8 +301,9 @@ async function launchElectronApp(
   } finally {
     await app.close();
     // The gateway runs detached and may outlive the Electron process.
-    // Kill it by its specific port (safe in parallel — other workers use
-    // different ports).
+    // Wait briefly for it to exit naturally (app.close sends SIGTERM to the
+    // process tree), then force-kill only if it's still listening.
+    await new Promise((r) => setTimeout(r, 1_000));
     await ensurePortFree(ports.gateway);
 
     // Attach Desktop logs to the Playwright report on failure (covers failures

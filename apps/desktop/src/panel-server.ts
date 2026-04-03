@@ -15,7 +15,9 @@ import { resolveMediaBase } from "./utils/media-paths.js";
 import { UsageSnapshotEngine } from "./usage/usage-snapshot-engine.js";
 import type { ModelUsageTotals } from "./usage/usage-snapshot-engine.js";
 import { UsageQueryService } from "./usage/usage-query-service.js";
-import { MobileManager } from "./mobile/mobile-manager.js";
+import { initMobileManagerEnv } from "./store/desktop-store.js";
+import { rootStore } from "./store/desktop-store.js";
+import { getRpcClient } from "./gateway/rpc-client-ref.js";
 import type { AuthSessionManager } from "./auth/auth-session.js";
 import type { SessionLifecycleManager } from "./browser-profiles/session-lifecycle-manager.js";
 import type { ManagedBrowserService } from "./browser-profiles/managed-browser-service.js";
@@ -237,6 +239,7 @@ export interface PanelServerOptions {
   authSession?: AuthSessionManager;
   sessionLifecycleManager?: SessionLifecycleManager;
   managedBrowserService?: ManagedBrowserService;
+  channelManager?: import("./store/channel-manager.js").ChannelManagerInstance;
 }
 
 // --- Route handlers (dispatched in order, first match wins) ---
@@ -271,7 +274,7 @@ const routeHandlers: RouteHandler[] = [
 export async function startPanelServer(options: PanelServerOptions): Promise<{ server: Server; port: number }> {
   const requestedPort = options.port ?? resolvePanelPort();
   const distDir = resolve(options.panelDistDir);
-  const { storage, secretStore, proxyRouterPort, gatewayPort, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onExtrasChange, onPermissionsChange, onToolSelectionChange, onBrowserChange, onAutoLaunchChange, onAuthChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onOAuthPoll, onTelemetryTrack, vendorDir, nodeBin, deviceId, getUpdateResult, getGatewayInfo, changelogPath, onUpdateDownload, onUpdateCancel, onUpdateInstall, getUpdateDownloadState, authSession, sessionLifecycleManager, managedBrowserService } = options;
+  const { storage, secretStore, proxyRouterPort, gatewayPort, onRuleChange, onProviderChange, onOpenFileDialog, sttManager, onSttChange, onExtrasChange, onPermissionsChange, onToolSelectionChange, onBrowserChange, onAutoLaunchChange, onAuthChange, onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onOAuthPoll, onTelemetryTrack, vendorDir, nodeBin, deviceId, getUpdateResult, getGatewayInfo, changelogPath, onUpdateDownload, onUpdateCancel, onUpdateInstall, getUpdateDownloadState, authSession, sessionLifecycleManager, managedBrowserService, channelManager } = options;
 
   // Read changelog.json once at startup (cached in closure)
   let changelogEntries: unknown[] = [];
@@ -325,8 +328,13 @@ export async function startPanelServer(options: PanelServerOptions): Promise<{ s
   const snapshotEngine = new UsageSnapshotEngine(storage, captureUsage);
   const queryService = new UsageQueryService(storage, captureUsage);
 
-  // Mobile Chat Pairing Manager
-  const mobileManager = new MobileManager(storage, getApiBaseUrl(getSystemLocale()), resolveOpenClawStateDir());
+  // Mobile Chat Pairing Manager (MST model on desktop store)
+  initMobileManagerEnv({
+    storage,
+    controlPlaneUrl: getApiBaseUrl(getSystemLocale()),
+    stateDir: resolveOpenClawStateDir(),
+    getRpcClient,
+  });
 
   // Reconcile usage snapshot for the active key on startup
   const activeKeyOnStartup = storage.providerKeys.getActive();
@@ -346,10 +354,11 @@ export async function startPanelServer(options: PanelServerOptions): Promise<{ s
     sttManager, onSttChange, onExtrasChange, onPermissionsChange, onToolSelectionChange, onBrowserChange, onAutoLaunchChange, onAuthChange,
     onChannelConfigured, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onOAuthPoll,
     onTelemetryTrack, vendorDir, nodeBin, deviceId, getUpdateResult, getGatewayInfo,
-    snapshotEngine, queryService, mobileManager, authSession,
+    snapshotEngine, queryService, mobileManager: rootStore.mobileManager, authSession,
     cloudClient: authSession ? new CloudClient(authSession, getSystemLocale()) : undefined,
     sessionLifecycleManager,
     managedBrowserService,
+    channelManager,
   };
 
   const server = createServer(async (req, res) => {

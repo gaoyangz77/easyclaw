@@ -35,6 +35,11 @@
       "file": "apps/desktop/src/cs-bridge/vendor-prompt-raw.sentinel.test.ts",
       "vendorPath": "vendor/openclaw/src/agents/system-prompt.ts",
       "reason": "Drift guard — validates promptMode 'raw' support exists (vendor patch 0004)"
+    },
+    {
+      "file": "apps/desktop/src/gateway/vendor-web-login-no-stop.sentinel.test.ts",
+      "vendorPath": "vendor/openclaw/src/gateway/server-methods/web.ts",
+      "reason": "Drift guard — validates stopChannel is guarded by accountId (vendor patch 0005)"
     }
   ],
   "allowlist": []

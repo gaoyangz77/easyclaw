@@ -151,6 +151,7 @@ export interface CronJobFormData {
   timeoutSeconds: string;
   deliveryMode: CronDeliveryMode;
   deliveryChannel: string;
+  deliveryAccountId: string;
   deliveryTo: string;
   enabled: boolean;
   deleteAfterRun: boolean;
@@ -175,6 +176,7 @@ export function defaultFormData(): CronJobFormData {
     timeoutSeconds: "",
     deliveryMode: "none",
     deliveryChannel: "",
+    deliveryAccountId: "",
     deliveryTo: "",
     enabled: true,
     deleteAfterRun: false,
@@ -231,6 +233,7 @@ export function cronJobToFormData(job: CronJob): CronJobFormData {
   if (job.delivery) {
     form.deliveryMode = job.delivery.mode;
     form.deliveryChannel = job.delivery.channel ?? "";
+    form.deliveryAccountId = job.delivery.accountId ?? "";
     form.deliveryTo = job.delivery.to ?? "";
   }
 
@@ -309,6 +312,7 @@ function buildPayload(data: CronJobFormData): CronPayload {
 function buildDelivery(data: CronJobFormData): CronDelivery {
   const d: CronDelivery = { mode: data.deliveryMode };
   if (data.deliveryChannel.trim()) d.channel = data.deliveryChannel.trim();
+  if (data.deliveryAccountId?.trim()) d.accountId = data.deliveryAccountId.trim();
   if (data.deliveryTo.trim()) d.to = data.deliveryTo.trim();
   return d;
 }

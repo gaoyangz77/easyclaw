@@ -52,7 +52,7 @@ import { AuthSessionManager } from "./auth/auth-session.js";
 import { syncCloudProviderKey } from "./providers/cloud-provider-sync.js";
 import { allKeysToMstSnapshots, toMstSnapshot } from "./providers/provider-key-utils.js";
 import { syncActiveKey } from "./providers/provider-validator.js";
-import { rootStore, initLLMProviderManagerEnv } from "./store/desktop-store.js";
+import { rootStore, initLLMProviderManagerEnv, initChannelManagerEnv } from "./store/desktop-store.js";
 import { OAuthSubscriptionClient } from "./cloud/oauth-subscription-client.js";
 import { UpdateSubscriptionClient } from "./cloud/update-subscription-client.js";
 import { createSessionStateStack, type SessionStateStack } from "./browser-profiles/session-state-wiring.js";
@@ -514,17 +514,21 @@ app.whenReady().then(async () => {
   // With dynamic ports, orphaned processes won't block new instances,
   // so we skip TCP port probing entirely. Only do process-name-based cleanup
   // as a dev convenience (handles stale processes from previous runs).
-  try {
-    if (process.platform === "win32") {
-      try { execSync("taskkill /f /im openclaw-gateway.exe 2>nul & taskkill /f /im openclaw.exe 2>nul & exit /b 0", { stdio: "ignore", shell: "cmd.exe" }); } catch { }
-    } else {
-      // Use killall (~10ms) instead of pkill which can take 20-50s on macOS
-      // due to slow proc_info kernel calls when many processes are running.
-      execSync("killall -9 openclaw-gateway 2>/dev/null || true; killall -9 openclaw 2>/dev/null || true", { stdio: "ignore" });
+  //
+  // Skip in parallel E2E: killall is process-name-based and would kill
+  // gateways belonging to other test workers. Each E2E worker already
+  // cleans up its own gateway via ensurePortFree in the fixture teardown.
+  if (!process.env.OPENCLAW_ALLOW_MULTI_GATEWAY) {
+    try {
+      if (process.platform === "win32") {
+        try { execSync("taskkill /f /im openclaw-gateway.exe 2>nul & taskkill /f /im openclaw.exe 2>nul & exit /b 0", { stdio: "ignore", shell: "cmd.exe" }); } catch { }
+      } else {
+        execSync("killall -9 openclaw-gateway 2>/dev/null || true; killall -9 openclaw 2>/dev/null || true", { stdio: "ignore" });
+      }
+      log.info("Cleaned up existing openclaw processes");
+    } catch (err) {
+      log.warn("Failed to cleanup openclaw processes:", err);
     }
-    log.info("Cleaned up existing openclaw processes");
-  } catch (err) {
-    log.warn("Failed to cleanup openclaw processes:", err);
   }
 
   // Clean up stale gateway lock file (and kill owner) before starting.
@@ -541,9 +545,21 @@ app.whenReady().then(async () => {
     : join(import.meta.dirname, "..", "..", "..", "vendor", "openclaw");
   setVendorDir(vendorDir);
 
+  // Initialize Channel Manager -- loads accounts from SQLite (runs migration if needed).
+  // Must happen BEFORE createGatewayConfigBuilder so that buildPluginEntries() and
+  // buildConfigAccounts() have data when buildFullGatewayConfig is first invoked.
+  initChannelManagerEnv({
+    storage,
+    configPath,
+    stateDir,
+    getRpcClient,
+  });
+
   // Build gateway config helpers (closures bound to current settings)
   const { buildFullGatewayConfig } = createGatewayConfigBuilder({
     storage, secretStore, locale, configPath, stateDir, extensionsDir, sttCliPath, filePermissionsPluginPath, vendorDir,
+    channelPluginEntries: () => rootStore.channelManager.buildPluginEntries(),
+    channelConfigAccounts: () => rootStore.channelManager.buildConfigAccounts(),
   });
 
   writeGatewayConfig(await buildFullGatewayConfig(actualGatewayPort));
@@ -1422,6 +1438,7 @@ app.whenReady().then(async () => {
       telemetryClient?.track(eventType, metadata);
     },
     authSession,
+    channelManager: rootStore.channelManager,
   });
 
   // Now that the panel server is bound, set the actual URL for BrowserWindow.

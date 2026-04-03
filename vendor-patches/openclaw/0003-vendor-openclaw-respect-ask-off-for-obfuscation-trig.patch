@@ -1,7 +1,7 @@
-From 01b7675ac6a2ab8f29f22005f3dbea184b1ee854 Mon Sep 17 00:00:00 2001
+From 8a7a0e30c6c856efb190e9f62711b4d11fa45f2e Mon Sep 17 00:00:00 2001
 From: RivonClaw CI <ci@rivonclaw.com>
 Date: Thu, 2 Apr 2026 01:14:07 -0700
-Subject: [PATCH 3/4] vendor(openclaw): respect ask=off for
+Subject: [PATCH 3/5] vendor(openclaw): respect ask=off for
  obfuscation-triggered approvals
 
 Why:
