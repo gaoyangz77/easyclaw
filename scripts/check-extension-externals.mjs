@@ -227,8 +227,10 @@ if (failed) {
 console.log("OK  All extension entry graphs have no leaked external imports.");
 console.log("");
 
+// Verify lockfile is up to date. Use `--lockfile-only` (resolves deps without
+// downloading/linking) which is ~100x faster than a full `pnpm install`.
 try {
-  execSync("pnpm install --frozen-lockfile --ignore-scripts", {
+  execSync("pnpm install --frozen-lockfile --lockfile-only", {
     cwd: ROOT,
     stdio: "pipe",
   });
