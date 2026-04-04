@@ -35,7 +35,9 @@ export function setApiBaseUrlOverride(url: string): void {
 export function getApiBaseUrl(lang: string): string {
 	if (_apiBaseUrlOverride) return _apiBaseUrlOverride;
 	if (isStagingDevMode()) return `https://${DEFAULTS.domains.apiStaging}`;
-	return lang === "zh" ? `https://${DEFAULTS.domains.apiCn}` : `https://${DEFAULTS.domains.api}`;
+	// Always use the .com API domain — the .cn domain (api.zhuazhuaai.cn)
+	// resolves to a US IP and gets SNI-blocked by GFW for Chinese users.
+	return `https://${DEFAULTS.domains.api}`;
 }
 
 /** Return the GraphQL endpoint URL for the given language/locale. */
@@ -45,9 +47,9 @@ export function getGraphqlUrl(lang: string): string {
 
 /** Return the telemetry endpoint URL for the given locale. */
 export function getTelemetryUrl(locale: string): string {
-	return locale === "zh"
-		? `https://${DEFAULTS.domains.telemetryCn}/`
-		: `https://${DEFAULTS.domains.telemetry}/`;
+	// Always use .com — .cn telemetry domain has same SNI-blocking issue as API.
+	void locale;
+	return `https://${DEFAULTS.domains.telemetry}/`;
 }
 
 // ---------------------------------------------------------------------------
@@ -75,6 +77,7 @@ export function getCsRelayWsUrl(): string {
 export function getReleaseFeedUrl(locale: string): string {
 	const useStaging = typeof process !== "undefined" && process.env.UPDATE_FROM_STAGING === "1";
 	if (useStaging) return `https://${DEFAULTS.domains.staging}/releases`;
+	// Release feed: www.zhuazhuaai.cn is behind CDN and works, so keep .cn for zh.
 	return locale === "zh"
 		? `https://${DEFAULTS.domains.webCn}/releases`
 		: `https://${DEFAULTS.domains.web}/releases`;
