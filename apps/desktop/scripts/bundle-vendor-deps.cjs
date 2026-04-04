@@ -711,11 +711,34 @@ async function prebundleExtensions() {
 
   // ── Parallel extension index.ts builds ──
   // Each extension is independent (writes to its own staging dir), so we
-  // run all builds concurrently.  The two-step inline→external fallback
-  // remains sequential per-extension.
+  // run builds with bounded concurrency.  Unbounded Promise.all over 85+
+  // esbuild processes exhausts CI runner memory (GitHub Actions ≤ 7 GB),
+  // causing swap thrashing and timeouts.  os.cpus().length keeps pressure
+  // proportional to the machine.
+  const CONCURRENCY = require("os").cpus().length;
+
+  /**
+   * Map an array through an async fn with bounded concurrency.
+   * @template T, R
+   * @param {T[]} items
+   * @param {(item: T) => Promise<R>} fn
+   * @returns {Promise<R[]>}
+   */
+  async function mapConcurrent(items, fn) {
+    const results = new Array(items.length);
+    let next = 0;
+    async function worker() {
+      while (next < items.length) {
+        const i = next++;
+        results[i] = await fn(items[i]);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, items.length) }, () => worker()));
+    return results;
+  }
 
   // Pre-create staging dirs and filter extensions synchronously (cheap I/O)
-  // before launching parallel async builds.
+  // before launching concurrent builds.
   /** @type {Array<{ext: {name: string, dir: string}, indexTs: string, stagingExtDir: string, indexJs: string}>} */
   const extBuildInputs = [];
   let skipped = 0;
@@ -745,8 +768,8 @@ async function prebundleExtensions() {
    * }} ExtBuildResult
    */
 
-  const extBuildResults = await Promise.all(
-    extBuildInputs.map(async ({ ext, indexTs, stagingExtDir, indexJs }) => {
+  const extBuildResults = await mapConcurrent(
+    extBuildInputs, async ({ ext, indexTs, stagingExtDir, indexJs }) => {
       try {
         // First attempt: inline plugin-sdk (tree-shaken).
         let result = await buildExtensionAsync(indexTs, indexJs, { inline: true });
@@ -790,7 +813,7 @@ async function prebundleExtensions() {
           error: /** @type {Error} */ (err).message,
         });
       }
-    }),
+    },
   );
 
   // Aggregate extension build results
@@ -847,8 +870,8 @@ async function prebundleExtensions() {
    * }} SurfaceBuildResult
    */
 
-  const surfaceBuildResults = await Promise.all(
-    surfaceBuildInputs.map(async ({ ext, baseName, surfaceTs, surfaceJs }) => {
+  const surfaceBuildResults = await mapConcurrent(
+    surfaceBuildInputs, async ({ ext, baseName, surfaceTs, surfaceJs }) => {
       try {
         // First attempt: inline plugin-sdk (tree-shaken).
         let result = await buildExtensionAsync(surfaceTs, surfaceJs, { inline: true });
@@ -873,7 +896,7 @@ async function prebundleExtensions() {
           error: /** @type {Error} */ (err).message,
         });
       }
-    }),
+    },
   );
 
   // Aggregate surface build results
