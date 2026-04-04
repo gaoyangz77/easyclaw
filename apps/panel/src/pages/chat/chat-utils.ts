@@ -254,6 +254,20 @@ export function isSystemEventMessage(text: string): boolean {
   return CRON_EVENT_RE.test(trimmed) || EXEC_EVENT_RE.test(trimmed) || HEARTBEAT_PROMPT_RE.test(trimmed) || SYSTEM_MSG_RE.test(trimmed);
 }
 
+/**
+ * Internal maintenance prompts injected by the gateway (e.g. pre-compaction
+ * memory flush) that should never be shown to the user.
+ */
+const INTERNAL_PROMPT_SENTINELS = [
+  "Pre-compaction memory flush.",
+];
+
+/** Returns true if the message is an internal gateway maintenance prompt. */
+export function isInternalPrompt(text: string): boolean {
+  const trimmed = text.trim();
+  return INTERNAL_PROMPT_SENTINELS.some((s) => trimmed.startsWith(s));
+}
+
 export const NO_PROVIDER_RE = /no\s+(llm\s+)?provider|no\s+api\s*key|provider\s+not\s+configured|key\s+not\s+(found|configured)/i;
 
 /**
@@ -366,6 +380,8 @@ export function parseRawMessages(
       // so the text bubble should appear above tool-event markers.
       const text = extractText(msg.content);
       const images = extractImages(msg.content);
+      // Skip internal gateway maintenance prompts (e.g. pre-compaction memory flush)
+      if (msg.role === "user" && isInternalPrompt(text)) continue;
       if (text.trim() || images.length > 0) {
         const entry: ChatMessage = { role: msg.role, text, timestamp: msg.timestamp ?? 0, images: images.length > 0 ? images : undefined };
         if (msg.idempotencyKey) entry.idempotencyKey = msg.idempotencyKey;
