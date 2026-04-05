@@ -168,12 +168,25 @@ console.log(
 // ─── Phase 1: pnpm install --prod ───
 console.log("[prune-vendor-deps] Phase 1: pnpm install --prod ...");
 try {
-  execSync("pnpm install --prod --no-frozen-lockfile", {
+  // When running on a copy (VENDOR_DIR_OVERRIDE), pnpm traverses upward and
+  // finds the monorepo workspace root, causing lockfile mismatch errors.
+  // Place an empty pnpm-workspace.yaml in vendorDir to make pnpm treat it
+  // as the workspace root, preventing upward traversal.
+  const isOverride = !!process.env.VENDOR_DIR_OVERRIDE;
+  const wsMarker = path.join(vendorDir, "pnpm-workspace.yaml");
+  const hadWsMarker = fs.existsSync(wsMarker);
+  if (isOverride && !hadWsMarker) {
+    fs.writeFileSync(wsMarker, "packages: []\n", "utf-8");
+  }
+  execSync("pnpm install --prod --no-frozen-lockfile --ignore-scripts", {
     cwd: vendorDir,
     stdio: "inherit",
     timeout: 120_000,
     env: { ...process.env, CI: "true", npm_config_node_linker: "hoisted" },
   });
+  if (isOverride && !hadWsMarker) {
+    try { fs.unlinkSync(wsMarker); } catch {}
+  }
 } catch (err) {
   console.error("[prune-vendor-deps] pnpm install --prod failed:", err.message);
   process.exit(1);

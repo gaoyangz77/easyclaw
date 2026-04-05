@@ -11,6 +11,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { execFileSync, execSync } = require("child_process");
 const { compileMerchantBytecode } = require("./compile-merchant-bytecode.cjs");
 
 /** Recursively count files in a directory. */
@@ -60,18 +61,30 @@ exports.default = async function copyVendorDeps(context) {
   const destBundledMarker = path.join(destDistDir, ".bundled");
 
   if (!fs.existsSync(destBundledMarker) && fs.existsSync(vendorDestRoot)) {
-    // Step 1: Copy files that electron-builder skips due to .gitignore
     const vendorSrcRoot = path.resolve(__dirname, "..", "..", "..", "vendor", "openclaw");
+
+    console.log("[copy-vendor-deps] Running prune + bundle on copied vendor...");
+
+    // Step 1: Run prune on the ORIGINAL vendor (safe — only modifies node_modules,
+    // not dist/ or extensions/). This is needed because pnpm install --prod must
+    // run in the original workspace context to correctly resolve dependencies.
+    try {
+      execFileSync(process.execPath, [
+        path.join(__dirname, "prune-vendor-deps.cjs"),
+      ], {
+        stdio: "inherit",
+        timeout: 180_000,
+      });
+    } catch (err) {
+      console.error("[copy-vendor-deps] prune-vendor-deps failed:", err.message);
+      throw err;
+    }
+
+    // Step 2: Copy pruned node_modules to the release copy
     if (!fs.existsSync(vendorDest)) {
-      console.log("[copy-vendor-deps] Copying vendor node_modules to release dir...");
+      console.log("[copy-vendor-deps] Copying pruned node_modules to release dir...");
       fs.cpSync(vendorSrc, vendorDest, { recursive: true });
       console.log("[copy-vendor-deps] node_modules copied.");
-    }
-    // Copy pnpm-lock.yaml (needed by pnpm install --prod in prune phase)
-    const lockSrc = path.join(vendorSrcRoot, "pnpm-lock.yaml");
-    const lockDest = path.join(vendorDestRoot, "pnpm-lock.yaml");
-    if (fs.existsSync(lockSrc) && !fs.existsSync(lockDest)) {
-      fs.copyFileSync(lockSrc, lockDest);
     }
     // Copy dist-runtime/ (gitignored, contains extension re-export proxies)
     const distRuntimeSrc = path.join(vendorSrcRoot, "dist-runtime");
@@ -80,23 +93,7 @@ exports.default = async function copyVendorDeps(context) {
       fs.cpSync(distRuntimeSrc, distRuntimeDest, { recursive: true });
     }
 
-    console.log("[copy-vendor-deps] Running prune + bundle on copied vendor...");
-
-    // Step 2: Prune — remove dev deps and strip non-runtime files
-    try {
-      execFileSync(process.execPath, [
-        path.join(__dirname, "prune-vendor-deps.cjs"),
-      ], {
-        env: { ...process.env, VENDOR_DIR_OVERRIDE: vendorDestRoot },
-        stdio: "inherit",
-        timeout: 120_000,
-      });
-    } catch (err) {
-      console.error("[copy-vendor-deps] prune-vendor-deps failed:", err.message);
-      throw err;
-    }
-
-    // Step 3: Bundle — esbuild re-bundle + extension pre-bundling + node_modules cleanup
+    // Step 3: Bundle on the COPY (modifies dist/, safe for original)
     try {
       execFileSync(process.execPath, [
         path.join(__dirname, "bundle-vendor-deps.cjs"),
@@ -108,6 +105,19 @@ exports.default = async function copyVendorDeps(context) {
     } catch (err) {
       console.error("[copy-vendor-deps] bundle-vendor-deps failed:", err.message);
       throw err;
+    }
+
+    // Restore original vendor node_modules (undo prune)
+    console.log("[copy-vendor-deps] Restoring original vendor node_modules...");
+    try {
+      execSync("pnpm install --no-frozen-lockfile --ignore-scripts", {
+        cwd: vendorSrcRoot,
+        stdio: "ignore",
+        timeout: 120_000,
+        env: { ...process.env, CI: "true", npm_config_node_linker: "hoisted" },
+      });
+    } catch {
+      console.warn("[copy-vendor-deps] WARNING: Failed to restore vendor node_modules. Run setup-vendor.sh to fix.");
     }
 
     // Prune + bundle already handled node_modules — skip the normal copy flow below
