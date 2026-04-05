@@ -1,10 +1,13 @@
 // @ts-check
-// afterPack hook for electron-builder — copies vendor/openclaw/node_modules
-// into the packaged app's extraResources.
+// afterPack hook for electron-builder — runs vendor prune + bundle on the
+// COPY that electron-builder placed in the release directory.
 //
-// electron-builder respects .gitignore files (including the root one that has
-// "node_modules/"), which silently blocks node_modules from extraResources copy.
-// This hook works around that by copying node_modules manually after packing.
+// This keeps the original vendor/openclaw/ completely read-only. All destructive
+// operations (prod prune, esbuild re-bundle, node_modules cleanup) happen on
+// the copy at release/win-unpacked/resources/vendor/openclaw/.
+//
+// Also copies node_modules (electron-builder respects .gitignore which blocks
+// node_modules from extraResources copy) and runs merchant bytecode compilation.
 
 const fs = require("fs");
 const path = require("path");
@@ -39,11 +42,76 @@ exports.default = async function copyVendorDeps(context) {
     resourcesDir = path.join(appOutDir, "resources");
   }
 
-  const vendorDest = path.join(resourcesDir, "vendor", "openclaw", "node_modules");
+  const vendorDestRoot = path.join(resourcesDir, "vendor", "openclaw");
+  const vendorDest = path.join(vendorDestRoot, "node_modules");
   const vendorSrc = path.resolve(__dirname, "..", "..", "..", "vendor", "openclaw", "node_modules");
 
   if (!fs.existsSync(vendorSrc)) {
     console.log(`[copy-vendor-deps] vendor/openclaw/node_modules not found at ${vendorSrc}, skipping.`);
+    return;
+  }
+
+  // ── Run prune + bundle on the COPIED vendor (not the original) ──
+  // electron-builder has already copied vendor/openclaw/ (dist/, extensions/,
+  // etc.) into the release directory. We now run the destructive prune+bundle
+  // pipeline on this copy, keeping the original vendor/ read-only.
+  const { execFileSync } = require("child_process");
+  const destDistDir = path.join(vendorDestRoot, "dist");
+  const destBundledMarker = path.join(destDistDir, ".bundled");
+
+  if (!fs.existsSync(destBundledMarker) && fs.existsSync(vendorDestRoot)) {
+    // Step 1: Copy files that electron-builder skips due to .gitignore
+    const vendorSrcRoot = path.resolve(__dirname, "..", "..", "..", "vendor", "openclaw");
+    if (!fs.existsSync(vendorDest)) {
+      console.log("[copy-vendor-deps] Copying vendor node_modules to release dir...");
+      fs.cpSync(vendorSrc, vendorDest, { recursive: true });
+      console.log("[copy-vendor-deps] node_modules copied.");
+    }
+    // Copy pnpm-lock.yaml (needed by pnpm install --prod in prune phase)
+    const lockSrc = path.join(vendorSrcRoot, "pnpm-lock.yaml");
+    const lockDest = path.join(vendorDestRoot, "pnpm-lock.yaml");
+    if (fs.existsSync(lockSrc) && !fs.existsSync(lockDest)) {
+      fs.copyFileSync(lockSrc, lockDest);
+    }
+    // Copy dist-runtime/ (gitignored, contains extension re-export proxies)
+    const distRuntimeSrc = path.join(vendorSrcRoot, "dist-runtime");
+    const distRuntimeDest = path.join(vendorDestRoot, "dist-runtime");
+    if (fs.existsSync(distRuntimeSrc) && !fs.existsSync(distRuntimeDest)) {
+      fs.cpSync(distRuntimeSrc, distRuntimeDest, { recursive: true });
+    }
+
+    console.log("[copy-vendor-deps] Running prune + bundle on copied vendor...");
+
+    // Step 2: Prune — remove dev deps and strip non-runtime files
+    try {
+      execFileSync(process.execPath, [
+        path.join(__dirname, "prune-vendor-deps.cjs"),
+      ], {
+        env: { ...process.env, VENDOR_DIR_OVERRIDE: vendorDestRoot },
+        stdio: "inherit",
+        timeout: 120_000,
+      });
+    } catch (err) {
+      console.error("[copy-vendor-deps] prune-vendor-deps failed:", err.message);
+      throw err;
+    }
+
+    // Step 3: Bundle — esbuild re-bundle + extension pre-bundling + node_modules cleanup
+    try {
+      execFileSync(process.execPath, [
+        path.join(__dirname, "bundle-vendor-deps.cjs"),
+      ], {
+        env: { ...process.env, VENDOR_DIR_OVERRIDE: vendorDestRoot },
+        stdio: "inherit",
+        timeout: 600_000,
+      });
+    } catch (err) {
+      console.error("[copy-vendor-deps] bundle-vendor-deps failed:", err.message);
+      throw err;
+    }
+
+    // Prune + bundle already handled node_modules — skip the normal copy flow below
+    await compileMerchantBytecode(context, resourcesDir);
     return;
   }
 

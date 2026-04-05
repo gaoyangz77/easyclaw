@@ -16,7 +16,9 @@ const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const vendorDir = path.resolve(__dirname, "..", "..", "..", "vendor", "openclaw");
+const vendorDir = process.env.VENDOR_DIR_OVERRIDE
+  ? path.resolve(process.env.VENDOR_DIR_OVERRIDE)
+  : path.resolve(__dirname, "..", "..", "..", "vendor", "openclaw");
 const nmDir = path.join(vendorDir, "node_modules");
 
 if (!fs.existsSync(nmDir)) {

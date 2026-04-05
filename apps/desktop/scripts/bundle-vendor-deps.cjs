@@ -20,11 +20,15 @@
 const fs = require("fs");
 const path = require("path");
 
-const vendorDir = path.resolve(__dirname, "..", "..", "..", "vendor", "openclaw");
+const vendorDir = process.env.VENDOR_DIR_OVERRIDE
+  ? path.resolve(process.env.VENDOR_DIR_OVERRIDE)
+  : path.resolve(__dirname, "..", "..", "..", "vendor", "openclaw");
 const distDir = path.join(vendorDir, "dist");
 const nmDir = path.join(vendorDir, "node_modules");
 const extensionsDir = path.join(vendorDir, "extensions");
-const extStagingDir = path.resolve(__dirname, "..", ".prebundled-extensions");
+const extStagingDir = process.env.VENDOR_DIR_OVERRIDE
+  ? path.join(vendorDir, ".prebundled-extensions")
+  : path.resolve(__dirname, "..", ".prebundled-extensions");
 
 const ENTRY_FILE = path.join(distDir, "entry.js");
 const BUNDLE_TEMP_DIR = path.join(distDir, "_bundled");
