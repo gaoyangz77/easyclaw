@@ -459,13 +459,14 @@ function resolvePluginSdkAliasAndExternals() {
     alias[importSpec] = path.join(pluginSdkDir, subFile);
     externals.push(importSpec);
   }
-  // Add account-id — point to .cjs directly (the .js wrapper re-exports from
-  // .cjs, but esbuild inlining through a re-export wrapper causes the 9.6MB
-  // CJS bundle to be re-parsed for every extension build).
-  alias["openclaw/plugin-sdk/account-id"] = path.join(pluginSdkDir, "account-id.cjs");
+  // Add account-id
+  alias["openclaw/plugin-sdk/account-id"] = path.join(pluginSdkDir, "account-id.js");
   externals.push("openclaw/plugin-sdk/account-id");
-  // Add root alias last — same: point to .cjs directly for build performance
-  alias["openclaw/plugin-sdk"] = path.join(pluginSdkDir, "index.cjs");
+  // Add root alias last
+  // NOTE: This alias is used by Phase 0.5b which runs BEFORE Phase 0.5a.
+  // At that point index.js is still the original ESM file (small), not the
+  // .cjs bundle or the ESM wrapper. Do NOT change to .cjs — it won't exist yet.
+  alias["openclaw/plugin-sdk"] = path.join(pluginSdkDir, "index.js");
   externals.push("openclaw/plugin-sdk");
   return { alias, externals };
 }
