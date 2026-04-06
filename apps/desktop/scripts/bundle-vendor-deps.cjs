@@ -638,6 +638,15 @@ function bundlePluginSdk() {
     // Entry files replace originals; chunk-*.js files are new
     if (fs.existsSync(dest)) fs.unlinkSync(dest);
     fs.renameSync(src, dest);
+    // Fix jiti's babel.cjs path: esbuild preserves the original relative
+    // path "../dist/babel.cjs" (relative to jiti's src/), but chunks live
+    // in dist/plugin-sdk/ so the correct path is "../babel.cjs".
+    if (f.endsWith(".js")) {
+      const content = fs.readFileSync(dest, "utf-8");
+      if (content.includes("../dist/babel.cjs")) {
+        fs.writeFileSync(dest, content.replaceAll("../dist/babel.cjs", "../babel.cjs"), "utf-8");
+      }
+    }
     splitSize += fs.statSync(dest).size;
   }
   fs.rmSync(splitTmpDir, { recursive: true, force: true });
