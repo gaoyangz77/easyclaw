@@ -71,7 +71,7 @@ const FREE_MODELS = [
 
 Free users may only use models in this list. Requests to other models return `403 Forbidden`.
 
-**Free users see the model name normally** — no stripping of model metadata.
+**Free users see "默认模型" as the model label** — the actual model ID is hidden. Paid users see the real model name (e.g., "gpt-4o", "claude-3-5-sonnet").
 
 ---
 
@@ -128,7 +128,7 @@ Response: {
     limit: number,
     period_end: string,
   } | null,
-  show_model: true,        // always true — model name always visible
+  show_model: boolean,     // true for paid users; false = display "默认模型" for free users
 }
 ```
 
@@ -201,7 +201,14 @@ Replace `fetchCreditsInfo()` with `fetchQuota()` returning the new quota shape.
 
 ---
 
-## 7. Access Mode Scope
+## 7. Model Name Display
+
+- **Free users**: proxy records actual model in `credit_ledger` internally, but `GET /api/credits/quota` returns `show_model: false`. Panel displays "默认模型" wherever the model name would appear (chat history, consumption table).
+- **Paid users**: `show_model: true`, actual model ID shown everywhere.
+
+---
+
+## 8. Access Mode Scope
 
 This entire credits system only applies when `access_mode = "credits"`.
 
@@ -210,7 +217,7 @@ This entire credits system only applies when `access_mode = "credits"`.
 
 ---
 
-## 8. Out of Scope
+## 9. Out of Scope
 
 - Actual payment processing (stubbed with "即将上线" message)
 - Multi-device account linking
