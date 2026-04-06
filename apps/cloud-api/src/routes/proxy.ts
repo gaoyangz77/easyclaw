@@ -16,7 +16,7 @@ function creditsForTokens(tokens: number): number {
 
 export const proxyRoute = new Hono<{ Variables: { userId: string } }>();
 
-proxyRoute.post("/openrouter", async (c) => {
+proxyRoute.post("/openrouter/chat/completions", async (c) => {
   const userId = c.get("userId");
   const masterKey = process.env.OPENROUTER_MASTER_KEY;
   if (!masterKey) return c.json({ error: "Proxy not configured" }, 503);

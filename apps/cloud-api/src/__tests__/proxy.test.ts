@@ -40,7 +40,7 @@ describe("POST /api/proxy/openrouter", () => {
     });
 
     const token = await makeToken();
-    const res = await app.request("/api/proxy/openrouter", {
+    const res = await app.request("/api/proxy/openrouter/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: "openai/gpt-4o", messages: [{ role: "user", content: "Hello" }] }),
@@ -69,7 +69,7 @@ describe("POST /api/proxy/openrouter", () => {
     );
 
     const token = await makeToken();
-    const res = await app.request("/api/proxy/openrouter", {
+    const res = await app.request("/api/proxy/openrouter/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: "openai/gpt-4o", messages: [{ role: "user", content: "Hello" }] }),
@@ -90,7 +90,7 @@ describe("POST /api/proxy/openrouter", () => {
     sqlMock.mockResolvedValueOnce([{ jwt_secret: "test-user-secret-32-chars-padded!!" }]);
 
     const token = await makeToken();
-    const res = await app.request("/api/proxy/openrouter", {
+    const res = await app.request("/api/proxy/openrouter/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ model: "openai/gpt-4o", messages: [] }),
