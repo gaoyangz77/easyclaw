@@ -2117,7 +2117,9 @@ function fixBabelCjsPaths() {
       try { content = fs.readFileSync(full, "utf-8"); } catch { continue; }
       if (!content.includes("../dist/babel.cjs")) continue;
       // Compute correct relative path from this file to dist/babel.cjs
-      const correctRel = path.relative(path.dirname(full), babelCjs).replace(/\\/g, "/");
+      let correctRel = path.relative(path.dirname(full), babelCjs).replace(/\\/g, "/");
+      // Ensure it starts with ./ so Node treats it as a relative path, not a bare module
+      if (!correctRel.startsWith(".")) correctRel = "./" + correctRel;
       fs.writeFileSync(full, content.replaceAll("../dist/babel.cjs", correctRel), "utf-8");
       fixed++;
     }
