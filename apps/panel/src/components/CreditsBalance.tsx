@@ -16,8 +16,8 @@ export function CreditsBalance() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (mode !== "credits") return null;
   if (loading) return null;
+  if (mode !== "credits") return null;
 
   return (
     <div className="credits-balance" title="积分余额">
