@@ -13,6 +13,7 @@ server/
 apps/desktop/release/
 apps/desktop/runtime-archive/
 apps/desktop/.prebundled-extensions/
+apps/desktop/.vendor-bundle-cache/
 playwright-report/
 test-results/
 .venv/
