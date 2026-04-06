@@ -63,4 +63,21 @@ describe("GET /api/credits/history", () => {
     expect(body.entries).toHaveLength(1);
     expect(body.total).toBe(1);
   });
+
+  it("uses default page=1 and limit=20 for invalid params", async () => {
+    const sqlMock = sql as unknown as ReturnType<typeof vi.fn>;
+    sqlMock
+      .mockResolvedValueOnce([{ jwt_secret: "test-user-secret-32-chars-padded!!" }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ total: "0" }]);
+
+    const token = await makeToken();
+    const res = await app.request("/api/credits/history?page=abc&limit=xyz", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.entries).toHaveLength(0);
+    expect(body.total).toBe(0);
+  });
 });

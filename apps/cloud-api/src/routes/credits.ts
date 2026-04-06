@@ -13,8 +13,11 @@ creditsRoute.get("/balance", async (c) => {
 
 creditsRoute.get("/history", async (c) => {
   const userId = c.get("userId");
-  const page = Math.max(1, Number(c.req.query("page") ?? 1));
-  const limit = Math.min(50, Math.max(1, Number(c.req.query("limit") ?? 20)));
+  const rawPage = parseInt(c.req.query("page") ?? "", 10);
+  const page = isNaN(rawPage) ? 1 : Math.max(1, rawPage);
+
+  const rawLimit = parseInt(c.req.query("limit") ?? "", 10);
+  const limit = isNaN(rawLimit) ? 20 : Math.min(50, Math.max(1, rawLimit));
   const offset = (page - 1) * limit;
 
   const entries = await sql<{
