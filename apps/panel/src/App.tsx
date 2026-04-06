@@ -17,6 +17,8 @@ import { AccountPage } from "./pages/AccountPage.js";
 import { BrowserProfilesPage } from "./pages/BrowserProfilesPage.js";
 import { TikTokShopsPage } from "./pages/TikTokShopsPage.js";
 import { EcommercePage } from "./pages/EcommercePage.js";
+import { CreditsPage } from "./pages/CreditsPage.js";
+import { AccessModePage } from "./pages/AccessModePage.js";
 import { WhatsNewModal } from "./components/modals/WhatsNewModal.js";
 import { TelemetryConsentModal } from "./components/modals/TelemetryConsentModal.js";
 import { TutorialProvider, TutorialBubble, TutorialOverlay } from "./tutorial/index.js";
@@ -39,6 +41,8 @@ const PAGES: Record<string, ComponentType | (() => ReactNode)> = {
   "/browser-profiles": () => null, // Rendered separately below (needs onNavigate prop)
   "/settings": SettingsPage,
   "/account": () => null, // Rendered separately below (needs onNavigate prop)
+  "/credits": CreditsPage,
+  "/access-mode": AccessModePage,
 };
 
 /** Normalise a browser pathname to one of our known routes, defaulting to "/" */
@@ -102,8 +106,11 @@ export function App() {
         ? settings[`${provider}-api-key`] === "configured"
         : false;
 
-      // Show onboarding until a provider with a valid API key is configured
-      setShowOnboarding(!hasApiKey);
+      // Show onboarding until a provider with a valid API key is configured,
+      // or if the user is in credits mode (no API key needed)
+      const mode = settings["access_mode"] ?? "credits";
+      const isConfigured = mode === "credits" || hasApiKey;
+      setShowOnboarding(!isConfigured);
     } catch {
       setShowOnboarding(false);
     }

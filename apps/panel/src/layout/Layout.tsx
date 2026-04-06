@@ -12,6 +12,7 @@ import { DEFAULTS } from "@rivonclaw/core";
 import { formatError } from "@rivonclaw/core";
 import type { UpdateInfo, UpdateDownloadStatus } from "../api/index.js";
 import { BottomActions } from "../components/BottomActions.js";
+import { CreditsBalance } from "../components/CreditsBalance.js";
 import {
   ChatIcon, RulesIcon, ProvidersIcon, ChannelsIcon,
   PermissionsIcon, ExtrasIcon, UsageIcon, SkillsIcon,
@@ -36,6 +37,8 @@ const NAV_ICONS: Record<string, ReactNode> = {
   "/permissions": <PermissionsIcon />,
   "/extras": <ExtrasIcon />,
   "/usage": <UsageIcon />,
+  "/credits": <UsageIcon />,
+  "/access-mode": <SettingsIcon />,
   "/skills": <SkillsIcon />,
   "/browser-profiles": <BrowserProfilesIcon />,
   "/tiktok-shops": <ShopIcon />,
@@ -234,6 +237,8 @@ export const Layout = observer(function Layout({
       ? [{ path: "/ecommerce", label: t("nav.ecommerce") }]
       : []),
     { path: "/usage", label: t("nav.usage") },
+    { path: "/credits", label: "积分中心" },
+    { path: "/access-mode", label: "接入模式" },
     { path: "/settings", label: t("nav.settings") },
   ];
 
@@ -354,6 +359,7 @@ export const Layout = observer(function Layout({
               );
             })}
           </ul>
+          {!collapsed && <CreditsBalance />}
           <BottomActions collapsed={collapsed} onNavigate={onNavigate} />
           {!collapsed && (
             <div
