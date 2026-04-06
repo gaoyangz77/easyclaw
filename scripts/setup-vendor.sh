@@ -112,9 +112,12 @@ fi
 # Prod pruning happens later in prune-vendor-deps.cjs (afterPack) on the
 # release COPY, not the original vendor.
 
-# Remove .gitignore so dist/ and node_modules/ are visible to electron-builder
-# during CI packaging. Replicate the ignore rules in .git/info/exclude so that
-# git status stays clean locally (pre-commit hook checks for dirty state).
+# Make dist/ and node_modules/ visible to electron-builder by removing them
+# from .gitignore, while keeping other ignore rules (e.g. dist-runtime which
+# should NOT be copied by extraResources — it contains symlinked node_modules
+# that inflate the installer by ~13K files and cause slow startup on Windows).
+# Copy original .gitignore to .git/info/exclude so git status stays clean.
 cp .gitignore .git/info/exclude
-rm -f .gitignore
+sed -i.bak '/^dist$/d; /^node_modules$/d; /^\*\*\/node_modules\/$/d' .gitignore
+rm -f .gitignore.bak
 echo "OpenClaw vendor ready ($HASH)"
