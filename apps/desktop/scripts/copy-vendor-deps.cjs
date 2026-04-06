@@ -1,17 +1,13 @@
 // @ts-check
-// afterPack hook for electron-builder — runs vendor prune + bundle on the
-// COPY that electron-builder placed in the release directory.
+// afterPack hook for electron-builder — copies vendor/openclaw/node_modules
+// into the packaged app's extraResources.
 //
-// This keeps the original vendor/openclaw/ completely read-only. All destructive
-// operations (prod prune, esbuild re-bundle, node_modules cleanup) happen on
-// the copy at release/win-unpacked/resources/vendor/openclaw/.
-//
-// Also copies node_modules (electron-builder respects .gitignore which blocks
-// node_modules from extraResources copy) and runs merchant bytecode compilation.
+// electron-builder respects .gitignore files (including the root one that has
+// "node_modules/"), which silently blocks node_modules from extraResources copy.
+// This hook works around that by copying node_modules manually after packing.
 
 const fs = require("fs");
 const path = require("path");
-const { execFileSync, execSync } = require("child_process");
 const { compileMerchantBytecode } = require("./compile-merchant-bytecode.cjs");
 
 /** Recursively count files in a directory. */
@@ -43,177 +39,11 @@ exports.default = async function copyVendorDeps(context) {
     resourcesDir = path.join(appOutDir, "resources");
   }
 
-  const vendorDestRoot = path.join(resourcesDir, "vendor", "openclaw");
-  const vendorDest = path.join(vendorDestRoot, "node_modules");
+  const vendorDest = path.join(resourcesDir, "vendor", "openclaw", "node_modules");
   const vendorSrc = path.resolve(__dirname, "..", "..", "..", "vendor", "openclaw", "node_modules");
 
   if (!fs.existsSync(vendorSrc)) {
     console.log(`[copy-vendor-deps] vendor/openclaw/node_modules not found at ${vendorSrc}, skipping.`);
-    return;
-  }
-
-  // ── Run prune + bundle on the COPIED vendor (not the original) ──
-  // electron-builder has already copied vendor/openclaw/ (dist/, extensions/,
-  // etc.) into the release directory. We now run the destructive prune+bundle
-  // pipeline on this copy, keeping the original vendor/ read-only.
-  const { execFileSync } = require("child_process");
-  const destDistDir = path.join(vendorDestRoot, "dist");
-  const destBundledMarker = path.join(destDistDir, ".bundled");
-
-  // For universal macOS builds, afterPack runs twice (arm64 + x64) with
-  // different vendorDestRoot directories. The bundle pipeline must produce
-  // identical dist/ output for both archs — otherwise electron-builder's
-  // universal merge fails ("mismatch in mach-o files"). Cache the bundled
-  // vendor from the first arch and reuse it for the second.
-  const bundleCache = path.resolve(__dirname, "..", ".vendor-bundle-cache");
-
-  // Clean stale cache from previous build sessions to prevent data corruption.
-  // A fresh cache is only valid within the same electron-builder invocation.
-  const cacheSessionFile = path.join(bundleCache, ".session");
-  const currentSession = process.ppid?.toString() || Date.now().toString();
-  if (fs.existsSync(bundleCache)) {
-    const cachedSession = fs.existsSync(cacheSessionFile)
-      ? fs.readFileSync(cacheSessionFile, "utf-8").trim()
-      : "";
-    if (cachedSession !== currentSession) {
-      console.log("[copy-vendor-deps] Cleaning stale vendor bundle cache from previous session.");
-      fs.rmSync(bundleCache, { recursive: true, force: true });
-    }
-  }
-
-  if (!fs.existsSync(destBundledMarker) && fs.existsSync(vendorDestRoot)) {
-    const vendorSrcRoot = path.resolve(__dirname, "..", "..", "..", "vendor", "openclaw");
-
-    // Reuse cached bundle from a previous afterPack run (same build session)
-    if (fs.existsSync(bundleCache)) {
-      console.log("[copy-vendor-deps] Reusing cached vendor bundle from previous arch build...");
-      // Copy cached dist/ over the current copy
-      const cachedDist = path.join(bundleCache, "dist");
-      const cachedNm = path.join(bundleCache, "node_modules");
-      if (fs.existsSync(cachedDist)) {
-        fs.rmSync(path.join(vendorDestRoot, "dist"), { recursive: true, force: true });
-        fs.cpSync(cachedDist, path.join(vendorDestRoot, "dist"), { recursive: true });
-      }
-      if (fs.existsSync(cachedNm)) {
-        fs.rmSync(vendorDest, { recursive: true, force: true });
-        fs.cpSync(cachedNm, vendorDest, { recursive: true });
-      }
-      // Copy dist-runtime if cached
-      const cachedDistRuntime = path.join(bundleCache, "dist-runtime");
-      if (fs.existsSync(cachedDistRuntime)) {
-        const destDR = path.join(vendorDestRoot, "dist-runtime");
-        fs.rmSync(destDR, { recursive: true, force: true });
-        fs.cpSync(cachedDistRuntime, destDR, { recursive: true });
-      }
-      // Copy .prebundled-extensions if cached (overlay for vendor extensions)
-      const cachedPrebundled = path.join(bundleCache, ".prebundled-extensions");
-      if (fs.existsSync(cachedPrebundled)) {
-        const destPB = path.join(vendorDestRoot, ".prebundled-extensions");
-        fs.rmSync(destPB, { recursive: true, force: true });
-        fs.cpSync(cachedPrebundled, destPB, { recursive: true });
-        // Also overlay into extensions/ (same as extraResources would do)
-        const destExt = path.join(vendorDestRoot, "extensions");
-        fs.cpSync(cachedPrebundled, destExt, { recursive: true, force: true });
-      }
-      // Clean up cache after second arch uses it
-      fs.rmSync(bundleCache, { recursive: true, force: true });
-      await compileMerchantBytecode(context, resourcesDir);
-      return;
-    }
-
-    console.log("[copy-vendor-deps] Running prune + bundle on copied vendor...");
-
-    // Step 1: Run prune on the ORIGINAL vendor (safe — only modifies node_modules,
-    // not dist/ or extensions/). This is needed because pnpm install --prod must
-    // run in the original workspace context to correctly resolve dependencies.
-    try {
-      execFileSync(process.execPath, [
-        path.join(__dirname, "prune-vendor-deps.cjs"),
-      ], {
-        stdio: "inherit",
-        timeout: 180_000,
-      });
-    } catch (err) {
-      console.error("[copy-vendor-deps] prune-vendor-deps failed:", err.message);
-      throw err;
-    }
-
-    // Step 2: Copy pruned node_modules to the release copy
-    if (!fs.existsSync(vendorDest)) {
-      console.log("[copy-vendor-deps] Copying pruned node_modules to release dir...");
-      fs.cpSync(vendorSrc, vendorDest, { recursive: true });
-      console.log("[copy-vendor-deps] node_modules copied.");
-    }
-    // Copy dist-runtime/ (gitignored, contains extension re-export proxies)
-    // Use a filter to skip node_modules symlinks. dist-runtime/ has symlinks
-    // like extensions/discord/node_modules → dist/extensions/discord/node_modules.
-    // Without filtering, cpSync dereferences these and copies ~19K files,
-    // causing universal merge mismatch (one arch has them, the other doesn't).
-    const distRuntimeSrc = path.join(vendorSrcRoot, "dist-runtime");
-    const distRuntimeDest = path.join(vendorDestRoot, "dist-runtime");
-    if (fs.existsSync(distRuntimeSrc) && !fs.existsSync(distRuntimeDest)) {
-      fs.cpSync(distRuntimeSrc, distRuntimeDest, {
-        recursive: true,
-        filter: (src) => !src.includes(`${path.sep}node_modules`),
-      });
-    }
-
-    // Step 3: Bundle on the COPY (modifies dist/, safe for original)
-    try {
-      execFileSync(process.execPath, [
-        path.join(__dirname, "bundle-vendor-deps.cjs"),
-      ], {
-        env: { ...process.env, VENDOR_DIR_OVERRIDE: vendorDestRoot },
-        stdio: "inherit",
-        // 30 min — on CI cache miss, the full bundle pipeline (Phase 0.5b +
-        // 0.5a + 1 + 2 + 4 + 5) can take 20+ min on macOS shared ARM runners.
-        // The timeout covers the ENTIRE bundle-vendor-deps.cjs execution,
-        // not individual phases. Cache misses happen whenever
-        // bundle-vendor-deps.cjs or prune-vendor-deps.cjs changes.
-        // With cache hit, the script exits in <1s (.bundled marker skip).
-        timeout: 1_800_000,
-      });
-    } catch (err) {
-      console.error("[copy-vendor-deps] bundle-vendor-deps failed:", err.message);
-      throw err;
-    }
-
-    // Cache the bundled vendor for the next arch's afterPack (universal builds)
-    console.log("[copy-vendor-deps] Caching bundled vendor for next arch...");
-    fs.rmSync(bundleCache, { recursive: true, force: true });
-    fs.mkdirSync(bundleCache, { recursive: true });
-    fs.writeFileSync(path.join(bundleCache, ".session"), currentSession, "utf-8");
-    fs.cpSync(path.join(vendorDestRoot, "dist"), path.join(bundleCache, "dist"), { recursive: true });
-    fs.cpSync(vendorDest, path.join(bundleCache, "node_modules"), { recursive: true });
-    const destDR = path.join(vendorDestRoot, "dist-runtime");
-    if (fs.existsSync(destDR)) {
-      fs.cpSync(destDR, path.join(bundleCache, "dist-runtime"), { recursive: true });
-    }
-    // Cache .prebundled-extensions (generated by Phase 0.5b) and overlay
-    // into extensions/ — must be done for BOTH archs to keep them identical
-    const destPB = path.join(vendorDestRoot, ".prebundled-extensions");
-    if (fs.existsSync(destPB)) {
-      fs.cpSync(destPB, path.join(bundleCache, ".prebundled-extensions"), { recursive: true });
-      // Overlay bundled extensions into extensions/ (same as cache-reuse path)
-      const destExt = path.join(vendorDestRoot, "extensions");
-      fs.cpSync(destPB, destExt, { recursive: true, force: true });
-    }
-
-    // Restore original vendor node_modules (undo prune)
-    console.log("[copy-vendor-deps] Restoring original vendor node_modules...");
-    try {
-      execSync("pnpm install --no-frozen-lockfile --ignore-scripts", {
-        cwd: vendorSrcRoot,
-        stdio: "ignore",
-        timeout: 120_000,
-        env: { ...process.env, CI: "true", npm_config_node_linker: "hoisted" },
-      });
-    } catch {
-      console.warn("[copy-vendor-deps] WARNING: Failed to restore vendor node_modules. Run setup-vendor.sh to fix.");
-    }
-
-    // Prune + bundle already handled node_modules — skip the normal copy flow below
-    await compileMerchantBytecode(context, resourcesDir);
     return;
   }
 

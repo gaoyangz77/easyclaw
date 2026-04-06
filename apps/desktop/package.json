@@ -18,10 +18,10 @@
     "test:e2e:prod": "playwright test --config e2e/playwright.config.ts",
     "pack:__NOTE__": "WARNING: 'pack' skips rebuild-native and prune-vendor-deps, so vendor/openclaw/node_modules will be incomplete and the gateway will fail to start. Use scripts/test-local.sh for a working packaged build.",
     "pack": "electron-builder --dir",
-    "dist:mac": "electron-builder --mac --publish never",
-    "dist:mac:arm64": "electron-builder --mac dmg --arm64 --publish never && node scripts/sign-arm64.cjs",
-    "dist:win": "electron-builder --win --config electron-builder.win.yml --publish never",
-    "dist:linux": "electron-builder --linux --config electron-builder.linux.yml --publish never"
+    "dist:mac": "node scripts/prune-vendor-deps.cjs && node scripts/bundle-vendor-deps.cjs && electron-builder --mac --publish never",
+    "dist:mac:arm64": "node scripts/prune-vendor-deps.cjs && node scripts/bundle-vendor-deps.cjs && electron-builder --mac dmg --arm64 --publish never && node scripts/sign-arm64.cjs",
+    "dist:win": "node scripts/prune-vendor-deps.cjs && node scripts/bundle-vendor-deps.cjs && electron-builder --win --config electron-builder.win.yml --publish never",
+    "dist:linux": "node scripts/prune-vendor-deps.cjs && node scripts/bundle-vendor-deps.cjs && electron-builder --linux --config electron-builder.linux.yml --publish never"
   },
   "dependencies": {
     "@rivonclaw/core": "workspace:*",
