@@ -47,8 +47,8 @@ fi
 # When dist is cached, the cached output already includes patched builds
 # (the cache key incorporates patch file hashes). We still apply patches
 # to source so git state matches the built artifacts.
-if [ "${SKIP_VENDOR_BUILD:-}" = "true" ]; then
-  echo "Skipping pnpm run build (cache hit)"
+if [ "${SKIP_VENDOR_BUILD:-}" = "true" ] && [ -f dist/.dist-complete ]; then
+  echo "Skipping pnpm run build (cache hit, dist verified)"
   # Remove the .bundled marker so bundle-vendor-deps.cjs runs its full
   # pipeline (Phase 0.5b pre-bundling, Phase 4 node_modules pruning, etc.).
   # The cached dist/ is the raw build output — the bundle pipeline must
@@ -83,6 +83,10 @@ else
     pnpm ui:build
     echo "Vendor patches applied and rebuilt."
   fi
+  # Mark dist/ as complete so CI cache can verify integrity on restore.
+  # Without this marker, a cached dist/ from an incomplete/failed build
+  # would silently break the app (e.g. missing dist/plugins/runtime/).
+  echo "$HASH" > dist/.dist-complete
 fi
 
 if [ "$PROD" = true ]; then
