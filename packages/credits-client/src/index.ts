@@ -7,12 +7,38 @@ export interface LedgerEntry {
   created_at: string;
 }
 
+export interface QuotaInfo {
+  plan: "free" | "basic" | "pro";
+  show_model: boolean;
+  daily: {
+    used: number;
+    limit: number;
+    resets_at: string;
+  };
+  monthly: {
+    used: number;
+    limit: number;
+    period_end: string;
+  } | null;
+}
+
+export interface SubscriptionInfo {
+  id: string;
+  tier: "basic" | "pro";
+  tokens_monthly: number;
+  tokens_used: number;
+  period_end: string;
+}
+
 export interface CreditsClient {
   deviceAuth(deviceId: string): Promise<{ token: string; balance: number }>;
   getBalance(token: string): Promise<number>;
   getHistory(token: string, page?: number, limit?: number): Promise<{ entries: LedgerEntry[]; total: number }>;
   proxyStream(token: string, payload: unknown): Promise<Response>;
   createRechargeOrder(token: string, amount: number): Promise<{ orderId: string | null; status: string; message: string }>;
+  getQuota(token: string): Promise<QuotaInfo>;
+  getSubscription(token: string): Promise<{ subscription: SubscriptionInfo | null }>;
+  createSubscription(token: string, tier: "basic" | "pro"): Promise<{ status: string; message: string }>;
 }
 
 async function apiRequest<T>(
@@ -67,6 +93,22 @@ export function createCreditsClient(baseUrl: string): CreditsClient {
         method: "POST",
         token,
         body: JSON.stringify({ amount }),
+      });
+    },
+
+    getQuota(token) {
+      return apiRequest<QuotaInfo>(baseUrl, "/api/credits/quota", { token });
+    },
+
+    getSubscription(token) {
+      return apiRequest<{ subscription: SubscriptionInfo | null }>(baseUrl, "/api/subscription", { token });
+    },
+
+    createSubscription(token, tier) {
+      return apiRequest<{ status: string; message: string }>(baseUrl, "/api/subscription/create", {
+        method: "POST",
+        token,
+        body: JSON.stringify({ tier }),
       });
     },
   };
