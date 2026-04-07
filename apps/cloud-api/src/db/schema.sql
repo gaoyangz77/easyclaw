@@ -48,3 +48,8 @@ CREATE TABLE IF NOT EXISTS subscriptions (
 
 CREATE INDEX IF NOT EXISTS idx_subscriptions_user_status
   ON subscriptions (user_id, status, period_end);
+
+-- Email/password auth columns (nullable — device-only users have NULL here)
+ALTER TABLE users
+  ADD COLUMN IF NOT EXISTS email         TEXT UNIQUE,
+  ADD COLUMN IF NOT EXISTS password_hash TEXT;
