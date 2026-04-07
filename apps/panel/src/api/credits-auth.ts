@@ -35,8 +35,10 @@ export function apiLogin(email: string, password: string): Promise<{ token: stri
   });
 }
 
-export function apiMe(token: string): Promise<MeResponse> {
-  return fetchJson("/auth/me", {
+export async function apiMe(token: string): Promise<MeResponse> {
+  const res = await fetch("/api/auth/me", {
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
   });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json() as Promise<MeResponse>;
 }

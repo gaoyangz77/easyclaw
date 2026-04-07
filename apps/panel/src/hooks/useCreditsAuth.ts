@@ -1,5 +1,5 @@
 // apps/panel/src/hooks/useCreditsAuth.ts
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, createContext, useContext, type ReactNode } from "react";
 import {
   getCreditsToken, setCreditsToken, clearCreditsToken,
   apiRegister, apiLogin, apiMe,
@@ -15,19 +15,19 @@ interface CreditsAuthState {
   logout(): void;
 }
 
-export function useCreditsAuth(): CreditsAuthState {
+const CreditsAuthContext = createContext<CreditsAuthState | null>(null);
+
+export function CreditsAuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => getCreditsToken());
   const [me, setMe] = useState<MeResponse | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // On mount (or token change), verify token and load profile
   useEffect(() => {
     if (!token) { setMe(null); return; }
     setLoading(true);
     apiMe(token)
       .then(setMe)
       .catch(() => {
-        // Token invalid or expired — clear it
         clearCreditsToken();
         setToken(null);
         setMe(null);
@@ -53,5 +53,15 @@ export function useCreditsAuth(): CreditsAuthState {
     setMe(null);
   }, []);
 
-  return { token, me, loading, login, register, logout };
+  return (
+    <CreditsAuthContext.Provider value={{ token, me, loading, login, register, logout }}>
+      {children}
+    </CreditsAuthContext.Provider>
+  );
+}
+
+export function useCreditsAuth(): CreditsAuthState {
+  const ctx = useContext(CreditsAuthContext);
+  if (!ctx) throw new Error("useCreditsAuth must be used inside CreditsAuthProvider");
+  return ctx;
 }
