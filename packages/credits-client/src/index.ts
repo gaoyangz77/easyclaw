@@ -39,6 +39,9 @@ export interface CreditsClient {
   getQuota(token: string): Promise<QuotaInfo>;
   getSubscription(token: string): Promise<{ subscription: SubscriptionInfo | null }>;
   createSubscription(token: string, tier: "basic" | "pro"): Promise<{ status: string; message: string }>;
+  register(email: string, password: string): Promise<{ token: string; userId: string }>;
+  login(email: string, password: string): Promise<{ token: string; userId: string }>;
+  me(token: string): Promise<{ userId: string; email: string | null; plan: string }>;
 }
 
 async function apiRequest<T>(
@@ -110,6 +113,28 @@ export function createCreditsClient(baseUrl: string): CreditsClient {
         token,
         body: JSON.stringify({ tier }),
       });
+    },
+
+    register(email, password) {
+      return apiRequest<{ token: string; userId: string }>(baseUrl, "/api/auth/register", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+    },
+
+    login(email, password) {
+      return apiRequest<{ token: string; userId: string }>(baseUrl, "/api/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+    },
+
+    me(token) {
+      return apiRequest<{ userId: string; email: string | null; plan: string }>(
+        baseUrl,
+        "/api/auth/me",
+        { token }
+      );
     },
   };
 }
