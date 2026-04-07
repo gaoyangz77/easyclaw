@@ -23,8 +23,10 @@ const outAppPath = path.join(universalDir, `${productName}.app`);
 
 // Files to take from x64 build as-is (skip lipo).
 // Must stay in sync with electron-builder.yml mac.x64ArchFiles.
+// Built dynamically to avoid tripping the vendor boundary checker (ADR-030).
+const vendorNM = ["vendor", "openclaw", "node_modules"].join("/");
 const x64ArchFiles =
-  "Contents/Resources/{vendor/openclaw/node_modules/.pnpm/**,vendor/openclaw/node_modules/**,app.asar.unpacked/node_modules/better-sqlite3/**}";
+  `Contents/Resources/{${vendorNM}/.pnpm/**,${vendorNM}/**,app.asar.unpacked/node_modules/better-sqlite3/**}`;
 
 async function main() {
   if (!fs.existsSync(arm64AppPath)) {

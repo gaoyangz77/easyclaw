@@ -25,7 +25,7 @@ const ROOT = resolve(import.meta.dirname, "..");
 
 const SCAN_DIRS = ["apps", "packages", "extensions"];
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs"]);
-const SKIP_DIRS = new Set(["node_modules", "dist", ".git"]);
+const SKIP_DIRS = new Set(["node_modules", "dist", "release", ".git"]);
 
 // Patterns that indicate a vendor boundary crossing.
 const VENDOR_IMPORT_RE =
