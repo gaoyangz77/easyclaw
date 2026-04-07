@@ -64,6 +64,69 @@ export const handleCreditsRoutes: RouteHandler = async (req, res, url, pathname,
     return true;
   }
 
+  // GET /api/credits/quota
+  if (pathname === "/api/credits/quota" && req.method === "GET") {
+    const token = creditsToken?.();
+    if (!token || !creditsClient) {
+      sendJson(res, 200, {
+        plan: "free",
+        show_model: false,
+        daily: { used: 0, limit: 100_000, resets_at: new Date(Date.now() + 86400000).toISOString() },
+        monthly: null,
+      });
+      return true;
+    }
+    try {
+      const quota = await creditsClient.getQuota(token);
+      sendJson(res, 200, quota);
+    } catch {
+      sendJson(res, 200, {
+        plan: "free",
+        show_model: false,
+        daily: { used: 0, limit: 100_000, resets_at: new Date(Date.now() + 86400000).toISOString() },
+        monthly: null,
+      });
+    }
+    return true;
+  }
+
+  // GET /api/subscription
+  if (pathname === "/api/subscription" && req.method === "GET") {
+    const token = creditsToken?.();
+    if (!token || !creditsClient) {
+      sendJson(res, 200, { subscription: null });
+      return true;
+    }
+    try {
+      const data = await creditsClient.getSubscription(token);
+      sendJson(res, 200, data);
+    } catch {
+      sendJson(res, 200, { subscription: null });
+    }
+    return true;
+  }
+
+  // POST /api/subscription/create
+  if (pathname === "/api/subscription/create" && req.method === "POST") {
+    const token = creditsToken?.();
+    const body = await parseBody(req) as { tier?: string };
+    if (!token || !creditsClient) {
+      sendJson(res, 200, { status: "unavailable", message: "积分服务未连接" });
+      return true;
+    }
+    if (!body.tier || !["basic", "pro"].includes(body.tier)) {
+      sendJson(res, 400, { error: "tier must be basic or pro" });
+      return true;
+    }
+    try {
+      const result = await creditsClient.createSubscription(token, body.tier as "basic" | "pro");
+      sendJson(res, 200, result);
+    } catch (err) {
+      sendJson(res, 500, { error: String(err) });
+    }
+    return true;
+  }
+
   // POST /api/recharge/create (stub)
   if (pathname === "/api/recharge/create" && req.method === "POST") {
     sendJson(res, 200, { orderId: null, status: "unavailable", message: "充值功能即将上线，敬请期待" });
