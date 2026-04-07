@@ -61,6 +61,16 @@ export interface BrowserProfile {
   userId: Scalars['String']['output'];
 }
 
+/** Browser profile management action */
+export const BrowserProfileAction = {
+  Archive: 'ARCHIVE',
+  BatchDelete: 'BATCH_DELETE',
+  Create: 'CREATE',
+  Delete: 'DELETE',
+  Update: 'UPDATE'
+} as const;
+
+export type BrowserProfileAction = typeof BrowserProfileAction[keyof typeof BrowserProfileAction];
 /** Actions recorded in browser profile audit log */
 export const BrowserProfileAuditAction = {
   Archived: 'ARCHIVED',
@@ -255,6 +265,90 @@ export interface CustomerServiceSettingsInput {
   runProfileId?: InputMaybe<Scalars['String']['input']>;
 }
 
+/** Rich card message type for CS conversations */
+export const EcomCardType = {
+  LogisticsCard: 'LOGISTICS_CARD',
+  OrderCard: 'ORDER_CARD',
+  ProductCard: 'PRODUCT_CARD'
+} as const;
+
+export type EcomCardType = typeof EcomCardType[keyof typeof EcomCardType];
+/** Shipping document format */
+export const EcomDocumentFormat = {
+  Pdf: 'PDF',
+  Zpl: 'ZPL'
+} as const;
+
+export type EcomDocumentFormat = typeof EcomDocumentFormat[keyof typeof EcomDocumentFormat];
+/** Shipping document size */
+export const EcomDocumentSize = {
+  A5: 'A5',
+  A6: 'A6'
+} as const;
+
+export type EcomDocumentSize = typeof EcomDocumentSize[keyof typeof EcomDocumentSize];
+/** Shipping document type */
+export const EcomDocumentType = {
+  HazmatLabel: 'HAZMAT_LABEL',
+  InvoiceLabel: 'INVOICE_LABEL',
+  PackingSlip: 'PACKING_SLIP',
+  ShippingLabel: 'SHIPPING_LABEL',
+  ShippingLabelAndPackingSlip: 'SHIPPING_LABEL_AND_PACKING_SLIP',
+  ShippingLabelPicture: 'SHIPPING_LABEL_PICTURE'
+} as const;
+
+export type EcomDocumentType = typeof EcomDocumentType[keyof typeof EcomDocumentType];
+/** Order status filter values */
+export const EcomOrderStatus = {
+  AwaitingCollection: 'AWAITING_COLLECTION',
+  AwaitingShipment: 'AWAITING_SHIPMENT',
+  Cancelled: 'CANCELLED',
+  Completed: 'COMPLETED',
+  Delivered: 'DELIVERED',
+  InTransit: 'IN_TRANSIT',
+  OnHold: 'ON_HOLD',
+  PartiallyShipping: 'PARTIALLY_SHIPPING',
+  Unpaid: 'UNPAID'
+} as const;
+
+export type EcomOrderStatus = typeof EcomOrderStatus[keyof typeof EcomOrderStatus];
+/** Package status filter values */
+export const EcomPackageStatus = {
+  Cancelled: 'CANCELLED',
+  Completed: 'COMPLETED',
+  Fulfilling: 'FULFILLING',
+  Processing: 'PROCESSING'
+} as const;
+
+export type EcomPackageStatus = typeof EcomPackageStatus[keyof typeof EcomPackageStatus];
+/** Product status filter values */
+export const EcomProductStatus = {
+  Activate: 'ACTIVATE',
+  Deleted: 'DELETED',
+  Draft: 'DRAFT',
+  Failed: 'FAILED',
+  Freeze: 'FREEZE',
+  Pending: 'PENDING',
+  PlatformDeactivated: 'PLATFORM_DEACTIVATED',
+  SellerDeactivated: 'SELLER_DEACTIVATED'
+} as const;
+
+export type EcomProductStatus = typeof EcomProductStatus[keyof typeof EcomProductStatus];
+/** Sort field for package search */
+export const EcomSortField = {
+  CreateTime: 'CREATE_TIME',
+  OrderPayTime: 'ORDER_PAY_TIME',
+  UpdateTime: 'UPDATE_TIME'
+} as const;
+
+export type EcomSortField = typeof EcomSortField[keyof typeof EcomSortField];
+/** Sort order */
+export const EcomSortOrder = {
+  Asc: 'ASC',
+  Desc: 'DESC'
+} as const;
+
+export type EcomSortOrder = typeof EcomSortOrder[keyof typeof EcomSortOrder];
 /** Generic JSON result proxied from e-commerce platform API */
 export interface EcommerceApiResult {
   code: Scalars['Float']['output'];
@@ -468,7 +562,7 @@ export interface MutationEcommerceSendMessageArgs {
   content: Scalars['String']['input'];
   conversationId: Scalars['String']['input'];
   shopId: Scalars['String']['input'];
-  type: Scalars['String']['input'];
+  type: EcomCardType;
 }
 
 
@@ -504,7 +598,7 @@ export interface MutationLogoutArgs {
 
 
 export interface MutationManageBrowserProfileArgs {
-  action: Scalars['String']['input'];
+  action: BrowserProfileAction;
   id?: InputMaybe<Scalars['ID']['input']>;
   ids?: InputMaybe<Array<Scalars['ID']['input']>>;
   input?: InputMaybe<Scalars['String']['input']>;
@@ -841,7 +935,7 @@ export interface QueryEcommerceGetOrdersArgs {
   pageSize?: InputMaybe<Scalars['Float']['input']>;
   pageToken?: InputMaybe<Scalars['String']['input']>;
   shopId: Scalars['String']['input'];
-  status?: InputMaybe<Scalars['String']['input']>;
+  status?: InputMaybe<EcomOrderStatus>;
 }
 
 
@@ -852,9 +946,9 @@ export interface QueryEcommerceGetPackageDetailArgs {
 
 
 export interface QueryEcommerceGetPackageShippingDocumentArgs {
-  documentFormat?: InputMaybe<Scalars['String']['input']>;
-  documentSize?: InputMaybe<Scalars['String']['input']>;
-  documentType: Scalars['String']['input'];
+  documentFormat?: InputMaybe<EcomDocumentFormat>;
+  documentSize?: InputMaybe<EcomDocumentSize>;
+  documentType: EcomDocumentType;
   packageId: Scalars['String']['input'];
   shopId: Scalars['String']['input'];
 }
@@ -875,12 +969,12 @@ export interface QueryEcommerceGetProductArgs {
 export interface QueryEcommerceSearchPackagesArgs {
   createTimeGe?: InputMaybe<Scalars['Float']['input']>;
   createTimeLt?: InputMaybe<Scalars['Float']['input']>;
-  packageStatus?: InputMaybe<Scalars['String']['input']>;
+  packageStatus?: InputMaybe<EcomPackageStatus>;
   pageSize: Scalars['Float']['input'];
   pageToken?: InputMaybe<Scalars['String']['input']>;
   shopId: Scalars['String']['input'];
-  sortField?: InputMaybe<Scalars['String']['input']>;
-  sortOrder?: InputMaybe<Scalars['String']['input']>;
+  sortField?: InputMaybe<EcomSortField>;
+  sortOrder?: InputMaybe<EcomSortOrder>;
   updateTimeGe?: InputMaybe<Scalars['Float']['input']>;
   updateTimeLt?: InputMaybe<Scalars['Float']['input']>;
 }
@@ -890,7 +984,7 @@ export interface QueryEcommerceSearchProductsArgs {
   pageSize?: InputMaybe<Scalars['Float']['input']>;
   pageToken?: InputMaybe<Scalars['String']['input']>;
   shopId: Scalars['String']['input'];
-  status?: InputMaybe<Scalars['String']['input']>;
+  status?: InputMaybe<EcomProductStatus>;
 }
 
 
