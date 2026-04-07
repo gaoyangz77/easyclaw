@@ -67,6 +67,9 @@ authRoute.post("/register", async (c) => {
   if (!body.email || !body.password) {
     return c.json({ error: "email and password are required" }, 400);
   }
+  if (!body.email.includes("@")) {
+    return c.json({ error: "Invalid email address" }, 400);
+  }
   if (body.password.length < 8) {
     return c.json({ error: "Password must be at least 8 characters" }, 400);
   }
