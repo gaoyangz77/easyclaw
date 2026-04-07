@@ -545,6 +545,16 @@ app.whenReady().then(async () => {
     : join(import.meta.dirname, "..", "..", "..", "vendor", "openclaw");
   setVendorDir(vendorDir);
 
+  // Force pre-compiled ESM extensions from dist-runtime/ instead of .ts source
+  // from extensions/. Without this, the gateway detects the vendor checkout
+  // (.git + src/ present) and loads .ts via jiti babel transform, adding ~4s
+  // to startup from 1338 extra CJS requires. Set on process.env so it flows
+  // through buildGatewayEnv() into every launcher.setEnv() call.
+  const distRuntimeExtensions = join(vendorDir, "dist-runtime", "extensions");
+  if (existsSync(distRuntimeExtensions)) {
+    process.env.OPENCLAW_BUNDLED_PLUGINS_DIR = distRuntimeExtensions;
+  }
+
   // Initialize Channel Manager -- loads accounts from SQLite (runs migration if needed).
   // Must happen BEFORE createGatewayConfigBuilder so that buildPluginEntries() and
   // buildConfigAccounts() have data when buildFullGatewayConfig is first invoked.
