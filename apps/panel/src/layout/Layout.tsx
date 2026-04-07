@@ -19,7 +19,7 @@ import {
   BrowserProfilesIcon, CronsIcon, SettingsIcon, AccountIcon,
   AuthIcon, MenuIcon, ShopIcon, EcommerceIcon,
 } from "../components/icons.js";
-import { observer } from "mobx-react-lite";
+
 
 const SIDEBAR_MIN = 140;
 const SIDEBAR_MAX = 360;
@@ -44,7 +44,7 @@ const NAV_ICONS: Record<string, ReactNode> = {
   "/auth": <AuthIcon />,
 };
 
-export const Layout = observer(function Layout({
+export function Layout({
   children,
   currentPath,
   onNavigate,
@@ -349,4 +349,4 @@ export const Layout = observer(function Layout({
       </div>
     </div>
   );
-});
+}

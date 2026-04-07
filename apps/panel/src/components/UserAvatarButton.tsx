@@ -3,11 +3,7 @@ import { useCreditsAuth } from "../hooks/useCreditsAuth.js";
 import { CreditsAuthModal } from "./CreditsAuthModal.js";
 import { UserPlusIcon } from "./icons.js";
 
-interface UserAvatarButtonProps {
-  onNavigate: (path: string) => void;
-}
-
-export function UserAvatarButton({ onNavigate: _ }: UserAvatarButtonProps) {
+export function UserAvatarButton() {
   const { me, logout } = useCreditsAuth();
   const [modalOpen, setModalOpen] = useState(false);
   const [showMenu, setShowMenu] = useState(false);

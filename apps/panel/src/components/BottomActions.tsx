@@ -9,7 +9,7 @@ import { UserAvatarButton } from "./UserAvatarButton.js";
  */
 export function BottomActions({
     collapsed = false,
-    onNavigate,
+    onNavigate: _,
 }: {
     collapsed?: boolean;
     onNavigate?: (path: string) => void;
@@ -21,7 +21,7 @@ export function BottomActions({
             <ThemeToggle />
             <LangToggle />
             <HelpLink />
-            {onNavigate && <UserAvatarButton onNavigate={onNavigate} />}
+            <UserAvatarButton />
         </div>
     );
 }
