@@ -1594,7 +1594,7 @@ export default {
         cs_get_escalation_result: "Get Escalation Result",
         cs_start_session: "Start Session",
         // E-commerce Shop Management
-        ECOMMERCE_LIST_SHOPS: "List Shops",
+        ECOM_LIST_SHOPS: "List Shops",
         // System tools — Files
         read: "Read File",
         write: "Write File",

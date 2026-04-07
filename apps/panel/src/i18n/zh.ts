@@ -1582,7 +1582,7 @@ export default {
         cs_get_escalation_result: "获取升级结果",
         cs_start_session: "启动客服会话",
         // 电商店铺管理
-        ECOMMERCE_LIST_SHOPS: "店铺列表",
+        ECOM_LIST_SHOPS: "店铺列表",
         // 系统工具 — 文件
         read: "读取文件",
         write: "写入文件",
