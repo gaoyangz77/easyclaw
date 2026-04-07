@@ -492,26 +492,89 @@ export class RunTracker {
 
   /**
    * Restore a snapshot but drop runs still in active phases.
-   * Active-phase runs in a cached snapshot may be stale (their terminal event
-   * arrived while a different tab was focused and was filtered out).  Dropping
-   * them prevents a stuck streaming cursor.  If a run is genuinely still active,
-   * the next gateway delta event (~150ms) will re-register it automatically.
+   * @deprecated Use SessionTrackerMap instead of snapshot restore.
    */
   restoreDropStale(snapshot: RunTrackerSnapshot): void {
-    // Clear timers and state from the previous session before restoring
-    this.clearAllFallbackTimers();
-    for (const timer of this.recentlyCompletedTimers.values()) {
-      clearTimeout(timer);
-    }
-    this.recentlyCompletedTimers.clear();
-    this.recentlyCompleted.clear();
-
-    const filtered = snapshot.runs.filter(([, run]) => !ACTIVE_PHASES.has(run.phase));
-    this.runs = new Map(filtered);
-    // Preserve localRunId only if its run survived filtering
-    this.localRunId = snapshot.localRunId && this.runs.has(snapshot.localRunId)
-      ? snapshot.localRunId
-      : null;
-    this.onChange();
+    this.restore(snapshot);
   }
+}
+
+// ---------------------------------------------------------------------------
+// SessionTrackerMap — per-session RunTracker instances
+// ---------------------------------------------------------------------------
+
+const MAX_TRACKED_SESSIONS = 20;
+
+/**
+ * Manages one RunTracker per session key.  Events are routed to the correct
+ * tracker by sessionKey so background sessions continue to process terminal
+ * events (CHAT_FINAL, etc.) even when another tab is active.  The active
+ * session's tracker view is used for rendering.
+ */
+export class SessionTrackerMap {
+  private trackers = new Map<string, RunTracker>();
+  private accessOrder: string[] = [];
+  private onChange: () => void;
+
+  constructor(onChange: () => void) {
+    this.onChange = onChange;
+  }
+
+  /** Get or lazily create a RunTracker for the given session. */
+  get(sessionKey: string): RunTracker {
+    let tracker = this.trackers.get(sessionKey);
+    if (!tracker) {
+      tracker = new RunTracker(this.onChange);
+      this.trackers.set(sessionKey, tracker);
+      this.evict();
+    }
+    // Move to end of access order
+    this.accessOrder = this.accessOrder.filter((k) => k !== sessionKey);
+    this.accessOrder.push(sessionKey);
+    return tracker;
+  }
+
+  /** Get the view for the active session. */
+  getView(sessionKey: string): RunTrackerView {
+    const tracker = this.trackers.get(sessionKey);
+    if (!tracker) return emptyView();
+    return tracker.getView();
+  }
+
+  /** Remove all trackers and their timers. */
+  reset(): void {
+    for (const tracker of this.trackers.values()) {
+      tracker.reset();
+    }
+    this.trackers.clear();
+    this.accessOrder = [];
+  }
+
+  /** LRU eviction — drop least-recently-accessed trackers with no active runs. */
+  private evict(): void {
+    while (this.trackers.size > MAX_TRACKED_SESSIONS && this.accessOrder.length > 0) {
+      const oldest = this.accessOrder[0];
+      const tracker = this.trackers.get(oldest);
+      // Don't evict trackers that still have active runs
+      if (tracker && tracker.getView().isActive) break;
+      if (tracker) tracker.reset();
+      this.trackers.delete(oldest);
+      this.accessOrder.shift();
+    }
+  }
+}
+
+function emptyView(): RunTrackerView {
+  return {
+    activeRuns: new Map(),
+    isActive: false,
+    displayPhase: null,
+    displayToolName: null,
+    displayStreaming: null,
+    canAbort: false,
+    abortTargetRunId: null,
+    localRunId: null,
+    localStreaming: null,
+    displayFlushedOffset: 0,
+  };
 }

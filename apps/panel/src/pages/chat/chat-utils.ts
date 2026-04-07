@@ -38,7 +38,8 @@ export type SessionTabInfo = {
 /** Per-session cached state for tab switching. */
 export type SessionChatState = {
   messages: ChatMessage[];
-  trackerSnapshot: import("../../lib/run-tracker.js").RunTrackerSnapshot | null;
+  /** @deprecated RunTracker is now per-session; snapshot is no longer used. */
+  trackerSnapshot?: unknown;
   draft: string;
   pendingImages: PendingImage[];
   visibleCount: number;

@@ -13,7 +13,7 @@ import { INITIAL_VISIBLE, PAGE_SIZE, FETCH_BATCH, IMAGE_PLACEHOLDER, cleanMessag
 import type { SessionsListResult } from "./chat/chat-utils.js";
 import { MarkdownMessage, CopyButton, CollapsibleContent, ToolArgsDisplay } from "./chat/ChatMessage.js";
 import type { GatewayEvent, GatewayHelloOk } from "../lib/gateway-client.js";
-import { RunTracker } from "../lib/run-tracker.js";
+import { SessionTrackerMap } from "../lib/run-tracker.js";
 import { ChatEventBridge } from "../lib/chat-event-bridge.js";
 import { saveImages, restoreImages, clearImages } from "../lib/image-cache.js";
 import { Modal } from "../components/modals/Modal.js";
@@ -48,23 +48,11 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
   const [thinkingLevel, setThinkingLevel] = useState("");
   const [allFetched, setAllFetched] = useState(false);
   const [renderTick, forceUpdate] = useReducer((x: number) => x + 1, 0);
-  const trackerRef = useRef(new RunTracker(forceUpdate));
-
-  // Derive run lifecycle state from tracker (single source of truth)
-  const view = trackerRef.current.getView();
-  const runId = view.localRunId;
-  // Use displayStreaming (covers both local and external runs) so the streaming
-  // cursor appears for external-channel runs (mobile, Telegram, etc.), not just
-  // for messages typed in the panel.
-  //
-  // TODO(future): This only shows a generic streaming cursor for external runs.
-  // Message tool deliveries (agent explicitly sending messages to the user) are
-  // invisible until chat.final triggers loadHistory. To show them in real time,
-  // register an `after_tool_call` plugin hook that intercepts toolName==="message",
-  // then broadcast a `chat` event with state==="delivery" to all WS clients.
-  // The hook needs a captured `broadcast` ref from GatewayRequestContext — see
-  // rivonclaw-mobile-chat-channel/openclaw-plugin.mjs L190 for the existing pattern.
-  const streaming = view.displayStreaming;
+  const trackerMapRef = useRef(new SessionTrackerMap(forceUpdate));
+  // trackerRef is a convenience accessor for the active session's tracker.
+  // It is reassigned after useSessionManager provides the activeSessionKey.
+  const trackerRef = useRef(trackerMapRef.current.get("agent:main:main"));
+  // view, runId, streaming are derived after useSessionManager (see below)
   const [showAgentEvents, setShowAgentEvents] = useState(true);
   const [preserveToolEvents, setPreserveToolEvents] = useState(false);
   const [collapseMessages, setCollapseMessages] = useState(true);
@@ -104,7 +92,7 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
     connected: connectionState === "connected",
     getState: () => ({
       messages,
-      trackerSnapshot: trackerRef.current.serialize(),
+      trackerSnapshot: null,
       draft,
       pendingImages,
       visibleCount,
@@ -124,22 +112,23 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
       fetchLimitRef.current = FETCH_BATCH;
       isFetchingRef.current = false;
       setExternalPending(false); externalPendingRef.current = false;
-      // Restore the cached tracker snapshot but drop runs still in active
-      // phases.  Active-phase runs may be stale (their terminal event arrived
-      // while a different tab was focused), which would cause a stuck cursor.
-      // Genuinely active runs will be re-registered by the next gateway delta
-      // event (~150ms).  Completed runs are preserved so they don't flash away.
-      if (state.trackerSnapshot) {
-        trackerRef.current.restoreDropStale(state.trackerSnapshot);
-      } else {
-        trackerRef.current.reset();
-      }
+      // No tracker snapshot restore needed — each session has its own
+      // RunTracker instance in the SessionTrackerMap, so tab switching
+      // doesn't affect run state.
     },
   });
 
   // Keep a ref to the active session key for synchronous reads in event handlers
   const sessionKeyRef = useRef(sessionManager.activeSessionKey);
   sessionKeyRef.current = sessionManager.activeSessionKey;
+
+  // Point trackerRef at the active session's tracker (per-session isolation)
+  trackerRef.current = trackerMapRef.current.get(sessionManager.activeSessionKey);
+
+  // Derive run lifecycle state from the ACTIVE session's tracker
+  const view = trackerMapRef.current.getView(sessionManager.activeSessionKey);
+  const runId = view.localRunId;
+  const streaming = view.displayStreaming;
 
   // Stable refs so handleEvent doesn't depend on the sessionManager object
   // (which is recreated every render and would cause a connect/disconnect loop).
@@ -304,12 +293,32 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
         data?: Record<string, unknown>;
       } | undefined;
       if (!agentPayload) return;
-      // Events for background sessions: mark tab as unread, don't process
-      if (agentPayload.sessionKey && agentPayload.sessionKey !== sessionKeyRef.current) {
-        markUnreadRef.current(agentPayload.sessionKey);
-        // New session detected — refresh session list so a tab appears
-        if (!sessionKeysRef.current.has(agentPayload.sessionKey)) {
+      const isBackground = agentPayload.sessionKey && agentPayload.sessionKey !== sessionKeyRef.current;
+
+      if (isBackground) {
+        markUnreadRef.current(agentPayload.sessionKey!);
+        if (!sessionKeysRef.current.has(agentPayload.sessionKey!)) {
           refreshSessionsRef.current();
+        }
+        // Route lifecycle events to the background session's tracker so
+        // terminal events (CHAT_FINAL etc.) are not lost.
+        const bgTracker = trackerMapRef.current.get(agentPayload.sessionKey!);
+        const bgRunId = agentPayload.runId;
+        if (bgRunId && bgTracker.isTracked(bgRunId)) {
+          const stream = agentPayload.stream;
+          if (stream === "tool") {
+            const phase = agentPayload.data?.phase;
+            const name = agentPayload.data?.name as string | undefined;
+            if (phase === "start" && name) bgTracker.dispatch({ type: "TOOL_START", runId: bgRunId, toolName: name });
+            else if (phase === "result") bgTracker.dispatch({ type: "TOOL_RESULT", runId: bgRunId });
+          } else if (stream === "lifecycle") {
+            const phase = agentPayload.data?.phase;
+            if (phase === "start") bgTracker.dispatch({ type: "LIFECYCLE_START", runId: bgRunId });
+            else if (phase === "end") bgTracker.dispatch({ type: "LIFECYCLE_END", runId: bgRunId });
+            else if (phase === "error") bgTracker.dispatch({ type: "LIFECYCLE_ERROR", runId: bgRunId });
+          } else if (stream === "assistant") {
+            bgTracker.dispatch({ type: "ASSISTANT_STREAM", runId: bgRunId });
+          }
         }
         return;
       }
@@ -318,7 +327,6 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
 
       // Only process events for tracked runs (replaces old runIdRef guard)
       if (!agentRunId || !tracker.isTracked(agentRunId)) {
-        // DEBUG: log dropped agent events to diagnose missing tool_start flush
         if (agentPayload.stream === "tool" || agentPayload.stream === "lifecycle") {
           console.warn("[chat] agent event dropped: stream=%s phase=%s runId=%s tracked=%s localRunId=%s",
             agentPayload.stream, agentPayload.data?.phase, agentRunId,
@@ -478,13 +486,27 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
 
     if (!payload) return;
 
-    // Filter by sessionKey — only process events for our active session.
-    // Events for other sessions mark their tab as unread.
+    // Background sessions: route terminal events to their tracker, mark unread.
+    // Message/UI updates are only done for the active session (below).
     if (payload.sessionKey && payload.sessionKey !== sessionKeyRef.current) {
       markUnreadRef.current(payload.sessionKey);
-      // New session detected — refresh session list so a tab appears
       if (!sessionKeysRef.current.has(payload.sessionKey)) {
         refreshSessionsRef.current();
+      }
+      // Dispatch chat lifecycle events to the background tracker
+      const bgTracker = trackerMapRef.current.get(payload.sessionKey);
+      const bgRunId = payload.runId;
+      if (bgRunId) {
+        switch (payload.state) {
+          case "delta": {
+            const text = extractText(payload.message?.content);
+            if (text) bgTracker.dispatch({ type: "CHAT_DELTA", runId: bgRunId, text });
+            break;
+          }
+          case "final": bgTracker.dispatch({ type: "CHAT_FINAL", runId: bgRunId }); break;
+          case "error": bgTracker.dispatch({ type: "CHAT_ERROR", runId: bgRunId }); break;
+          case "aborted": bgTracker.dispatch({ type: "CHAT_ABORTED", runId: bgRunId }); break;
+        }
       }
       return;
     }
@@ -807,7 +829,7 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
             const wasWaiting = !!localId;
             // If streaming was in progress, save partial text.
             const disconnectText = localId ? (trackerRef.current.getRun(localId)?.streaming ?? null) : null;
-            trackerRef.current.reset();
+            trackerMapRef.current.reset(); // WS disconnect — reset all session trackers
             if (disconnectText) {
               setMessages((prev) => [...prev, { role: "assistant", text: disconnectText, timestamp: Date.now() }]);
             }
@@ -859,19 +881,16 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
           },
           onMirrorEvent: (mirror) => {
             if (cancelled) return;
-            if (mirror.sessionKey !== sessionKeyRef.current) return;
+            const isActiveMirror = mirror.sessionKey === sessionKeyRef.current;
             const data = mirror.data as Record<string, unknown>;
 
             if (mirror.stream === "assistant") {
-              // Raw agent event data: { text: "accumulated", delta: "incremental" }
-              // Convert to chat event format expected by handleEvent for "chat" events
               const text = data.text as string | undefined;
               if (text) {
-                // Clear externalPending now — streaming text provides visual feedback
-                // via the streaming bubble, so the thinking bubble is no longer needed.
-                if (externalPendingRef.current && mirror.sessionKey === sessionKeyRef.current) {
+                if (externalPendingRef.current && isActiveMirror) {
                   setExternalPending(false); externalPendingRef.current = false;
                 }
+                // Route delta to the correct session's tracker via handleEvent
                 handleEvent({
                   type: "event",
                   event: "chat",
@@ -890,24 +909,19 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
             } else if (mirror.stream === "lifecycle") {
               const phase = data.phase as string | undefined;
               if (phase === "start") {
-                // Register the external run in the tracker so view.isActive
-                // becomes true and the thinking bubble stays visible even if
-                // externalPending gets cleared before streaming text arrives.
-                if (mirror.sessionKey === sessionKeyRef.current) {
-                  trackerRef.current.dispatch({
-                    type: "EXTERNAL_INBOUND",
-                    runId: mirror.runId,
-                    sessionKey: mirror.sessionKey,
-                    channel: "unknown",
-                  });
-                  trackerRef.current.dispatch({ type: "LIFECYCLE_START", runId: mirror.runId });
-                }
+                const mirrorTracker = trackerMapRef.current.get(mirror.sessionKey);
+                mirrorTracker.dispatch({
+                  type: "EXTERNAL_INBOUND",
+                  runId: mirror.runId,
+                  sessionKey: mirror.sessionKey,
+                  channel: "unknown",
+                });
+                mirrorTracker.dispatch({ type: "LIFECYCLE_START", runId: mirror.runId });
               } else if (phase === "end" || phase === "error") {
-                // Clear externalPending — run is done
-                if (externalPendingRef.current && mirror.sessionKey === sessionKeyRef.current) {
+                if (externalPendingRef.current && isActiveMirror) {
                   setExternalPending(false); externalPendingRef.current = false;
                 }
-                // Lifecycle end/error → chat final/error so run completes properly
+                // Route terminal event to the correct session's tracker via handleEvent
                 handleEvent({
                   type: "event",
                   event: "chat",
@@ -920,12 +934,10 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
                 });
               }
             } else if (mirror.stream === "tool") {
-              // Extract delivered message text from Message tool calls
               const toolName = data.name as string | undefined;
               const toolPhase = data.phase as string | undefined;
               const toolArgs = data.args as Record<string, unknown> | undefined;
-              // Forward tool event first — handleEvent's agent path flushes
-              // streaming text on tool_start, so ordering is preserved.
+              // Route tool event to the correct session's tracker via handleEvent
               handleEvent({
                 type: "event",
                 event: "agent",
@@ -936,10 +948,9 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
                   data,
                 },
               });
-              // Then extract delivered message text from Message tool calls
-              if (toolName === "message" && toolPhase === "start" && toolArgs) {
+              if (toolName === "message" && toolPhase === "start" && toolArgs && isActiveMirror) {
                 const msgText = (toolArgs.message ?? toolArgs.text ?? toolArgs.content) as string | undefined;
-                if (msgText && mirror.sessionKey === sessionKeyRef.current) {
+                if (msgText) {
                   setMessages((prev) => [...prev, { role: "assistant", text: msgText, timestamp: Date.now() }]);
                 }
               }
