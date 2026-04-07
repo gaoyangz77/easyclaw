@@ -1,20 +1,22 @@
 import { Hono } from "hono";
 import { stream } from "hono/streaming";
 import { sql } from "../db/client.js";
+import { isFreeModel } from "../config/free-models.js";
+import { getActiveSubscription, deductDailyTokens, deductMonthlyTokens } from "../db/quota.js";
 
 function estimateInputTokens(messages: Array<{ role: string; content: unknown }>): number {
   let chars = 0;
   for (const msg of messages) {
-    chars += typeof msg.content === "string" ? msg.content.length : JSON.stringify(msg.content).length;
+    chars += typeof msg.content === "string"
+      ? msg.content.length
+      : JSON.stringify(msg.content).length;
   }
   return Math.ceil(chars / 4) + 50;
 }
 
-function creditsForTokens(tokens: number): number {
-  return Math.max(1, Math.ceil(tokens / 1000));
-}
-
 export const proxyRoute = new Hono<{ Variables: { userId: string } }>();
+
+const DAILY_FREE_DEFAULT = 100_000;
 
 proxyRoute.post("/openrouter/chat/completions", async (c) => {
   const userId = c.get("userId");
@@ -28,36 +30,39 @@ proxyRoute.post("/openrouter/chat/completions", async (c) => {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
 
-  const estimatedTokens = estimateInputTokens(payload.messages ?? []);
-  const creditCost = creditsForTokens(estimatedTokens);
-
-  try {
-    await sql.begin(async (tx) => {
-      const [updated] = await tx<{ balance: number }[]>`
-        UPDATE credit_balance
-        SET balance = balance - ${creditCost}, updated_at = now()
-        WHERE user_id = ${userId} AND balance >= ${creditCost}
-        RETURNING balance
-      `;
-      if (!updated) {
-        const [row] = await tx<{ balance: number }[]>`
-          SELECT balance FROM credit_balance WHERE user_id = ${userId}
-        `;
-        throw Object.assign(new Error("insufficient"), { balance: row?.balance ?? 0, required: creditCost });
-      }
-      await tx`
-        INSERT INTO credit_ledger (user_id, delta, reason, model, tokens)
-        VALUES (${userId}, ${-creditCost}, 'consumption', ${payload.model}, ${estimatedTokens})
-      `;
-    });
-  } catch (err: unknown) {
-    if (err instanceof Error && err.message === "insufficient") {
-      const e = err as Error & { balance: number; required: number };
-      return c.json({ error: "Insufficient credits", balance: e.balance, required: e.required }, 402);
-    }
-    throw err;
+  // 1. Check model access
+  const sub = await getActiveSubscription(userId);
+  if (!sub && !isFreeModel(payload.model)) {
+    return c.json({ error: "Model not available on free plan. Upgrade to access premium models." }, 403);
   }
 
+  // 2. Deduct quota
+  const dailyLimit = parseInt(process.env.DAILY_FREE_TOKENS ?? String(DAILY_FREE_DEFAULT), 10);
+  const estimatedTokens = estimateInputTokens(payload.messages ?? []);
+
+  if (sub) {
+    // Try monthly pool first; fall back to daily quota
+    const fromMonthly = await deductMonthlyTokens(sub.id, estimatedTokens);
+    if (!fromMonthly) {
+      const fromDaily = await deductDailyTokens(userId, estimatedTokens, dailyLimit);
+      if (!fromDaily) {
+        return c.json({ error: "Daily quota exceeded. Resets at midnight.", used: dailyLimit, limit: dailyLimit }, 402);
+      }
+    }
+  } else {
+    const fromDaily = await deductDailyTokens(userId, estimatedTokens, dailyLimit);
+    if (!fromDaily) {
+      return c.json({ error: "Daily quota exceeded. Resets at midnight.", used: dailyLimit, limit: dailyLimit }, 402);
+    }
+  }
+
+  // 3. Record in ledger (always store actual model for internal tracking)
+  await sql`
+    INSERT INTO credit_ledger (user_id, delta, reason, model, tokens)
+    VALUES (${userId}, ${-estimatedTokens}, 'consumption', ${payload.model}, ${estimatedTokens})
+  `;
+
+  // 4. Forward to OpenRouter
   const upstreamRes = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {
