@@ -305,6 +305,16 @@ jobs:
           node-version: 24
           cache: pnpm
 
+      # pnpm needs vendor/openclaw to exist (lockfile has file:vendor/openclaw)
+      - name: Clone OpenClaw vendor
+        run: |
+          HASH=$(tr -d '[:space:]' < .openclaw-version)
+          git clone --depth 1 https://github.com/openclaw/openclaw.git vendor/openclaw
+          cd vendor/openclaw
+          git fetch --depth 1 origin "$HASH"
+          git checkout "$HASH"
+          git checkout -B main
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
