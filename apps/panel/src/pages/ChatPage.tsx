@@ -577,6 +577,14 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
             if (newText.trim()) {
               setMessages((prev) => [...prev, { role: "assistant", text: newText, timestamp: Date.now() }]);
             }
+          } else if (!localRun?.streaming) {
+            // No final text and no streaming text was produced — the run
+            // likely timed out or errored before generating any output.
+            setMessages((prev) => [...prev, {
+              role: "assistant",
+              text: `⚠ ${tRef.current("chat.errorTimeout")}`,
+              timestamp: Date.now(),
+            }]);
           }
           if (sendTimeRef.current > 0) {
             trackEvent("chat.response_received", { durationMs: Date.now() - sendTimeRef.current });
