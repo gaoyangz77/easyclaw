@@ -197,14 +197,15 @@ export interface CSNewMessageFrame {
   type: "cs_tiktok_new_message";
   shopId: string;
   conversationId: string;
-  /** Buyer user ID — used by CS bridge to build CSSessionContext. */
-  buyerUserId: string;
+  /** Buyer's IM user ID (from webhook sender.im_user_id). NOT the platform buyer user ID. */
+  imUserId: string;
   /** Order ID if conversation is order-scoped (post-sale). Undefined for pre-sale. */
   orderId?: string;
   messageId: string;
   messageType: string;
   content: string;
   senderRole: string;
+  /** Sender's IM user ID (same as imUserId for buyer messages). */
   senderId: string;
   createTime: number;
   isVisible: boolean;

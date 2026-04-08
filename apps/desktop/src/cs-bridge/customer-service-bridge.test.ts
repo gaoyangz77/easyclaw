@@ -77,7 +77,7 @@ function createFrame(overrides?: Partial<CSNewMessageFrame>): CSNewMessageFrame 
     type: "cs_tiktok_new_message",
     shopId: "tiktok-shop-456",
     conversationId: "conv-789",
-    buyerUserId: "buyer-001",
+    imUserId: "buyer-001",
     messageId: "msg-001",
     messageType: "TEXT",
     content: JSON.stringify({ content: "Hello" }),
@@ -566,7 +566,7 @@ describe("session registration", () => {
 
     await triggerMessage(bridge, createFrame({
       conversationId: "conv-100",
-      buyerUserId: "buyer-200",
+      imUserId: "buyer-200",
     }));
 
     expect(mockRpcRequest).toHaveBeenCalledWith("cs_register_session", {
@@ -574,7 +574,7 @@ describe("session registration", () => {
       csContext: {
         shopId: "mongo-id-123",
         conversationId: "conv-100",
-        buyerUserId: "buyer-200",
+        imUserId: "buyer-200",
         orderId: null,
       },
     });
@@ -653,7 +653,7 @@ describe("agent dispatch", () => {
 
     await triggerMessage(bridge, createFrame({
       conversationId: "conv-prompt",
-      buyerUserId: "buyer-prompt",
+      imUserId: "buyer-prompt",
     }));
 
     const agentCall = mockRpcRequest.mock.calls.find((c: any[]) => c[0] === "agent");
@@ -1107,7 +1107,7 @@ describe("CS session lifecycle", () => {
 
     await triggerMessage(bridge, createFrame({
       conversationId: "conv-lifecycle",
-      buyerUserId: "buyer-lifecycle",
+      imUserId: "buyer-lifecycle",
     }));
 
     // graphqlFetch should have been called with the session creation mutation
@@ -1116,7 +1116,7 @@ describe("CS session lifecycle", () => {
       {
         shopId: "mongo-id-123",
         conversationId: "conv-lifecycle",
-        buyerUserId: "buyer-lifecycle",
+        imUserId: "buyer-lifecycle",
       },
     );
   });
@@ -1162,9 +1162,9 @@ const defaultDirectiveParams = {
 
 describe("escalation lifecycle (resolve + dispatch)", () => {
   /** Helper: create a session with a pre-existing escalation. */
-  function setupSessionWithEscalation(bridge: ReturnType<typeof createBridge>) {
+  async function setupSessionWithEscalation(bridge: ReturnType<typeof createBridge>) {
     bridge.setShopContext(defaultShop);
-    const session = bridge.getOrCreateSession(defaultDirectiveParams.shopId, defaultDirectiveParams);
+    const session = await bridge.getOrCreateSession(defaultDirectiveParams.shopId, defaultDirectiveParams);
     // Simulate a prior cs_escalate by adding an escalation record
     const esc = session.addEscalation({ reason: "Refund exceeds limit" });
     return { session, escalationId: esc.id };
@@ -1172,7 +1172,7 @@ describe("escalation lifecycle (resolve + dispatch)", () => {
 
   it("resolves escalation and dispatches notification to CS agent", async () => {
     const bridge = createBridge();
-    const { session, escalationId } = setupSessionWithEscalation(bridge);
+    const { session, escalationId } = await setupSessionWithEscalation(bridge);
     mockRpcRequest.mockResolvedValue({ runId: "run-esc-001" });
 
     session.resolveEscalation(escalationId, { decision: "approved", instructions: "Process refund", resolved: true });
@@ -1186,9 +1186,9 @@ describe("escalation lifecycle (resolve + dispatch)", () => {
     expect(agentCall![1].message).toContain("cs_get_escalation_result");
   });
 
-  it("stores decision in escalation record", () => {
+  it("stores decision in escalation record", async () => {
     const bridge = createBridge();
-    const { session, escalationId } = setupSessionWithEscalation(bridge);
+    const { session, escalationId } = await setupSessionWithEscalation(bridge);
 
     session.resolveEscalation(escalationId, { decision: "rejected", instructions: "Offer store credit", resolved: true });
 
@@ -1201,18 +1201,18 @@ describe("escalation lifecycle (resolve + dispatch)", () => {
     expect(esc?.result?.resolvedAt).toBeGreaterThan(0);
   });
 
-  it("throws when resolving non-existent escalation", () => {
+  it("throws when resolving non-existent escalation", async () => {
     const bridge = createBridge();
     bridge.setShopContext(defaultShop);
-    const session = bridge.getOrCreateSession(defaultDirectiveParams.shopId, defaultDirectiveParams);
+    const session = await bridge.getOrCreateSession(defaultDirectiveParams.shopId, defaultDirectiveParams);
 
     expect(() => session.resolveEscalation("esc_nonexistent", { decision: "approved", instructions: "go", resolved: true }))
       .toThrow("Escalation esc_nonexistent not found");
   });
 
-  it("allows overwriting previous resolution", () => {
+  it("allows overwriting previous resolution", async () => {
     const bridge = createBridge();
-    const { session, escalationId } = setupSessionWithEscalation(bridge);
+    const { session, escalationId } = await setupSessionWithEscalation(bridge);
 
     session.resolveEscalation(escalationId, { decision: "checking warehouse", instructions: "hold on", resolved: false });
     const firstResolvedAt = session.escalations.get(escalationId)!.result!.resolvedAt;
@@ -1228,7 +1228,7 @@ describe("escalation lifecycle (resolve + dispatch)", () => {
 
   it("registers CS session before dispatch", async () => {
     const bridge = createBridge();
-    const { session, escalationId } = setupSessionWithEscalation(bridge);
+    const { session, escalationId } = await setupSessionWithEscalation(bridge);
     mockRpcRequest.mockResolvedValue({ runId: "run-esc-002" });
 
     session.resolveEscalation(escalationId, { decision: "approved", instructions: "go", resolved: true });
@@ -1240,7 +1240,7 @@ describe("escalation lifecycle (resolve + dispatch)", () => {
 
   it("tracks run in pendingRuns for auto-forward", async () => {
     const bridge = createBridge();
-    const { session, escalationId } = setupSessionWithEscalation(bridge);
+    const { session, escalationId } = await setupSessionWithEscalation(bridge);
     mockRpcRequest.mockResolvedValue({ runId: "run-esc-003" });
 
     session.resolveEscalation(escalationId, { decision: "approved", instructions: "go", resolved: true });
@@ -1262,9 +1262,9 @@ describe("escalation lifecycle (resolve + dispatch)", () => {
     );
   });
 
-  it("findSessionByEscalationId returns correct session", () => {
+  it("findSessionByEscalationId returns correct session", async () => {
     const bridge = createBridge();
-    const { session, escalationId } = setupSessionWithEscalation(bridge);
+    const { session, escalationId } = await setupSessionWithEscalation(bridge);
 
     expect(bridge.findSessionByEscalationId(escalationId)).toBe(session);
     expect(bridge.findSessionByEscalationId("nonexistent")).toBeUndefined();
@@ -1272,7 +1272,7 @@ describe("escalation lifecycle (resolve + dispatch)", () => {
 
   it("idempotencyKey starts with 'esc-resolved:' prefix", async () => {
     const bridge = createBridge();
-    const { session, escalationId } = setupSessionWithEscalation(bridge);
+    const { session, escalationId } = await setupSessionWithEscalation(bridge);
     mockRpcRequest.mockResolvedValue({ runId: "run-esc-004" });
 
     session.resolveEscalation(escalationId, { decision: "approved", instructions: "go", resolved: true });
@@ -1286,7 +1286,7 @@ describe("escalation lifecycle (resolve + dispatch)", () => {
     const bridge = createBridge();
 
     // Test in-progress message
-    const { session: session1, escalationId: eid1 } = setupSessionWithEscalation(bridge);
+    const { session: session1, escalationId: eid1 } = await setupSessionWithEscalation(bridge);
     mockRpcRequest.mockResolvedValue({ runId: "run-esc-ip-001" });
     session1.resolveEscalation(eid1, { decision: "checking", instructions: "hold", resolved: false });
     await session1.dispatchEscalationResolved(eid1);
@@ -1299,7 +1299,7 @@ describe("escalation lifecycle (resolve + dispatch)", () => {
 
     // Test resolved message — use a fresh bridge to avoid call interference
     const bridge2 = createBridge();
-    const { session: session2, escalationId: eid2 } = setupSessionWithEscalation(bridge2);
+    const { session: session2, escalationId: eid2 } = await setupSessionWithEscalation(bridge2);
     mockRpcRequest.mockClear();
     mockRpcRequest.mockResolvedValue({ runId: "run-esc-res-001" });
     session2.resolveEscalation(eid2, { decision: "approved", instructions: "go", resolved: true });
@@ -1312,9 +1312,9 @@ describe("escalation lifecycle (resolve + dispatch)", () => {
     expect(resolvedCall![1].message).not.toContain("sent an update");
   });
 
-  it("GET escalation returns guidance for pending escalation", () => {
+  it("GET escalation returns guidance for pending escalation", async () => {
     const bridge = createBridge();
-    const { session, escalationId } = setupSessionWithEscalation(bridge);
+    const { session, escalationId } = await setupSessionWithEscalation(bridge);
 
     const escalation = session.escalations.get(escalationId)!;
     // Pending: no result set
@@ -1329,9 +1329,9 @@ describe("escalation lifecycle (resolve + dispatch)", () => {
     expect(guidance).not.toBeNull();
   });
 
-  it("GET escalation returns guidance for in-progress (resolved=false) escalation", () => {
+  it("GET escalation returns guidance for in-progress (resolved=false) escalation", async () => {
     const bridge = createBridge();
-    const { session, escalationId } = setupSessionWithEscalation(bridge);
+    const { session, escalationId } = await setupSessionWithEscalation(bridge);
 
     session.resolveEscalation(escalationId, { decision: "checking warehouse", instructions: "hold on", resolved: false });
     const escalation = session.escalations.get(escalationId)!;
@@ -1344,9 +1344,9 @@ describe("escalation lifecycle (resolve + dispatch)", () => {
     expect(guidance).not.toBeNull();
   });
 
-  it("GET escalation returns no guidance for resolved escalation", () => {
+  it("GET escalation returns no guidance for resolved escalation", async () => {
     const bridge = createBridge();
-    const { session, escalationId } = setupSessionWithEscalation(bridge);
+    const { session, escalationId } = await setupSessionWithEscalation(bridge);
 
     session.resolveEscalation(escalationId, { decision: "approved", instructions: "refund issued", resolved: true });
     const escalation = session.escalations.get(escalationId)!;
@@ -1483,7 +1483,7 @@ const escalationShop: CSShopContext = {
 const defaultEscalateParams = {
   shopId: "shop-esc-001",
   conversationId: "conv-esc-001",
-  buyerUserId: "buyer-esc-001",
+  imUserId: "buyer-esc-001",
   reason: "Buyer requesting refund beyond policy",
 };
 
@@ -1536,7 +1536,8 @@ describe("escalate", () => {
     const bridge = createBridge();
     bridge.setShopContext(escalationShop);
 
-    const result = await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams).escalate({ reason: defaultEscalateParams.reason });
+    const session = await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams);
+    const result = await session.escalate({ reason: defaultEscalateParams.reason });
 
     expect(result.ok).toBe(true);
     expect(result.escalationId).toBeDefined();
@@ -1555,7 +1556,8 @@ describe("escalate", () => {
     const bridge = createBridge();
     bridge.setShopContext(escalationShop);
 
-    await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams).escalate({ reason: defaultEscalateParams.reason });
+    const session = await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams);
+    await session.escalate({ reason: defaultEscalateParams.reason });
 
     const sendCall = mockRpcRequest.mock.calls.find((c: any[]) => c[0] === "send");
     expect(sendCall).toBeDefined();
@@ -1571,7 +1573,8 @@ describe("escalate", () => {
     const bridge = createBridge();
     bridge.setShopContext(escalationShop);
 
-    await bridge.getOrCreateSession(defaultEscalateParams.shopId, { ...defaultEscalateParams, orderId: "order-esc-999" }).escalate({ reason: defaultEscalateParams.reason });
+    const session = await bridge.getOrCreateSession(defaultEscalateParams.shopId, { ...defaultEscalateParams, orderId: "order-esc-999" });
+    await session.escalate({ reason: defaultEscalateParams.reason });
 
     const sendCall = mockRpcRequest.mock.calls.find((c: any[]) => c[0] === "send");
     expect(sendCall).toBeDefined();
@@ -1584,7 +1587,8 @@ describe("escalate", () => {
     const bridge = createBridge();
     bridge.setShopContext(escalationShop);
 
-    await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams).escalate({ reason: defaultEscalateParams.reason, context: "Buyer has been waiting 3 days" });
+    const session = await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams);
+    await session.escalate({ reason: defaultEscalateParams.reason, context: "Buyer has been waiting 3 days" });
 
     const sendCall = mockRpcRequest.mock.calls.find((c: any[]) => c[0] === "send");
     expect(sendCall).toBeDefined();
@@ -1597,7 +1601,8 @@ describe("escalate", () => {
     const bridge = createBridge();
     bridge.setShopContext(escalationShop);
 
-    const result = await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams).escalate({ reason: defaultEscalateParams.reason });
+    const session1 = await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams);
+    const result = await session1.escalate({ reason: defaultEscalateParams.reason });
 
     expect(result).toEqual({ ok: false, error: "Escalation routing not configured" });
     expect(mockRpcRequest).not.toHaveBeenCalledWith("send", expect.anything());
@@ -1608,7 +1613,8 @@ describe("escalate", () => {
     const bridge = createBridge();
     bridge.setShopContext(escalationShop);
 
-    const result = await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams).escalate({ reason: defaultEscalateParams.reason });
+    const session2 = await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams);
+    const result = await session2.escalate({ reason: defaultEscalateParams.reason });
 
     expect(result).toEqual({ ok: false, error: "Escalation routing not configured" });
     expect(mockRpcRequest).not.toHaveBeenCalledWith("send", expect.anything());
@@ -1619,7 +1625,8 @@ describe("escalate", () => {
     const bridge = createBridge();
     bridge.setShopContext(escalationShop);
 
-    const result = await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams).escalate({ reason: defaultEscalateParams.reason });
+    const session3 = await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams);
+    const result = await session3.escalate({ reason: defaultEscalateParams.reason });
 
     expect(result).toEqual({ ok: false, error: "Escalation routing not configured" });
     expect(mockRpcRequest).not.toHaveBeenCalledWith("send", expect.anything());
@@ -1631,7 +1638,8 @@ describe("escalate", () => {
     const bridge = createBridge();
     bridge.setShopContext(escalationShop);
 
-    await expect(bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams).escalate({ reason: defaultEscalateParams.reason })).rejects.toThrow("No RPC client available");
+    const session = await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams);
+    await expect(session.escalate({ reason: defaultEscalateParams.reason })).rejects.toThrow("No RPC client available");
   });
 
   it("send RPC is called with correct idempotencyKey format", async () => {
@@ -1639,7 +1647,8 @@ describe("escalate", () => {
     const bridge = createBridge();
     bridge.setShopContext(escalationShop);
 
-    await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams).escalate({ reason: defaultEscalateParams.reason });
+    const session = await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams);
+    await session.escalate({ reason: defaultEscalateParams.reason });
 
     const sendCall = mockRpcRequest.mock.calls.find((c: any[]) => c[0] === "send");
     expect(sendCall).toBeDefined();
@@ -1651,7 +1660,8 @@ describe("escalate", () => {
     const bridge = createBridge();
     bridge.setShopContext(escalationShop);
 
-    await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams).escalate({ reason: defaultEscalateParams.reason });
+    const session = await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams);
+    await session.escalate({ reason: defaultEscalateParams.reason });
 
     expect(mockRpcRequest).toHaveBeenCalledWith(
       "send",

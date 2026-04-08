@@ -13,7 +13,7 @@ import {
 } from "@rivonclaw/core";
 import { getAuthSession } from "../auth/auth-session-ref.js";
 import { getStorageRef } from "../storage-ref.js";
-import { CustomerServiceSession, GET_CONVERSATION_DETAILS_QUERY, type CSShopContext, type Escalation } from "./customer-service-session.js";
+import { CustomerServiceSession, type CSShopContext, type Escalation } from "./customer-service-session.js";
 import { reaction, toJS } from "mobx";
 
 // Re-export for consumers that imported CSShopContext from this file
@@ -22,14 +22,6 @@ import { rootStore } from "../store/desktop-store.js";
 import { normalizePlatform } from "../utils/platform.js";
 
 const log = createLogger("cs-bridge");
-
-const GET_BUYER_ORDERS_QUERY = `
-  query($shopId: String!, $buyerUserId: String) {
-    ecommerceGetOrders(shopId: $shopId, buyerUserId: $buyerUserId) {
-      code message data
-    }
-  }
-`;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -598,63 +590,12 @@ export class CustomerServiceBridge {
       return;
     }
 
-    const session = this.getOrCreateSessionFromShop(shop, frame);
-
-    // Backfill recent orders if never fetched (undefined = not yet fetched)
-    // Step 1: resolve platform buyer user ID (IM user ID ≠ order buyer user ID)
-    // Step 2: fetch orders using the platform buyer user ID
-    if (session.csContext.recentOrders === undefined) {
-      const authSession = getAuthSession();
-      if (!authSession) {
-        log.error(`Order backfill failed: no auth session for conv=${frame.conversationId}`);
-      } else {
-        try {
-          // Step 1: get platform buyer user ID from conversation details
-          const detailsResult = await authSession.graphqlFetch<{
-            ecommerceGetConversationDetails: { code: number; customer?: { userId: string } };
-          }>(GET_CONVERSATION_DETAILS_QUERY, {
-            shopId: shop.objectId,
-            conversationId: frame.conversationId,
-          });
-          const platformBuyerId = detailsResult.ecommerceGetConversationDetails.customer?.userId;
-          if (!platformBuyerId) {
-            log.warn(`Order backfill: could not resolve platform buyer ID for conv=${frame.conversationId}`);
-            session.csContext.recentOrders = [];
-            session.csContext.orderId = null;
-          } else {
-            // Correct buyerUserId from IM user ID to platform buyer user ID
-            session.csContext.buyerUserId = platformBuyerId;
-            log.info(`Resolved platform buyerId=${platformBuyerId} (im=${session.csContext.imUserId}) for conv=${frame.conversationId}`);
-
-            // Step 2: fetch orders using platform buyer user ID
-            const ordersResult = await authSession.graphqlFetch<{
-              ecommerceGetOrders: { code: number; data?: string };
-            }>(GET_BUYER_ORDERS_QUERY, {
-              shopId: shop.objectId,
-              buyerUserId: platformBuyerId,
-            });
-            const raw = ordersResult.ecommerceGetOrders;
-            if (raw.code === 0 && raw.data) {
-              const parsed = JSON.parse(raw.data) as { orders?: Array<{ id?: string; create_time?: number }> };
-              const orders = (parsed.orders ?? [])
-                .filter((o): o is { id: string; create_time: number } => !!o.id && !!o.create_time)
-                .map(o => ({ orderId: o.id, createTime: o.create_time }))
-                .sort((a, b) => b.createTime - a.createTime);
-              session.csContext.recentOrders = orders;
-              session.csContext.orderId = orders[0]?.orderId ?? null;
-              log.info(`Order backfill done: ${orders.length} order(s) for conv=${frame.conversationId}${orders.length > 0 ? `, latest=${orders[0].orderId}` : ""}`);
-            } else {
-              session.csContext.recentOrders = [];
-              session.csContext.orderId = null;
-              log.info(`Order backfill: no orders for conv=${frame.conversationId}`);
-            }
-          }
-        } catch (err) {
-          log.warn("Order backfill failed:", err);
-          // Keep undefined so next message retries the fetch
-        }
-      }
-    }
+    const session = await this.getOrCreateSession(shop.objectId, {
+      conversationId: frame.conversationId,
+      buyerUserId: frame.imUserId,
+      imUserId: frame.imUserId,
+      orderId: frame.orderId,
+    });
 
     try {
       await session.handleBuyerMessage(frame);
@@ -719,11 +660,11 @@ export class CustomerServiceBridge {
     };
   }
 
-  /** Get existing session or create a new one, by shopObjectId + conversation params. */
-  getOrCreateSession(
+  /** Get existing session or create a new one. */
+  async getOrCreateSession(
     shopObjectId: string,
-    params: { conversationId: string; buyerUserId: string; orderId?: string },
-  ): CustomerServiceSession {
+    params: { conversationId: string; buyerUserId: string; imUserId?: string; orderId?: string },
+  ): Promise<CustomerServiceSession> {
     const existing = this.sessions.get(params.conversationId);
     if (existing) return existing;
 
@@ -733,28 +674,16 @@ export class CustomerServiceBridge {
     return this.createAndStoreSession(shop, shopObjectId, params);
   }
 
-  /** Get existing session or create from a resolved shop context (relay message path). */
-  private getOrCreateSessionFromShop(
-    shop: CSShopContext,
-    params: { conversationId: string; buyerUserId: string; orderId?: string },
-  ): CustomerServiceSession {
-    const existing = this.sessions.get(params.conversationId);
-    if (existing) return existing;
-
-    return this.createAndStoreSession(shop, shop.objectId, params);
-  }
-
-  private createAndStoreSession(
+  private async createAndStoreSession(
     shop: CSShopContext,
     shopObjectId: string,
-    params: { conversationId: string; buyerUserId: string; orderId?: string },
-  ): CustomerServiceSession {
+    params: { conversationId: string; buyerUserId: string; imUserId?: string; orderId?: string },
+  ): Promise<CustomerServiceSession> {
     const csContext = {
       shopId: shopObjectId,
       conversationId: params.conversationId,
-      // Initially IM user ID from webhook; corrected to platform buyer ID during backfill
       buyerUserId: params.buyerUserId,
-      imUserId: params.buyerUserId,
+      imUserId: params.imUserId,
       orderId: params.orderId,
     };
 
@@ -764,6 +693,9 @@ export class CustomerServiceBridge {
         this.pendingRuns.set(runId, { shopObjectId, conversationId: params.conversationId });
       },
     });
+
+    // Resolve platform buyer ID and recent orders before session is usable
+    await session.ensureContextResolved();
 
     this.sessions.set(params.conversationId, session);
     return session;

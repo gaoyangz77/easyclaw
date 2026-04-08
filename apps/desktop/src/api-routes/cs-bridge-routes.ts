@@ -56,7 +56,7 @@ export const handleCSBridgeRoutes: RouteHandler = async (req, res, _url, pathnam
     }
 
     try {
-      const session = bridge.getOrCreateSession(body.shopId as string, {
+      const session = await bridge.getOrCreateSession(body.shopId as string, {
         conversationId: body.conversationId as string,
         buyerUserId: body.buyerUserId as string,
         orderId: typeof body.orderId === "string" ? body.orderId : undefined,
@@ -98,7 +98,7 @@ export const handleCSBridgeRoutes: RouteHandler = async (req, res, _url, pathnam
 
       // Get existing session or create one from stored context
       const session = bridge.findSessionByEscalationId(escalationId)
-        ?? bridge.getOrCreateSession(found.shopId, {
+        ?? await bridge.getOrCreateSession(found.shopId, {
           conversationId: found.conversationId,
           buyerUserId: found.buyerUserId,
         });
@@ -164,7 +164,7 @@ export const handleCSBridgeRoutes: RouteHandler = async (req, res, _url, pathnam
     }
 
     try {
-      const session = bridge.getOrCreateSession(body.shopId as string, {
+      const session = await bridge.getOrCreateSession(body.shopId as string, {
         conversationId: body.conversationId as string,
         buyerUserId: body.buyerUserId as string,
         orderId: typeof body.orderId === "string" ? body.orderId : undefined,

@@ -45,6 +45,14 @@ export const GET_CONVERSATION_DETAILS_QUERY = `
   }
 `;
 
+const GET_BUYER_ORDERS_QUERY = `
+  query($shopId: String!, $buyerUserId: String) {
+    ecommerceGetOrders(shopId: $shopId, buyerUserId: $buyerUserId) {
+      code message data
+    }
+  }
+`;
+
 const CS_GET_OR_CREATE_SESSION_MUTATION = `
   mutation CsGetOrCreateSession($shopId: ID!, $conversationId: String!, $buyerUserId: String!) {
     csGetOrCreateSession(shopId: $shopId, conversationId: $conversationId, buyerUserId: $buyerUserId) {
@@ -82,11 +90,12 @@ export interface CSShopContext {
 export interface CSContext {
   shopId: string;
   conversationId: string;
-  /** Platform buyer user ID. Initially set to IM user ID from webhook, then
-   *  corrected to the real platform buyer ID during backfill. */
+  /** Platform buyer user ID. Resolved from conversation details during context
+   *  resolution. Before resolution, holds the IM user ID as a placeholder. */
   buyerUserId: string;
-  /** IM user ID from the webhook (preserved as-is). */
-  imUserId: string;
+  /** IM user ID from the webhook (preserved as-is). Only set for sessions
+   *  created via relay webhook path; undefined for manually started sessions. */
+  imUserId?: string;
   /** undefined = not yet fetched; null = fetched but no order; string = most recent orderId */
   orderId?: string | null;
   /** undefined = not fetched yet; [] = fetched, no orders; non-empty = has orders */
@@ -545,6 +554,85 @@ export class CustomerServiceSession {
       .catch((err) => log.warn(`Failed to abort run: ${err instanceof Error ? err.message : String(err)}`));
   }
 
+  // -- Private — context resolution -------------------------------------------
+
+  /** Whether context resolution (platform buyer ID + recent orders) has been attempted. */
+  private contextResolved = false;
+
+  /**
+   * Resolve platform buyer user ID and recent orders for this session.
+   *
+   * Called once before the first gateway registration. Fetches conversation
+   * details to map the IM user ID to the platform buyer user ID, then uses
+   * the platform ID to query the buyer's recent orders.
+   *
+   * All entry points (webhook message, manual start, escalation) funnel
+   * through setup() → this method, so context is always resolved.
+   */
+  async ensureContextResolved(): Promise<void> {
+    if (this.contextResolved) return;
+
+    const authSession = getAuthSession();
+    if (!authSession) {
+      log.error(`Context resolution failed: no auth session for conv=${this.csContext.conversationId}`);
+      this.csContext.recentOrders = [];
+      this.contextResolved = true;
+      return;
+    }
+
+    try {
+      // Step 1: resolve platform buyer user ID from conversation participants
+      const detailsResult = await authSession.graphqlFetch<{
+        ecommerceGetConversationDetails: { code: number; customer?: { userId: string } };
+      }>(GET_CONVERSATION_DETAILS_QUERY, {
+        shopId: this.csContext.shopId,
+        conversationId: this.csContext.conversationId,
+      });
+      const platformBuyerId = detailsResult.ecommerceGetConversationDetails.customer?.userId;
+      if (!platformBuyerId) {
+        log.warn(`Context resolution: could not resolve platform buyer ID for conv=${this.csContext.conversationId}`);
+        this.csContext.recentOrders = [];
+        this.csContext.orderId = null;
+        this.contextResolved = true;
+        return;
+      }
+
+      // Update buyerUserId to the real platform ID
+      if (this.csContext.buyerUserId !== platformBuyerId) {
+        log.info(`Resolved platform buyerId=${platformBuyerId} (was ${this.csContext.buyerUserId}) for conv=${this.csContext.conversationId}`);
+        this.csContext.buyerUserId = platformBuyerId;
+      }
+
+      // Step 2: fetch buyer's recent orders using the platform buyer ID
+      const ordersResult = await authSession.graphqlFetch<{
+        ecommerceGetOrders: { code: number; data?: string };
+      }>(GET_BUYER_ORDERS_QUERY, {
+        shopId: this.csContext.shopId,
+        buyerUserId: platformBuyerId,
+      });
+      const raw = ordersResult.ecommerceGetOrders;
+      if (raw.code === 0 && raw.data) {
+        const parsed = JSON.parse(raw.data) as { orders?: Array<{ id?: string; create_time?: number }> };
+        const orders = (parsed.orders ?? [])
+          .filter((o): o is { id: string; create_time: number } => !!o.id && !!o.create_time)
+          .map(o => ({ orderId: o.id, createTime: o.create_time }))
+          .sort((a, b) => b.createTime - a.createTime);
+        this.csContext.recentOrders = orders;
+        this.csContext.orderId = orders[0]?.orderId ?? null;
+        log.info(`Context resolved: ${orders.length} order(s) for conv=${this.csContext.conversationId}${orders.length > 0 ? `, latest=${orders[0].orderId}` : ""}`);
+      } else {
+        this.csContext.recentOrders = [];
+        this.csContext.orderId = null;
+      }
+
+      this.contextResolved = true;
+    } catch (err) {
+      log.warn(`Context resolution failed for conv=${this.csContext.conversationId}:`, err);
+      // contextResolved stays false — createAndStoreSession will throw,
+      // next attempt to create a session for this conversation will retry
+    }
+  }
+
   // -- Private — gateway setup ------------------------------------------------
 
   private async setup(): Promise<void> {
@@ -584,14 +672,10 @@ export class CustomerServiceSession {
 
     await this.setup();
 
-    const prompt = this.extraSystemPrompt;
-    const orderLine = prompt.split("\n").find(l => l.includes("Recent Orders"));
-    log.info(`Dispatch prompt check: recentOrders=${JSON.stringify(this.csContext.recentOrders)}, orderLine=${JSON.stringify(orderLine ?? "NOT FOUND")}`);
-
     const response = await rpcClient.request<DispatchResult>("agent", {
       sessionKey: this.dispatchKey,
       message: params.message,
-      extraSystemPrompt: prompt,
+      extraSystemPrompt: this.extraSystemPrompt,
       promptMode: "raw",
       idempotencyKey: params.idempotencyKey,
       ...(params.attachments ? { attachments: params.attachments } : {}),
