@@ -85,8 +85,8 @@ export interface CSContext {
   buyerUserId: string;
   /** undefined = not yet fetched; null = fetched but no order; string = most recent orderId */
   orderId?: string | null;
-  /** All recent orders for prompt context. undefined = not fetched yet. */
-  recentOrders?: Array<{ orderId: string; createTime: number }> | null;
+  /** undefined = not fetched yet; [] = fetched, no orders; non-empty = has orders */
+  recentOrders?: Array<{ orderId: string; createTime: number }>;
 }
 
 export interface DispatchResult {

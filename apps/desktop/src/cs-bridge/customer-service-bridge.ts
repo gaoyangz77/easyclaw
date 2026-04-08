@@ -618,13 +618,13 @@ export class CustomerServiceBridge {
               .filter((o): o is { id: string; create_time: number } => !!o.id && !!o.create_time)
               .map(o => ({ orderId: o.id, createTime: o.create_time }))
               .sort((a, b) => b.createTime - a.createTime);
-            session.csContext.recentOrders = orders.length > 0 ? orders : null;
-            session.csContext.orderId = orders.length > 0 ? orders[0].orderId : null;
+            session.csContext.recentOrders = orders;
+            session.csContext.orderId = orders[0]?.orderId ?? null;
             if (orders.length > 0) {
               log.info(`Backfilled ${orders.length} recent order(s) for conv=${frame.conversationId}, latest=${orders[0].orderId}`);
             }
           } else {
-            session.csContext.recentOrders = null;
+            session.csContext.recentOrders = [];
             session.csContext.orderId = null;
           }
         }
