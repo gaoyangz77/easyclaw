@@ -20,6 +20,7 @@ export class SttManager {
   constructor(
     private storage: Storage,
     private secretStore: SecretStore,
+    private fetchFn?: (url: string | URL, init?: RequestInit) => Promise<Response>,
   ) {}
 
   /**
@@ -54,7 +55,7 @@ export class SttManager {
       }
 
       // Create STT provider instance
-      this.provider = createSttProvider(config);
+      this.provider = createSttProvider(config, this.fetchFn);
       log.info(`STT service initialized successfully with ${provider}`);
     } catch (err) {
       log.error("Failed to initialize STT service", err);

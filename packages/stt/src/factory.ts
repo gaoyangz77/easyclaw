@@ -5,8 +5,14 @@ import { GroqSttProvider } from "./groq.js";
 /**
  * Creates an STT provider based on the given configuration.
  * Validates that the required credentials are present for the selected provider.
+ *
+ * @param config - STT configuration with provider credentials
+ * @param fetchFn - Optional custom fetch function for proxy support (defaults to global fetch)
  */
-export function createSttProvider(config: SttConfig): SttProvider {
+export function createSttProvider(
+  config: SttConfig,
+  fetchFn?: (url: string | URL, init?: RequestInit) => Promise<Response>,
+): SttProvider {
   switch (config.provider) {
     case "volcengine": {
       if (!config.volcengine) {
@@ -22,6 +28,7 @@ export function createSttProvider(config: SttConfig): SttProvider {
       return new VolcengineSttProvider(
         config.volcengine.appKey,
         config.volcengine.accessKey,
+        fetchFn,
       );
     }
 
@@ -32,7 +39,7 @@ export function createSttProvider(config: SttConfig): SttProvider {
       if (!config.groq.apiKey) {
         throw new Error("Groq STT requires an apiKey");
       }
-      return new GroqSttProvider(config.groq.apiKey);
+      return new GroqSttProvider(config.groq.apiKey, fetchFn);
     }
 
     default: {

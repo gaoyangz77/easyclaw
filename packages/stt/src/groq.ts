@@ -30,9 +30,11 @@ interface GroqTranscriptionResponse {
 export class GroqSttProvider implements SttProvider {
   readonly name = "groq";
   private readonly apiKey: string;
+  private readonly fetchFn: (url: string | URL, init?: RequestInit) => Promise<Response>;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, fetchFn: (url: string | URL, init?: RequestInit) => Promise<Response> = fetch) {
     this.apiKey = apiKey;
+    this.fetchFn = fetchFn;
   }
 
   async transcribe(audio: Buffer, format: string): Promise<SttResult> {
@@ -58,7 +60,7 @@ export class GroqSttProvider implements SttProvider {
     formData.append("model", MODEL);
     formData.append("response_format", "json");
 
-    const response = await fetch(GROQ_API_URL, {
+    const response = await this.fetchFn(GROQ_API_URL, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${this.apiKey}`,

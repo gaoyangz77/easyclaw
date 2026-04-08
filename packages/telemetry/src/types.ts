@@ -61,4 +61,7 @@ export interface TelemetryConfig {
 
   /** Optional user account ID (reserved for future login feature) */
   userId?: string;
+
+  /** Optional custom fetch function for proxy support */
+  fetchFn?: (url: string | URL, init?: RequestInit) => Promise<Response>;
 }

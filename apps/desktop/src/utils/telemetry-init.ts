@@ -20,6 +20,7 @@ export function initTelemetry(
   storage: Storage,
   deviceId: string,
   locale: string,
+  fetchFn?: (url: string | URL, init?: RequestInit) => Promise<Response>,
 ): TelemetryInitResult {
   const telemetryEnabled = !app.isPackaged
     ? process.env.DEV_TELEMETRY === "1"
@@ -38,6 +39,7 @@ export function initTelemetry(
         platform: process.platform,
         locale,
         deviceId,
+        fetchFn,
       });
       log.info("Telemetry client initialized (user opted in)");
     } catch (error) {

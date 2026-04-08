@@ -15,11 +15,12 @@ export const MANIFEST_URLS = {
  */
 export async function fetchManifest(
   manifestUrl?: string,
+  fetchFn: (url: string | URL, init?: RequestInit) => Promise<Response> = fetch,
 ): Promise<UpdateManifest> {
   const url = manifestUrl ?? MANIFEST_URLS.default;
   log.debug(`Fetching update manifest from ${url}`);
 
-  const response = await fetch(url, {
+  const response = await fetchFn(url, {
     signal: AbortSignal.timeout(10_000),
   });
 
@@ -57,12 +58,12 @@ export function getPlatformKey(): "mac" | "win" {
  */
 export async function checkForUpdate(
   currentVersion: string,
-  options?: { manifestUrl?: string; region?: string },
+  options?: { manifestUrl?: string; region?: string; fetchFn?: (url: string | URL, init?: RequestInit) => Promise<Response> },
 ): Promise<UpdateCheckResult> {
   try {
     const manifestUrl = options?.manifestUrl
       ?? (options?.region === "cn" ? MANIFEST_URLS.cn : MANIFEST_URLS.default);
-    const manifest = await fetchManifest(manifestUrl);
+    const manifest = await fetchManifest(manifestUrl, options?.fetchFn);
     const updateAvailable = isNewerVersion(currentVersion, manifest.latestVersion);
 
     let platformKey: "mac" | "win";

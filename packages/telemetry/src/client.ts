@@ -152,7 +152,8 @@ export class RemoteTelemetryClient {
    * @private
    */
   private async sendBatch(events: TelemetryEvent[]): Promise<void> {
-    const response = await fetch(this.config.endpoint, {
+    const doFetch = this.config.fetchFn ?? fetch;
+    const response = await doFetch(this.config.endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

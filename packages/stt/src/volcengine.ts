@@ -34,10 +34,12 @@ export class VolcengineSttProvider implements SttProvider {
   readonly name = "volcengine";
   private readonly appKey: string;
   private readonly accessKey: string;
+  private readonly fetchFn: (url: string | URL, init?: RequestInit) => Promise<Response>;
 
-  constructor(appKey: string, accessKey: string) {
+  constructor(appKey: string, accessKey: string, fetchFn: (url: string | URL, init?: RequestInit) => Promise<Response> = fetch) {
     this.appKey = appKey;
     this.accessKey = accessKey;
+    this.fetchFn = fetchFn;
   }
 
   async transcribe(audio: Buffer, format: string): Promise<SttResult> {
@@ -68,7 +70,7 @@ export class VolcengineSttProvider implements SttProvider {
     format: string,
     requestId: string,
   ): Promise<void> {
-    const response = await fetch(SUBMIT_URL, {
+    const response = await this.fetchFn(SUBMIT_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -103,7 +105,7 @@ export class VolcengineSttProvider implements SttProvider {
     while (Date.now() < deadline) {
       await sleep(interval);
 
-      const response = await fetch(QUERY_URL, {
+      const response = await this.fetchFn(QUERY_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

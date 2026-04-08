@@ -342,7 +342,9 @@ app.whenReady().then(async () => {
 
   // Initialize telemetry client and heartbeat timer
   const locale = app.getLocale().startsWith("zh") ? "zh" : "en";
-  const { client: telemetryClient, heartbeatTimer } = initTelemetry(storage, deviceId, locale);
+  const { client: telemetryClient, heartbeatTimer } = initTelemetry(
+    storage, deviceId, locale, (url, init) => proxyNetwork.fetch(url, init),
+  );
 
   // Initialize auth session manager.
   // proxyNetwork.fetch routes through the proxy-router once it is ready,
@@ -1049,7 +1051,7 @@ app.whenReady().then(async () => {
   });
 
   // Initialize STT manager
-  const sttManager = new SttManager(storage, secretStore);
+  const sttManager = new SttManager(storage, secretStore, (url, init) => proxyNetwork.fetch(url, init));
   await sttManager.initialize();
 
   // Initialize session state stack for browser profile session persistence.
