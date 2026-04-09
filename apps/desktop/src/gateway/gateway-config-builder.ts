@@ -46,6 +46,20 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
     return { provider: "google-gemini-cli", modelId };
   }
 
+  /** Only include extra providers that the user has configured (has a provider key in DB).
+   *  Unconfigured providers have no API key, causing Pi SDK's validateConfig to reject
+   *  the entire models.json — which silently drops ALL custom models from the catalog. */
+  function filterConfiguredExtraProviders<T>(providers: Record<string, T>): Record<string, T> {
+    const configuredProviders = new Set(storage.providerKeys.getAll().map((k) => k.provider));
+    const filtered: Record<string, T> = {};
+    for (const [provider, config] of Object.entries(providers)) {
+      if (configuredProviders.has(provider)) {
+        filtered[provider] = config;
+      }
+    }
+    return filtered;
+  }
+
   function buildLocalProviderOverrides(): Record<string, { baseUrl: string; models: Array<{ id: string; name: string; inputModalities?: string[] }> }> {
     const overrides: Record<string, { baseUrl: string; models: Array<{ id: string; name: string; inputModalities?: string[] }> }> = {};
     for (const localProvider of LOCAL_PROVIDER_IDS) {
@@ -215,7 +229,7 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
         provider: curEmbeddingProvider,
         apiKeyEnvVar: embKeyExists ? EMB_ENV_MAP[curEmbeddingProvider] : undefined,
       },
-      extraProviders: { ...buildExtraProviderConfigs(), ...buildCustomProviderOverrides() },
+      extraProviders: { ...filterConfiguredExtraProviders(buildExtraProviderConfigs()), ...buildCustomProviderOverrides() },
       localProviderOverrides: buildLocalProviderOverrides(),
       browserMode: curBrowserMode,
       browserCdpPort: curBrowserCdpPort,
