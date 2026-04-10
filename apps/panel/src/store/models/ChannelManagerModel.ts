@@ -35,6 +35,28 @@ export const ChannelManagerModel = types
         // Desktop REST -> channelManager.addAccount() -> Desktop MST -> SSE -> Panel auto-updates
       }),
 
+      /** Update an existing channel account. */
+      updateAccount: flow(function* (
+        channelId: string,
+        accountId: string,
+        data: { name?: string; config: Record<string, unknown>; secrets?: Record<string, string> },
+      ) {
+        yield fetchJson(
+          clientPath(API["channels.accounts.update"], { channelId, accountId }),
+          { method: "PUT", body: JSON.stringify(data) },
+        );
+        broadcast();
+      }),
+
+      /** Delete a channel account. */
+      deleteAccount: flow(function* (channelId: string, accountId: string) {
+        yield fetchJson(
+          clientPath(API["channels.accounts.delete"], { channelId, accountId }),
+          { method: "DELETE" },
+        );
+        broadcast();
+      }),
+
       /** Get full account config (including secrets) from Desktop SQLite. */
       getAccountConfig: flow(function* (channelId: string, accountId: string) {
         return yield fetchJson(

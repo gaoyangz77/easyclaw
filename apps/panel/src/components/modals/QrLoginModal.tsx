@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import QRCode from "qrcode";
-import { startQrLogin, waitQrLogin, updateChannelAccount } from "../../api/channels.js";
+import { startQrLogin, waitQrLogin } from "../../api/channels.js";
+import { useEntityStore } from "../../store/EntityStoreProvider.js";
 import { Modal } from "./Modal.js";
 
 type QrLoginPhase = "loading" | "scanning" | "refreshing" | "success" | "error";
@@ -21,6 +22,7 @@ interface QrLoginModalProps {
 
 export function QrLoginModal({ channelId, onClose, onSuccess }: QrLoginModalProps) {
   const { t } = useTranslation();
+  const entityStore = useEntityStore();
 
   const [phase, setPhase] = useState<QrLoginPhase>("loading");
   const [qrImageUrl, setQrImageUrl] = useState<string | null>(null);
@@ -94,7 +96,7 @@ export function QrLoginModal({ channelId, onClose, onSuccess }: QrLoginModalProp
             clearCountdown();
             // Set accountId as initial display name so the row isn't blank
             if (result.accountId) {
-              updateChannelAccount(channelId, result.accountId, {
+              entityStore.channelManager.updateAccount(channelId, result.accountId, {
                 name: result.accountId,
                 config: {},
               }).catch(() => { /* best-effort */ });
@@ -133,7 +135,7 @@ export function QrLoginModal({ channelId, onClose, onSuccess }: QrLoginModalProp
         setPhase("error");
       }
     }
-  }, [t, channelId, clearCountdown, resetCountdown]);
+  }, [t, channelId, entityStore, clearCountdown, resetCountdown]);
 
   useEffect(() => {
     startLogin();

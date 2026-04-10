@@ -18,55 +18,6 @@ export async function fetchChannelStatus(probe = false): Promise<ChannelsStatusS
 }
 
 /**
- * Create a new channel account in OpenClaw config.
- * @deprecated Use entityStore.channelManager.createAccount() instead for MST sync.
- */
-export async function createChannelAccount(data: {
-  channelId: string;
-  accountId: string;
-  name?: string;
-  config: Record<string, unknown>;
-  secrets?: Record<string, string>;
-}): Promise<{ ok: boolean; channelId: string; accountId: string }> {
-  return fetchJson(clientPath(API["channels.accounts.create"]), {
-    method: "POST",
-    body: JSON.stringify(data),
-  });
-}
-
-/**
- * Update an existing channel account in OpenClaw config.
- * @deprecated Use channelAccount.update() on the MST model instead for MST sync.
- */
-export async function updateChannelAccount(
-  channelId: string,
-  accountId: string,
-  data: {
-    name?: string;
-    config: Record<string, unknown>;
-    secrets?: Record<string, string>;
-  }
-): Promise<{ ok: boolean; channelId: string; accountId: string }> {
-  return fetchJson(clientPath(API["channels.accounts.update"], { channelId, accountId }), {
-    method: "PUT",
-    body: JSON.stringify(data),
-  });
-}
-
-/**
- * Delete a channel account from OpenClaw config.
- * @deprecated Use channelAccount.delete() on the MST model instead for MST sync.
- */
-export async function deleteChannelAccount(
-  channelId: string,
-  accountId: string
-): Promise<{ ok: boolean; channelId: string; accountId: string }> {
-  return fetchJson(clientPath(API["channels.accounts.delete"], { channelId, accountId }), {
-    method: "DELETE",
-  });
-}
-
-/**
  * Fetch a channel account's full config from SQLite (excludes secrets).
  */
 export async function getChannelAccountConfig(

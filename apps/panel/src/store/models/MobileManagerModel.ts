@@ -1,6 +1,7 @@
 import { types, flow } from "mobx-state-tree";
 import { fetchJson } from "../../api/client.js";
 import { API, clientPath } from "@rivonclaw/core/api-contract";
+import type { MobilePairingStatusResponse, MobileDeviceStatusResponse } from "../../api/mobile-chat.js";
 
 /** Fired after any mobile pairing configuration change. */
 const MOBILE_CHANGED_EVENT = "mobile-changed";
@@ -31,17 +32,26 @@ export const MobileManagerModel = types
 
       /** Get pairing status (pairings list, activeCode, desktopDeviceId). */
       getStatus: flow(function* () {
-        return yield fetchJson(clientPath(API["mobile.status"]));
+        return (yield fetchJson(clientPath(API["mobile.status"]))) as MobilePairingStatusResponse;
       }),
 
       /** Get device-level presence status. */
       getDeviceStatus: flow(function* () {
-        return yield fetchJson(clientPath(API["mobile.deviceStatus"]));
+        return (yield fetchJson(clientPath(API["mobile.deviceStatus"]))) as MobileDeviceStatusResponse;
       }),
 
       /** Disconnect all pairings. */
       disconnectAll: flow(function* () {
         yield fetchJson(clientPath(API["mobile.disconnect"]), { method: "DELETE" });
+        broadcast();
+      }),
+
+      /** Disconnect a specific pairing by ID. */
+      disconnectOne: flow(function* (pairingId: string) {
+        yield fetchJson(
+          clientPath(API["mobile.disconnect"]) + `?pairingId=${encodeURIComponent(pairingId)}`,
+          { method: "DELETE" },
+        );
         broadcast();
       }),
 

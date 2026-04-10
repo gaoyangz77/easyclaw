@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { deleteChannelAccount, getChannelAccountConfig, trackEvent, type ChannelAccountSnapshot } from "../../api/index.js";
-import { disconnectMobilePairing } from "../../api/mobile-chat.js";
+import { getChannelAccountConfig, trackEvent, type ChannelAccountSnapshot } from "../../api/index.js";
+import { useEntityStore } from "../../store/EntityStoreProvider.js";
 import { pollGatewayReady } from "./poll-gateway.js";
 import { AddChannelAccountModal } from "../../components/modals/AddChannelAccountModal.js";
 import { MobileBindingModal } from "../../components/modals/MobileBindingModal.js";
@@ -16,6 +16,7 @@ import { QrLoginModal } from "../../components/modals/QrLoginModal.js";
 
 export function ChannelsPage() {
   const { t, i18n } = useTranslation();
+  const entityStore = useEntityStore();
   const {
     snapshot, loading, error, refreshing,
     loadChannelStatus,
@@ -148,10 +149,10 @@ export function ChannelsPage() {
 
       if (channelId === "mobile") {
         // Disconnect all mobile pairings
-        await disconnectMobilePairing();
+        await entityStore.mobileManager.disconnectAll();
         await pollGatewayReady(() => loadChannelStatus());
       } else {
-        await deleteChannelAccount(channelId, accountId);
+        await entityStore.channelManager.deleteAccount(channelId, accountId);
         await pollGatewayReady(() => loadChannelStatus());
       }
     } catch (err) {

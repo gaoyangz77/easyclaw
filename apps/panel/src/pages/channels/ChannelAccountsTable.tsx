@@ -11,7 +11,8 @@ import {
   setRecipientOwner,
   type PairingRequest,
 } from "../../api/channels.js";
-import { fetchMobileDeviceStatus, disconnectMobilePairing, getMobilePairingStatus, type MobileDeviceStatusResponse, type MobilePairingInfo } from "../../api/mobile-chat.js";
+import type { MobileDeviceStatusResponse, MobilePairingInfo } from "../../api/mobile-chat.js";
+import { useEntityStore } from "../../store/EntityStoreProvider.js";
 import { ConfirmDialog } from "../../components/modals/ConfirmDialog.js";
 import { StatusBadge, type AccountEntry } from "./channel-defs.jsx";
 
@@ -61,6 +62,7 @@ export function ChannelAccountsTable({
   onEdit: (channelId: string, account: ChannelAccountSnapshot) => void;
   onDelete: (channelId: string, accountId: string) => void;
 }) {
+  const entityStore = useEntityStore();
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
   const [recipientData, setRecipientData] = useState<Record<string, RecipientData>>({});
   const [processing, setProcessing] = useState<string | null>(null);
@@ -80,8 +82,8 @@ export function ChannelAccountsTable({
     async function poll() {
       try {
         const [statusResult, pairingResult] = await Promise.all([
-          fetchMobileDeviceStatus(),
-          getMobilePairingStatus(),
+          entityStore.mobileManager.getDeviceStatus(),
+          entityStore.mobileManager.getStatus(),
         ]);
         if (!cancelled) {
           setMobileDeviceStatus(statusResult.devices);
@@ -234,9 +236,11 @@ export function ChannelAccountsTable({
       if (channelId === "mobile") {
         // Mobile channel: use full disconnect (DB + allowlist + engine cleanup)
         // Find the pairing DB id by mobileDeviceId
-        const statusResp = await getMobilePairingStatus();
+        const statusResp = await entityStore.mobileManager.getStatus();
         const pairing = statusResp.pairings?.find(p => p.pairingId === entry || p.id === entry);
-        await disconnectMobilePairing(pairing?.id);
+        if (pairing?.id) {
+          await entityStore.mobileManager.disconnectOne(pairing.id);
+        }
       } else {
         await removeFromAllowlist(channelId, entry);
       }

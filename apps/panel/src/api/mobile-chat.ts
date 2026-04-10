@@ -1,6 +1,3 @@
-import { fetchJson } from "./client.js";
-import { API, clientPath } from "@rivonclaw/core/api-contract";
-
 export interface MobilePairingInfo {
     id: string;
     pairingId?: string;
@@ -27,28 +24,6 @@ export interface RegisterPairingBody {
     mobileDeviceId?: string;
 }
 
-/** @deprecated Use entityStore.mobileManager.getStatus() instead for MST sync. */
-export async function getMobilePairingStatus(): Promise<MobilePairingStatusResponse> {
-    return await fetchJson<MobilePairingStatusResponse>(clientPath(API["mobile.status"]), {
-        method: "GET"
-    });
-}
-
 export interface MobileDeviceStatusResponse {
     devices: Record<string, { relayConnected: boolean; mobileOnline: boolean; stale?: boolean }>;
-}
-
-/** @deprecated Use entityStore.mobileManager.getDeviceStatus() instead for MST sync. */
-export async function fetchMobileDeviceStatus(): Promise<MobileDeviceStatusResponse> {
-    return await fetchJson<MobileDeviceStatusResponse>(clientPath(API["mobile.deviceStatus"]), {
-        method: "GET"
-    });
-}
-
-/** @deprecated Use MobilePairingModel.disconnect() or entityStore.mobileManager.disconnectAll() instead. */
-export async function disconnectMobilePairing(pairingId?: string): Promise<{ error?: string }> {
-    const query = pairingId ? `?pairingId=${encodeURIComponent(pairingId)}` : "";
-    return await fetchJson<{ error?: string }>(clientPath(API["mobile.disconnect"]) + query, {
-        method: "DELETE"
-    });
 }

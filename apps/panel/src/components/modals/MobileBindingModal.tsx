@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import QRCode from "qrcode";
-import { getMobilePairingStatus } from "../../api/mobile-chat.js";
 import { useEntityStore } from "../../store/EntityStoreProvider.js";
 import { useRuntimeStatus } from "../../store/RuntimeStatusProvider.js";
 import { observer } from "mobx-react-lite";
@@ -151,7 +150,7 @@ export const MobileBindingModal = observer(function MobileBindingModal({ isOpen,
 
         (async () => {
             try {
-                const res = await getMobilePairingStatus();
+                const res = await entityStore.mobileManager.getStatus();
                 const count = res.pairings?.length ?? 0;
                 if (!cancelled) {
                     setExistingCount(count);

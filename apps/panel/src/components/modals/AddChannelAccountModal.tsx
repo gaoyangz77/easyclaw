@@ -2,7 +2,8 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Modal } from "./Modal.js";
 import { Select } from "../inputs/Select.js";
-import { createChannelAccount, updateChannelAccount, trackEvent } from "../../api/index.js";
+import { trackEvent } from "../../api/index.js";
+import { useEntityStore } from "../../store/EntityStoreProvider.js";
 import { CHANNEL_SCHEMAS } from "../../lib/channel-schemas.js";
 import { TagInput } from "../inputs/TagInput.js";
 
@@ -28,6 +29,7 @@ export function AddChannelAccountModal({
   onSuccess,
 }: AddChannelAccountModalProps) {
   const { t } = useTranslation();
+  const entityStore = useEntityStore();
   const isEdit = !!existingAccount;
   const schema = CHANNEL_SCHEMAS[channelId];
 
@@ -86,7 +88,7 @@ export function AddChannelAccountModal({
       setSaving(true);
       setError(null);
       try {
-        await updateChannelAccount(channelId, existingAccount!.accountId, {
+        await entityStore.channelManager.updateAccount(channelId, existingAccount!.accountId, {
           name: name.trim() || undefined,
           config: {},
         });
@@ -181,14 +183,14 @@ export function AddChannelAccountModal({
       });
 
       if (isEdit) {
-        await updateChannelAccount(channelId, existingAccount!.accountId, {
+        await entityStore.channelManager.updateAccount(channelId, existingAccount!.accountId, {
           name: name.trim() || undefined,
           config,
           secrets: Object.keys(secrets).length > 0 ? secrets : undefined,
         });
       } else {
         const accountId = `acct_${Date.now().toString(36)}`;
-        await createChannelAccount({
+        await entityStore.channelManager.createAccount({
           channelId,
           accountId,
           name: name.trim() || undefined,
