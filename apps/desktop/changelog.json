@@ -1,5 +1,23 @@
 [
   {
+    "version": "1.7.10",
+    "date": "2026-04-10",
+    "en": [
+      "Add one-click log upload from Settings → Data Directory to make troubleshooting much easier",
+      "Improve proxy compatibility so telemetry, speech-to-text, updater, and other cloud features work more reliably behind system proxies",
+      "Improve customer service sessions with recent-order context, stale-session cleanup, and a clearer runtime status banner",
+      "Improve channel and account stability, including managed provider cleanup and WeChat channel updates",
+      "Refactor major desktop and panel screens to a cleaner architecture for better long-term reliability"
+    ],
+    "zh": [
+      "设置页的数据目录卡片新增一键上传日志，排查问题更省事",
+      "增强代理网络兼容性：遥测、语音转文字、自动更新等云端功能在系统代理下更稳定",
+      "优化客服会话体验：补充最近订单上下文、清理陈旧会话，并提供更清晰的运行状态提示",
+      "提升渠道与账号稳定性，包括清理失效 provider 配置并更新微信渠道能力",
+      "重构桌面端和面板的大量页面结构，为后续版本的稳定性打基础"
+    ]
+  },
+  {
     "version": "1.7.9",
     "date": "2026-04-08",
     "en": [
