@@ -1,3 +1,8 @@
+/**
+ * Runtime types matching RootStore.allSurfaces / RootStore.allRunProfiles views.
+ * These are plain objects (not MST snapshots), so we mirror the view shape directly.
+ */
+
 export interface Surface {
   id: string;
   name: string;
