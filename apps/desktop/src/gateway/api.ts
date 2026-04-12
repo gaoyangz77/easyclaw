@@ -5,7 +5,7 @@ import type { RouteRegistry, EndpointHandler } from "../infra/api/route-registry
 import type { ApiContext } from "../app/api-context.js";
 import { parseBody, sendJson } from "../infra/api/route-utils.js";
 import { rootStore } from "../app/store/desktop-store.js";
-import { waitForGatewayReady } from "./rpc-client-ref.js";
+import { openClawConnector } from "../openclaw/index.js";
 
 const log = createLogger("tool-registry");
 
@@ -41,7 +41,12 @@ const getEffectiveTools: EndpointHandler = async (_req, res, url, _params, _ctx)
     // v2026.4.1 gateway startup is ~10s; without this wait the API
     // returns [] before tools are available.
     try {
-      await waitForGatewayReady(15_000);
+      // Wait for gateway RPC to become ready (poll at 200ms intervals).
+      const rpcDeadline = Date.now() + 15_000;
+      while (Date.now() < rpcDeadline) {
+        try { openClawConnector.ensureRpcReady(); break; } catch { /* not ready yet */ }
+        await new Promise(r => setTimeout(r, 200));
+      }
       // After gateway is ready, tool catalog init runs asynchronously.
       // Poll briefly for it to complete.
       const deadline = Date.now() + 5_000;

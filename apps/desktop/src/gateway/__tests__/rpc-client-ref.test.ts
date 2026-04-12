@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getRpcClient, setRpcClient, waitForGatewayReady } from "../rpc-client-ref.js";
+import { getRpcClient } from "../rpc-client-ref.js";
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -29,16 +29,5 @@ describe("rpc-client-ref", () => {
     const mockClient = { request: () => {}, isConnected: () => true };
     mockEnsureRpcReady.mockReturnValue(mockClient);
     expect(getRpcClient()).toBe(mockClient);
-  });
-
-  it("setRpcClient is a deprecated no-op", () => {
-    // Should not throw
-    setRpcClient(null);
-    setRpcClient({ request: () => {} } as any);
-  });
-
-  it("waitForGatewayReady is a deprecated no-op", async () => {
-    // Should resolve immediately
-    await waitForGatewayReady();
   });
 });

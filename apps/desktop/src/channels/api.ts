@@ -2,7 +2,7 @@ import { createLogger } from "@rivonclaw/logger";
 import { DEFAULTS, formatError } from "@rivonclaw/core";
 import { API } from "@rivonclaw/core/api-contract";
 import { sendChannelMessage } from "./channel-senders.js";
-import { waitForGatewayReady } from "../gateway/rpc-client-ref.js";
+import { openClawConnector } from "../openclaw/index.js";
 import type { RouteRegistry, EndpointHandler } from "../infra/api/route-registry.js";
 import type { ApiContext } from "../app/api-context.js";
 import { sendJson, parseBody, proxiedFetch } from "../infra/api/route-utils.js";
@@ -21,7 +21,7 @@ const channelsStatus: EndpointHandler = async (req, res, url, _params, ctx: ApiC
 
   let rpcClient;
   try {
-    rpcClient = await waitForGatewayReady(15_000);
+    rpcClient = openClawConnector.ensureRpcReady();
   } catch {
     sendJson(res, 503, { error: "Gateway not connected", snapshot: null });
     return;
@@ -164,7 +164,7 @@ const qrLoginStart: EndpointHandler = async (req, res, _url, _params, ctx: ApiCo
 
   let rpcClient;
   try {
-    rpcClient = await waitForGatewayReady(15_000);
+    rpcClient = openClawConnector.ensureRpcReady();
   } catch {
     sendJson(res, 503, { error: "Gateway not connected" });
     return;
@@ -188,7 +188,7 @@ const qrLoginWait: EndpointHandler = async (req, res, _url, _params, ctx: ApiCon
 
   let rpcClient;
   try {
-    rpcClient = await waitForGatewayReady(15_000);
+    rpcClient = openClawConnector.ensureRpcReady();
   } catch {
     sendJson(res, 503, { error: "Gateway not connected" });
     return;

@@ -412,7 +412,7 @@ app.whenReady().then(async () => {
   } = await setupGateway({
     storage, secretStore, locale, configPath, stateDir,
     extensionsDir, sttCliPath, filePermissionsPluginPath, vendorDir,
-    gatewayPort: actualGatewayPort, deviceId, pushChatSSE,
+    gatewayPort: actualGatewayPort, pushChatSSE,
   });
 
   // ToolCapability is now an MST sub-model on rootStore — views auto-recompute
@@ -1334,9 +1334,8 @@ app.whenReady().then(async () => {
   });
 
   // ── Register onRpcConnected callback ──────────────────────────────────────
-  // Replaces the onConnect logic that previously lived in connection.ts's
-  // connectGateway(). The connector fires this callback every time the RPC
-  // client connects (initial connect + reconnects after restart).
+  // The connector fires this callback every time the RPC client connects
+  // (initial connect + reconnects after restart).
   openClawConnector.onRpcConnected(() => {
     const rpc = openClawConnector.ensureRpcReady();
 

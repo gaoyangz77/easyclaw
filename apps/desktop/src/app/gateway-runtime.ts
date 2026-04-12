@@ -11,10 +11,8 @@ import { join } from "node:path";
 import { createGatewayConfigBuilder } from "../gateway/config-builder.js";
 import { createGatewayEventDispatcher } from "../gateway/event-dispatcher.js";
 import type { GatewayEventHandler } from "../gateway/event-dispatcher.js";
-import { connectGateway, disconnectGateway, getCsBridge } from "../gateway/connection.js";
-import type { GatewayConnectionDeps } from "../gateway/connection.js";
+import { getCsBridge } from "../gateway/connection.js";
 import { rootStore } from "./store/desktop-store.js";
-import { OUR_PLUGIN_IDS } from "../generated/our-plugin-ids.js";
 import type { pushChatSSE as PushChatSSEFn } from "./panel-server.js";
 import { openClawConnector } from "../openclaw/index.js";
 
@@ -29,16 +27,12 @@ export interface SetupGatewayDeps {
   filePermissionsPluginPath: string | undefined;
   vendorDir: string;
   gatewayPort: number;
-  deviceId: string;
   pushChatSSE: typeof PushChatSSEFn;
 }
 
 export interface GatewayRuntime {
   launcher: GatewayLauncher;
   buildFullGatewayConfig: (port: number) => ReturnType<ReturnType<typeof createGatewayConfigBuilder>["buildFullGatewayConfig"]>;
-  gatewayConnectionDeps: GatewayConnectionDeps;
-  connectGateway: typeof connectGateway;
-  disconnectGateway: typeof disconnectGateway;
 }
 
 /**
@@ -49,7 +43,7 @@ export async function setupGateway(deps: SetupGatewayDeps): Promise<GatewayRunti
   const {
     storage, secretStore, locale, configPath, stateDir,
     extensionsDir, sttCliPath, filePermissionsPluginPath, vendorDir,
-    gatewayPort, deviceId, pushChatSSE,
+    gatewayPort, pushChatSSE,
   } = deps;
 
   // Force pre-compiled ESM extensions from dist-runtime/
@@ -97,18 +91,6 @@ export async function setupGateway(deps: SetupGatewayDeps): Promise<GatewayRunti
     dispatchGatewayEvent(evt);
   };
 
-  // Gateway connection deps — passed to connectGateway() on each "ready" event
-  const gatewayConnectionDeps = {
-    configPath,
-    stateDir,
-    deviceId,
-    gatewayPort,
-    storage,
-    toolCapability: rootStore.toolCapability,
-    ourPluginIds: OUR_PLUGIN_IDS,
-    dispatchGatewayEvent,
-  };
-
   // ── Wire OpenClawConnector ──────────────────────────────────────────────
   // The connector manages launcher lifecycle events and RPC connections.
   // Business logic registers callbacks via onRpcConnected() in main.ts.
@@ -128,8 +110,7 @@ export async function setupGateway(deps: SetupGatewayDeps): Promise<GatewayRunti
     eventDispatcher: handleGatewayEvent,
   });
 
-  // Derive RPC connection deps from the gateway config on disk — same values
-  // that connectGateway() computes at call-time.
+  // Derive RPC connection deps from the gateway config on disk.
   const config = readExistingConfig(configPath);
   const gw = config.gateway as Record<string, unknown> | undefined;
   const port = (gw?.port as number) ?? gatewayPort;
@@ -145,8 +126,5 @@ export async function setupGateway(deps: SetupGatewayDeps): Promise<GatewayRunti
   return {
     launcher,
     buildFullGatewayConfig,
-    gatewayConnectionDeps,
-    connectGateway,
-    disconnectGateway,
   };
 }
