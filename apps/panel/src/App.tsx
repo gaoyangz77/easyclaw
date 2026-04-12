@@ -40,8 +40,13 @@ function hydrateLocalStorage(settings: Record<string, string>) {
 }
 
 export function App() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [currentPath, setCurrentPath] = useState(() => resolveRoute(window.location.pathname));
+
+  // Sync <html lang="..."> so CSS :lang() / [lang] selectors work
+  useEffect(() => {
+    document.documentElement.lang = i18n.language;
+  }, [i18n.language]);
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [showTelemetryConsent, setShowTelemetryConsent] = useState(false);
