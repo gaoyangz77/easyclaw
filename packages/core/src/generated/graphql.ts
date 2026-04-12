@@ -1208,10 +1208,10 @@ export interface Query {
   browserProfiles: PaginatedBrowserProfiles;
   /** Assemble the full CS system prompt for a shop. DEPRECATED: use the assembledPrompt field on CustomerServiceSettings instead. */
   csAssemblePrompt: AssembledPromptResult;
+  /** Get all preset skills for CS. Returns a JSON object { key: markdownContent, ... } or null if none configured. */
+  csGetPresetSkills?: Maybe<Scalars['String']['output']>;
   /** Get CS session stats for a shop */
   csSessionStats: CsSessionStats;
-  /** Get the platform CS skill template content (markdown). Returns null if not configured. */
-  csSkillTemplate?: Maybe<Scalars['String']['output']>;
   /** Get aftersale eligibility for an order */
   ecommerceGetAftersaleEligibility: EcomAftersaleEligibility;
   /** Get customer service performance metrics */
