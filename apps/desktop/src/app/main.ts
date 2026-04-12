@@ -54,10 +54,12 @@ import type { BrowserProfileSessionStatePolicy } from "@rivonclaw/core";
 import { ManagedBrowserService } from "../browser-profiles/managed-browser-service.js";
 import { OUR_PLUGIN_IDS } from "../generated/our-plugin-ids.js";
 
-import { initCookieSync, pullAndPersistCookies } from "../browser-profiles/cookie-sync.js";
+import { initCookieSync, pullAndPersistCookies, pushStoredCookiesToGateway } from "../browser-profiles/cookie-sync.js";
 import { createGatewayConfigHandlers } from "../gateway/config-handlers.js";
-import { disconnectGateway } from "../gateway/connection.js";
 import { getRpcClient } from "../gateway/rpc-client-ref.js";
+import { loadClientToolSpecs } from "../gateway/client-tool-loader.js";
+import { tryStartCsBridge } from "../gateway/connection.js";
+import { openClawConnector } from "../openclaw/index.js";
 import { setStorageRef } from "./storage-ref.js";
 import { setProviderKeysStore } from "../gateway/provider-keys-ref.js";
 import { setVendorDir } from "../gateway/vendor-dir-ref.js";
@@ -408,8 +410,6 @@ app.whenReady().then(async () => {
   const {
     launcher,
     buildFullGatewayConfig,
-    gatewayConnectionDeps,
-    connectGateway,
   } = await setupGateway({
     storage, secretStore, locale, configPath, stateDir,
     extensionsDir, sttCliPath, filePermissionsPluginPath, vendorDir,
@@ -715,6 +715,12 @@ app.whenReady().then(async () => {
     }
   }, 10_000);
 
+  // Business-specific launcher event handlers.
+  // State management (processState, rpcConnected, etc.) is handled by the
+  // connector via initLauncher(). These handlers only contain business logic
+  // that the connector should not own (tray UI, window lifecycle, telemetry,
+  // cookie persistence, managed browsers).
+
   launcher.on("started", () => {
     log.info("Gateway started");
     updateTray("running");
@@ -727,28 +733,21 @@ app.whenReady().then(async () => {
     }
   });
 
-  launcher.on("ready", () => {
-    log.info("Gateway ready (listening)");
-    connectGateway(gatewayConnectionDeps).catch((err: unknown) => {
-      log.error("Failed to initiate RPC client after gateway ready:", err);
-    });
-  });
+  // "ready" handler removed — the connector auto-connects RPC via initLauncher().
 
   launcher.on("stopped", () => {
     log.info("Gateway stopped");
 
     // Pull cookies from the gateway plugin for all running profiles before
-    // disconnecting the RPC client. Best-effort: failures are logged.
+    // the RPC client is torn down. Best-effort: failures are logged.
+    // The connector handles RPC disconnect via initLauncher() → disconnectRpc().
     const runningProfiles = managedBrowserService.getRunningProfiles();
     const pullPromises = runningProfiles.map(profileId =>
       pullAndPersistCookies(profileId)
         .catch((e: unknown) => log.debug(`Failed to pull cookies for ${profileId} on gateway stop:`, e)),
     );
     Promise.all(pullPromises)
-      .catch(() => {}) // swallow aggregate errors
-      .finally(() => {
-        disconnectGateway();
-      });
+      .catch(() => {}); // swallow aggregate errors
 
     updateTray("stopped");
 
@@ -1334,6 +1333,103 @@ app.whenReady().then(async () => {
     proxyFetch: (url, init) => proxyNetwork.fetch(url, init),
     stateDir,
     getLastSystemProxy: () => lastSystemProxy,
+  });
+
+  // ── Register onRpcConnected callback ──────────────────────────────────────
+  // Replaces the onConnect logic that previously lived in connection.ts's
+  // connectGateway(). The connector fires this callback every time the RPC
+  // client connects (initial connect + reconnects after restart).
+  openClawConnector.onRpcConnected(() => {
+    const rpc = openClawConnector.ensureRpcReady();
+
+    // 1. Start Mobile Sync engines for all active pairings (skip stale)
+    const allPairings = storage.mobilePairings.getAllPairings();
+    const stalePairings: Array<{ pairingId: string | undefined; mobileDeviceId: string | undefined }> = [];
+    for (const pairing of allPairings) {
+      if (pairing.status === "stale") {
+        stalePairings.push({
+          pairingId: pairing.pairingId || pairing.id,
+          mobileDeviceId: pairing.mobileDeviceId,
+        });
+        continue;
+      }
+      rpc.request("mobile_chat_start_sync", {
+        pairingId: pairing.pairingId,
+        accessToken: pairing.accessToken,
+        relayUrl: pairing.relayUrl,
+        desktopDeviceId: pairing.deviceId,
+        mobileDeviceId: pairing.mobileDeviceId || pairing.id,
+      }).catch((e: unknown) => log.error(`Failed to start Mobile Sync for ${pairing.pairingId || pairing.mobileDeviceId || pairing.id}:`, e));
+    }
+
+    // Register stale pairings so the mobile channel stays visible in Panel
+    if (stalePairings.length > 0) {
+      rpc.request("mobile_chat_register_stale", { pairings: stalePairings })
+        .catch((e: unknown) => log.error("Failed to register stale mobile pairings:", e));
+    }
+
+    // 2. Initialize event bridge plugin so it captures the gateway broadcast function
+    rpc.request("event_bridge_init", {})
+      .catch((e: unknown) => log.debug("Event bridge init (may not be loaded):", e));
+
+    // 3. Initialize ToolCapability with gateway tool catalog + entitlements.
+    // After loading the catalog, fetch essential entity data (ToolSpecs,
+    // user, RunProfiles, Surfaces) so the capability resolver has complete
+    // data before the first agent dispatch — not dependent on Panel loading.
+    (async () => {
+      try {
+        const catalog = await rpc.request<{
+          groups: Array<{
+            tools: Array<{ id: string; source: "core" | "plugin"; pluginId?: string }>;
+          }>;
+        }>("tools.catalog", { includePlugins: true });
+
+        const catalogTools: Array<{ id: string; source: "core" | "plugin"; pluginId?: string }> = [];
+        for (const group of catalog.groups ?? []) {
+          for (const tool of group.tools ?? []) {
+            catalogTools.push({ id: tool.id, source: tool.source, pluginId: tool.pluginId });
+          }
+        }
+
+        // Fetch essential entity data before marking initialized.
+        // These are the same queries Panel sends in initSession(), but
+        // Desktop needs them independently in case Panel hasn't loaded yet.
+        if (authSession) {
+          const essentials = [
+            "query ToolSpecsSync { toolSpecs { id name category displayName description surfaces runProfiles graphqlOperation operationType parameters { name type description graphqlVar required defaultValue enumValues } contextBindings { paramName contextField } restMethod restEndpoint restContentType supportedPlatforms } }",
+            "query { me { id email name plan createdAt enrolledModules entitlementKeys defaultRunProfileId llmKey { key suspendedUntil } } }",
+            "query { surfaces { id name userId allowedToolIds } }",
+            "query { runProfiles { id name userId surfaceId selectedToolIds } }",
+          ];
+          const results = await Promise.allSettled(
+            essentials.map(q => authSession.graphqlFetch(q)),
+          );
+          for (const r of results) {
+            if (r.status === "fulfilled" && r.value && typeof r.value === "object") {
+              try {
+                rootStore.ingestGraphQLResponse(r.value as Record<string, unknown>);
+              } catch { /* best-effort — don't block init */ }
+            }
+          }
+        }
+
+        rootStore.toolCapability.init(catalogTools, OUR_PLUGIN_IDS);
+      } catch (e) {
+        log.warn("Failed to initialize ToolCapability:", e);
+      }
+    })();
+
+    // 4. Load client tool specs from the rivonclaw-local-tools plugin via RPC
+    loadClientToolSpecs(rpc).catch((e: unknown) =>
+      log.warn("Failed to load client tool specs:", e),
+    );
+
+    // 5. Start CS Bridge if user has e-commerce module
+    tryStartCsBridge(deviceId ?? "unknown");
+
+    // 6. Push locally-stored cookies for managed profiles to the gateway plugin
+    pushStoredCookiesToGateway()
+      .catch((e: unknown) => log.debug("Failed to push stored cookies to gateway (best-effort):", e));
   });
 
   Promise.all([

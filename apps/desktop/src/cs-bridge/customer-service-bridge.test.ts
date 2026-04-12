@@ -9,11 +9,12 @@ vi.mock("@rivonclaw/logger", () => ({
 }));
 
 const mockRpcRequest = vi.fn();
-const { mockGetRpcClient } = vi.hoisted(() => ({
-  mockGetRpcClient: vi.fn(),
-}));
-vi.mock("../gateway/rpc-client-ref.js", () => ({
-  getRpcClient: mockGetRpcClient,
+const mockEnsureRpcReady = vi.fn();
+vi.mock("../openclaw/index.js", () => ({
+  openClawConnector: {
+    request: (...args: unknown[]) => mockRpcRequest(...args),
+    ensureRpcReady: () => mockEnsureRpcReady(),
+  },
 }));
 
 const mockGraphqlFetch = vi.fn();
@@ -102,8 +103,8 @@ async function triggerMessage(
 beforeEach(() => {
   vi.clearAllMocks();
   setSessionRunProfileCalls.length = 0;
-  mockGetRpcClient.mockReturnValue({ request: mockRpcRequest });
   mockRpcRequest.mockResolvedValue({ ok: true });
+  mockEnsureRpcReady.mockReturnValue({ request: mockRpcRequest, isConnected: () => true });
   mockReadFullModelCatalog.mockResolvedValue({});
   mockGraphqlFetch.mockImplementation(async (query: string) => {
     if (query.includes("ecommerceGetConversationDetails")) {
@@ -122,7 +123,7 @@ beforeEach(() => {
   rootStore.llmManager.setEnv({
     storage: { providerKeys: { getAll: () => [], getActive: () => null, getById: () => null } } as any,
     secretStore: { get: async () => null, set: async () => {}, delete: async () => {} } as any,
-    getRpcClient: () => mockGetRpcClient() as any,
+    getRpcClient: () => mockEnsureRpcReady() as any,
     toMstSnapshot: async () => ({} as any),
     allKeysToMstSnapshots: async () => [],
     syncActiveKey: async () => {},
@@ -751,13 +752,13 @@ describe("agent dispatch", () => {
 
 describe("error scenarios", () => {
   it("no RPC client → message dropped entirely", async () => {
-    mockGetRpcClient.mockReturnValue(null);
+    mockRpcRequest.mockRejectedValue(new Error("OpenClawConnector: RPC client not connected"));
     const bridge = createBridge();
     bridge.setShopContext(defaultShop);
 
     await triggerMessage(bridge, createFrame());
 
-    expect(mockRpcRequest).not.toHaveBeenCalled();
+    // cs_register_session is attempted but fails; no further calls happen
     expect(setSessionRunProfileCalls).toHaveLength(0);
   });
 
@@ -1105,8 +1106,8 @@ describe("reactive entity cache sync", () => {
       // Reset and verify shop-4 works:
       vi.clearAllMocks();
       setSessionRunProfileCalls.length = 0;
-      mockGetRpcClient.mockReturnValue({ request: mockRpcRequest });
       mockRpcRequest.mockResolvedValue({ ok: true });
+      mockEnsureRpcReady.mockReturnValue({ request: mockRpcRequest, isConnected: () => true });
       mockGetAuthSession.mockReturnValue({
         getAccessToken: () => "test-token",
         graphqlFetch: mockGraphqlFetch,
@@ -1661,13 +1662,13 @@ describe("escalate", () => {
   });
 
   it("throws when no RPC client available", async () => {
-    mockGetRpcClient.mockReturnValue(null);
+    mockRpcRequest.mockRejectedValue(new Error("OpenClawConnector: RPC client not connected"));
     seedShopWithEscalation();
     const bridge = createBridge();
     bridge.setShopContext(escalationShop);
 
     const session = await bridge.getOrCreateSession(defaultEscalateParams.shopId, defaultEscalateParams);
-    await expect(session.escalate({ reason: defaultEscalateParams.reason })).rejects.toThrow("No RPC client available");
+    await expect(session.escalate({ reason: defaultEscalateParams.reason })).rejects.toThrow("OpenClawConnector: RPC client not connected");
   });
 
   it("send RPC is called with correct idempotencyKey format", async () => {

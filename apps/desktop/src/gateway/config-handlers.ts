@@ -3,6 +3,7 @@ import { buildGatewayEnv } from "@rivonclaw/gateway";
 import type { GatewayLauncher, WriteGatewayConfigOptions } from "@rivonclaw/gateway";
 import type { Storage } from "@rivonclaw/storage";
 import type { SecretStore } from "@rivonclaw/secrets";
+import { openClawConnector } from "../openclaw/index.js";
 
 const log = createLogger("gateway-config");
 
@@ -44,21 +45,19 @@ export function createGatewayConfigHandlers(deps: GatewayConfigHandlerDeps) {
   async function handleSttChange(): Promise<void> {
     log.info("STT settings changed, regenerating config and restarting gateway");
 
-    // Regenerate full OpenClaw config (reads current STT settings from storage)
-    writeGatewayConfig(await buildFullGatewayConfig());
+    await openClawConnector.applyConfigMutation(async () => {
+      // Regenerate full OpenClaw config (reads current STT settings from storage)
+      writeGatewayConfig(await buildFullGatewayConfig());
 
-    // Rebuild environment with updated STT credentials (GROQ_API_KEY, etc.)
-    const secretEnv = await buildGatewayEnv(secretStore, { ELECTRON_RUN_AS_NODE: "1" }, storage, workspacePath);
-    launcher.setEnv({ ...secretEnv, ...buildFullProxyEnv() });
+      // Rebuild environment with updated STT credentials (GROQ_API_KEY, etc.)
+      const secretEnv = await buildGatewayEnv(secretStore, { ELECTRON_RUN_AS_NODE: "1" }, storage, workspacePath);
+      launcher.setEnv({ ...secretEnv, ...buildFullProxyEnv() });
 
-    // Reinitialize STT manager
-    await sttManager.initialize().catch((err) => {
-      log.error("Failed to reinitialize STT manager:", err);
-    });
-
-    // Full restart to apply new environment variables and config
-    await launcher.stop();
-    await launcher.start();
+      // Reinitialize STT manager
+      await sttManager.initialize().catch((err) => {
+        log.error("Failed to reinitialize STT manager:", err);
+      });
+    }, "restart_process");
   }
 
   /**
@@ -68,16 +67,14 @@ export function createGatewayConfigHandlers(deps: GatewayConfigHandlerDeps) {
   async function handleExtrasChange(): Promise<void> {
     log.info("Extras settings changed, regenerating config and restarting gateway");
 
-    // Regenerate full OpenClaw config (reads current web search / embedding settings from storage)
-    writeGatewayConfig(await buildFullGatewayConfig());
+    await openClawConnector.applyConfigMutation(async () => {
+      // Regenerate full OpenClaw config (reads current web search / embedding settings from storage)
+      writeGatewayConfig(await buildFullGatewayConfig());
 
-    // Rebuild environment with updated credentials (BRAVE_API_KEY, VOYAGE_API_KEY, etc.)
-    const secretEnv = await buildGatewayEnv(secretStore, { ELECTRON_RUN_AS_NODE: "1" }, storage, workspacePath);
-    launcher.setEnv({ ...secretEnv, ...buildFullProxyEnv() });
-
-    // Full restart to apply new environment variables and config
-    await launcher.stop();
-    await launcher.start();
+      // Rebuild environment with updated credentials (BRAVE_API_KEY, VOYAGE_API_KEY, etc.)
+      const secretEnv = await buildGatewayEnv(secretStore, { ELECTRON_RUN_AS_NODE: "1" }, storage, workspacePath);
+      launcher.setEnv({ ...secretEnv, ...buildFullProxyEnv() });
+    }, "restart_process");
   }
 
   /**
@@ -87,13 +84,11 @@ export function createGatewayConfigHandlers(deps: GatewayConfigHandlerDeps) {
   async function handlePermissionsChange(): Promise<void> {
     log.info("File permissions changed, rebuilding environment and restarting gateway");
 
-    // Rebuild environment with updated file permissions
-    const secretEnv = await buildGatewayEnv(secretStore, { ELECTRON_RUN_AS_NODE: "1" }, storage, workspacePath);
-    launcher.setEnv({ ...secretEnv, ...buildFullProxyEnv() });
-
-    // Full restart to apply new environment variables
-    await launcher.stop();
-    await launcher.start();
+    await openClawConnector.applyConfigMutation(async () => {
+      // Rebuild environment with updated file permissions
+      const secretEnv = await buildGatewayEnv(secretStore, { ELECTRON_RUN_AS_NODE: "1" }, storage, workspacePath);
+      launcher.setEnv({ ...secretEnv, ...buildFullProxyEnv() });
+    }, "restart_process");
   }
 
   /**
@@ -103,9 +98,7 @@ export function createGatewayConfigHandlers(deps: GatewayConfigHandlerDeps) {
    * - `keyOnly: true` — Only an API key changed (add/activate/delete).
    *   Syncs auth-profiles.json and proxy router config. No restart needed.
    * - `configOnly: true` — Only the config file changed (e.g. model switch).
-   *   Updates gateway config and performs a full gateway restart.
-   *   Full restart is required because SIGUSR1 reload re-reads config but
-   *   agent sessions keep their existing model (only new sessions get the new default).
+   *   Updates gateway config and sends a graceful reload (SIGUSR1).
    * - Neither — Updates all configs and restarts gateway.
    *   Full restart ensures model changes take effect immediately.
    */
@@ -134,21 +127,22 @@ export function createGatewayConfigHandlers(deps: GatewayConfigHandlerDeps) {
       // already modified by the caller. Just tell the running gateway to
       // re-read it via SIGUSR1 — no process restart needed.
       log.info("Config-only change, sending graceful reload to gateway");
-      await launcher.reload();
+      await openClawConnector.applyConfigMutation(() => {
+        // Config already written by caller — no mutation needed.
+      }, "reload_config");
       return;
     }
 
-    // Rewrite full OpenClaw config (reads current provider/model from storage)
-    writeGatewayConfig(await buildFullGatewayConfig());
-
-    // Full gateway restart to ensure model change takes effect.
+    // Full restart path: rewrite config + restart process.
     // SIGUSR1 graceful reload re-reads config but agent sessions keep their
     // existing model assignment. A stop+start creates fresh sessions with
     // the new default model from config.
     log.info("Config updated, performing full gateway restart for model change");
-    await launcher.stop();
-    await launcher.start();
-    // RPC client reconnects automatically via the "ready" event handler.
+    await openClawConnector.applyConfigMutation(async () => {
+      // Rewrite full OpenClaw config (reads current provider/model from storage)
+      writeGatewayConfig(await buildFullGatewayConfig());
+    }, "restart_process");
+    // RPC client reconnects automatically via the connector's initLauncher wiring.
   }
 
   return {

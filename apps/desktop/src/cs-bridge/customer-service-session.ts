@@ -20,7 +20,7 @@ import crypto from "node:crypto";
 import { createLogger } from "@rivonclaw/logger";
 import { ScopeType, GQL, type CSNewMessageFrame } from "@rivonclaw/core";
 import { isStagingDevMode } from "@rivonclaw/core/endpoints";
-import { getRpcClient } from "../gateway/rpc-client-ref.js";
+import { openClawConnector } from "../openclaw/index.js";
 import { getAuthSession } from "../auth/session-ref.js";
 import { getStorageRef } from "../app/storage-ref.js";
 import { rootStore } from "../app/store/desktop-store.js";
@@ -493,9 +493,6 @@ export class CustomerServiceSession {
     orderId?: string;
     context?: string;
   }): Promise<{ ok: boolean; escalationId?: string; error?: string }> {
-    const rpcClient = getRpcClient();
-    if (!rpcClient) throw new Error("No RPC client available");
-
     const shopMst = rootStore.shops.find(s => s.id === this.csContext.shopId);
     const escalationChannelId = shopMst?.services?.customerService?.escalationChannelId;
     const escalationRecipientId = shopMst?.services?.customerService?.escalationRecipientId;
@@ -542,7 +539,7 @@ export class CustomerServiceSession {
     if (params.context) lines.push(`Context: ${params.context}`);
     lines.push("", "Please reply with your decision (e.g., \"Approved, process full refund\").");
 
-    await rpcClient.request("send", {
+    await openClawConnector.request("send", {
       to: escalationRecipientId,
       channel,
       accountId,
@@ -558,12 +555,9 @@ export class CustomerServiceSession {
 
   /** Fire-and-forget abort of the active run. Synchronous call (RPC is async but we don't await). */
   private fireAbort(): void {
-    const rpcClient = getRpcClient();
-    if (!rpcClient) return;
-
-    rpcClient.request("chat.abort", { sessionKey: this.scopeKey })
+    openClawConnector.request("chat.abort", { sessionKey: this.scopeKey })
       .then(() => log.info(`Aborted active run for session ${this.scopeKey}`))
-      .catch((err) => log.warn(`Failed to abort run: ${err instanceof Error ? err.message : String(err)}`));
+      .catch((err: unknown) => log.warn(`Failed to abort run: ${err instanceof Error ? err.message : String(err)}`));
   }
 
   // -- Private — context resolution -------------------------------------------
@@ -644,10 +638,7 @@ export class CustomerServiceSession {
   private async setup(): Promise<void> {
     if (this.gatewaySetupReady) return;
 
-    const rpcClient = getRpcClient();
-    if (!rpcClient) throw new Error("No RPC client available");
-
-    await rpcClient.request("cs_register_session", {
+    await openClawConnector.request("cs_register_session", {
       sessionKey: this.scopeKey,
       csContext: this.csContext,
     });
@@ -673,12 +664,9 @@ export class CustomerServiceSession {
     /** Placeholder activeRunId that was set before this dispatch. */
     placeholder?: string;
   }): Promise<DispatchResult> {
-    const rpcClient = getRpcClient();
-    if (!rpcClient) throw new Error("No RPC client available");
-
     await this.setup();
 
-    const response = await rpcClient.request<DispatchResult>("agent", {
+    const response = await openClawConnector.request<DispatchResult>("agent", {
       sessionKey: this.dispatchKey,
       message: params.message,
       extraSystemPrompt: this.extraSystemPrompt,

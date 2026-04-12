@@ -16,7 +16,14 @@ vi.mock("@rivonclaw/gateway", () => ({
   buildGatewayEnv: (...args: unknown[]) => mockBuildGatewayEnv(...(args as [])),
 }));
 
-// ─── Test Helpers ───────────────────────────────────────────────────────────
+const mockApplyConfigMutation = vi.fn();
+vi.mock("../../openclaw/index.js", () => ({
+  openClawConnector: {
+    applyConfigMutation: (...args: unknown[]) => mockApplyConfigMutation(...args),
+  },
+}));
+
+// ─── Test Helpers ─────���───────────────────────────────���─────────────────────
 
 function createDeps() {
   const deps: GatewayConfigHandlerDeps = {
@@ -51,15 +58,20 @@ describe("createGatewayConfigHandlers", () => {
     vi.clearAllMocks();
     deps = createDeps();
     mockBuildGatewayEnv.mockResolvedValue({ SECRET_KEY: "secret-val" });
+    // applyConfigMutation: execute the mutator, then record the policy
+    mockApplyConfigMutation.mockImplementation(async (mutator: () => Promise<void> | void, _policy: string) => {
+      await mutator();
+    });
     handlers = createGatewayConfigHandlers(deps);
   });
 
   // ── handleSttChange ─────────────────────────────────────────────────────
 
   describe("handleSttChange", () => {
-    it("calls writeGatewayConfig, buildGatewayEnv, launcher.setEnv, sttManager.initialize, launcher.stop, launcher.start", async () => {
+    it("calls writeGatewayConfig, buildGatewayEnv, launcher.setEnv, sttManager.initialize via applyConfigMutation(restart_process)", async () => {
       await handlers.handleSttChange();
 
+      expect(mockApplyConfigMutation).toHaveBeenCalledWith(expect.any(Function), "restart_process");
       expect(deps.buildFullGatewayConfig).toHaveBeenCalled();
       expect(deps.writeGatewayConfig).toHaveBeenCalledWith({ configKey: "configValue" });
       expect(mockBuildGatewayEnv).toHaveBeenCalledWith(
@@ -73,17 +85,16 @@ describe("createGatewayConfigHandlers", () => {
         PROXY_KEY: "proxy-val",
       });
       expect(deps.sttManager.initialize).toHaveBeenCalled();
-      expect(deps.launcher.stop).toHaveBeenCalled();
-      expect(deps.launcher.start).toHaveBeenCalled();
     });
   });
 
   // ── handleExtrasChange ──────────────────────────────────────────────────
 
   describe("handleExtrasChange", () => {
-    it("calls writeGatewayConfig, buildGatewayEnv, launcher.setEnv, launcher.stop, launcher.start (no sttManager)", async () => {
+    it("calls writeGatewayConfig, buildGatewayEnv, launcher.setEnv via applyConfigMutation(restart_process) (no sttManager)", async () => {
       await handlers.handleExtrasChange();
 
+      expect(mockApplyConfigMutation).toHaveBeenCalledWith(expect.any(Function), "restart_process");
       expect(deps.buildFullGatewayConfig).toHaveBeenCalled();
       expect(deps.writeGatewayConfig).toHaveBeenCalledWith({ configKey: "configValue" });
       expect(mockBuildGatewayEnv).toHaveBeenCalled();
@@ -91,8 +102,6 @@ describe("createGatewayConfigHandlers", () => {
         SECRET_KEY: "secret-val",
         PROXY_KEY: "proxy-val",
       });
-      expect(deps.launcher.stop).toHaveBeenCalled();
-      expect(deps.launcher.start).toHaveBeenCalled();
       expect(deps.sttManager.initialize).not.toHaveBeenCalled();
     });
   });
@@ -100,24 +109,23 @@ describe("createGatewayConfigHandlers", () => {
   // ── handlePermissionsChange ─────────────────────────────────────────────
 
   describe("handlePermissionsChange", () => {
-    it("calls buildGatewayEnv, launcher.setEnv, launcher.stop, launcher.start (no writeGatewayConfig)", async () => {
+    it("calls buildGatewayEnv, launcher.setEnv via applyConfigMutation(restart_process) (no writeGatewayConfig)", async () => {
       await handlers.handlePermissionsChange();
 
+      expect(mockApplyConfigMutation).toHaveBeenCalledWith(expect.any(Function), "restart_process");
       expect(deps.writeGatewayConfig).not.toHaveBeenCalled();
       expect(mockBuildGatewayEnv).toHaveBeenCalled();
       expect(deps.launcher.setEnv).toHaveBeenCalledWith({
         SECRET_KEY: "secret-val",
         PROXY_KEY: "proxy-val",
       });
-      expect(deps.launcher.stop).toHaveBeenCalled();
-      expect(deps.launcher.start).toHaveBeenCalled();
     });
   });
 
   // ── handleProviderChange ────────────────────────────────────────────────
 
   describe("handleProviderChange", () => {
-    it("with no hint: calls syncAllAuthProfiles, writeProxyRouterConfig, writeGatewayConfig, launcher.stop, launcher.start", async () => {
+    it("with no hint: calls syncAllAuthProfiles, writeProxyRouterConfig, writeGatewayConfig via applyConfigMutation(restart_process)", async () => {
       await handlers.handleProviderChange();
 
       expect(deps.syncAllAuthProfiles).toHaveBeenCalledWith(
@@ -131,11 +139,10 @@ describe("createGatewayConfigHandlers", () => {
         null,
       );
       expect(deps.writeGatewayConfig).toHaveBeenCalledWith({ configKey: "configValue" });
-      expect(deps.launcher.stop).toHaveBeenCalled();
-      expect(deps.launcher.start).toHaveBeenCalled();
+      expect(mockApplyConfigMutation).toHaveBeenCalledWith(expect.any(Function), "restart_process");
     });
 
-    it("with keyOnly: true — calls syncAllAuthProfiles, writeProxyRouterConfig, does NOT call launcher.stop/start", async () => {
+    it("with keyOnly: true — calls syncAllAuthProfiles, writeProxyRouterConfig, does NOT call applyConfigMutation", async () => {
       await handlers.handleProviderChange({ keyOnly: true });
 
       expect(deps.syncAllAuthProfiles).toHaveBeenCalledWith(
@@ -148,12 +155,10 @@ describe("createGatewayConfigHandlers", () => {
         deps.secretStore,
         null,
       );
-      expect(deps.launcher.stop).not.toHaveBeenCalled();
-      expect(deps.launcher.start).not.toHaveBeenCalled();
-      expect(deps.launcher.reload).not.toHaveBeenCalled();
+      expect(mockApplyConfigMutation).not.toHaveBeenCalled();
     });
 
-    it("with configOnly: true — calls syncAllAuthProfiles, writeProxyRouterConfig, launcher.reload, does NOT call launcher.stop/start", async () => {
+    it("with configOnly: true — calls syncAllAuthProfiles, writeProxyRouterConfig via applyConfigMutation(reload_config)", async () => {
       await handlers.handleProviderChange({ configOnly: true });
 
       expect(deps.syncAllAuthProfiles).toHaveBeenCalledWith(
@@ -166,9 +171,7 @@ describe("createGatewayConfigHandlers", () => {
         deps.secretStore,
         null,
       );
-      expect(deps.launcher.reload).toHaveBeenCalled();
-      expect(deps.launcher.stop).not.toHaveBeenCalled();
-      expect(deps.launcher.start).not.toHaveBeenCalled();
+      expect(mockApplyConfigMutation).toHaveBeenCalledWith(expect.any(Function), "reload_config");
     });
   });
 });

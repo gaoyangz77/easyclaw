@@ -215,7 +215,7 @@ export function disconnectGateway(): void {
 
 let _csBridgeListenerRegistered = false;
 
-function tryStartCsBridge(gatewayId: string): void {
+export function tryStartCsBridge(gatewayId: string): void {
   const authSession = getAuthSession();
   if (!authSession) return;
 
