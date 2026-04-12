@@ -250,7 +250,12 @@ export class OpenClawConnector {
         log.info("RPC client disconnected");
         runtimeStatusStore.setConnectorRpcConnected(false);
         runtimeStatusStore.setConnectorSidecarState("unknown");
-        this.fireRpcDisconnectedCallbacks();
+        // If disconnectRpc() already nulled rpcClient and fired callbacks,
+        // skip the duplicate fire. Only fire here for server-initiated closes.
+        if (this.rpcClient) {
+          this.rpcClient = null;
+          this.fireRpcDisconnectedCallbacks();
+        }
       },
       onEvent: (evt: GatewayEventFrame) => {
         this.deps?.eventDispatcher(evt);
@@ -263,16 +268,16 @@ export class OpenClawConnector {
 
   /** Disconnect the RPC client and reset volatile + observable state. */
   disconnectRpc(): void {
-    const hadClient = !!this.rpcClient;
-    if (this.rpcClient) {
-      this.rpcClient.stop();
-      this.rpcClient = null;
-    }
+    const client = this.rpcClient;
+    if (!client) return;
+    // Null out before stop() so the onClose callback (triggered by
+    // WebSocket close) sees rpcClient === null and skips its own fire.
+    // This guarantees disconnect callbacks fire exactly once.
+    this.rpcClient = null;
+    client.stop();
     runtimeStatusStore.setConnectorRpcConnected(false);
     runtimeStatusStore.setConnectorSidecarState("unknown");
-    if (hadClient) {
-      this.fireRpcDisconnectedCallbacks();
-    }
+    this.fireRpcDisconnectedCallbacks();
   }
 
   // ── RPC Disconnect Callbacks ────────────────────────────────────────────

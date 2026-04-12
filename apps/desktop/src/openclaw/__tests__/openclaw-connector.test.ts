@@ -179,12 +179,16 @@ describe("OpenClawConnector", () => {
       expect(mockRuntimeStatusStore.setConnectorProcessState).toHaveBeenCalledWith("running");
     });
 
-    it("sets processState to 'stopped' and disconnects RPC on 'stopped' event", () => {
+    it("sets processState to 'stopped' and disconnects RPC on 'stopped' event", async () => {
       connector.initLauncher(launcher as any);
+      connector.initDeps(deps);
+      await connector.connectRpc(rpcDeps);
+      mockRuntimeStatusStore.setConnectorRpcConnected.mockClear();
+      mockRuntimeStatusStore.setConnectorSidecarState.mockClear();
+
       launcher.emit("stopped");
 
       expect(mockRuntimeStatusStore.setConnectorProcessState).toHaveBeenCalledWith("stopped");
-      // disconnectRpc sets rpcConnected=false and sidecarState="unknown"
       expect(mockRuntimeStatusStore.setConnectorRpcConnected).toHaveBeenCalledWith(false);
       expect(mockRuntimeStatusStore.setConnectorSidecarState).toHaveBeenCalledWith("unknown");
     });
@@ -228,6 +232,11 @@ describe("OpenClawConnector", () => {
 
     it("sets processState to 'stopping', disconnects RPC, and calls launcher.stop()", async () => {
       connector.initLauncher(launcher as any);
+      connector.initDeps(deps);
+      await connector.connectRpc(rpcDeps);
+      mockRuntimeStatusStore.setConnectorProcessState.mockClear();
+      mockRuntimeStatusStore.setConnectorRpcConnected.mockClear();
+
       await connector.stop();
 
       expect(mockRuntimeStatusStore.setConnectorProcessState).toHaveBeenCalledWith("stopping");
@@ -384,6 +393,29 @@ describe("OpenClawConnector", () => {
       connector.disconnectRpc();
 
       expect(cb).not.toHaveBeenCalled();
+    });
+
+    it("fires onRpcDisconnected exactly once even when stop() triggers onClose", async () => {
+      connector.initDeps(deps);
+
+      // Make stop() synchronously invoke the onClose callback (simulates
+      // WebSocket close event firing during stop)
+      mockRpcClientInstance.stop.mockImplementation(() => {
+        const onClose = mockRpcClientInstance._opts?.onClose as (() => void) | undefined;
+        onClose?.();
+      });
+
+      await connector.connectRpc(rpcDeps);
+
+      const cb = vi.fn();
+      connector.onRpcDisconnected(cb);
+
+      connector.disconnectRpc();
+
+      expect(cb).toHaveBeenCalledTimes(1);
+
+      // Restore default stop mock
+      mockRpcClientInstance.stop.mockImplementation(() => {});
     });
   });
 
