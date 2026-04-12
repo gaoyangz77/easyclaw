@@ -200,6 +200,23 @@ end-to-end through the SSRF guard without corruption. Test by sending a
 voice message via Feishu or Telegram and confirming the agent receives
 the transcript text.
 
+### 0007 — Defer `prewarmConfiguredPrimaryModel` to unblock event loop
+
+**File:** `0007-vendor-openclaw-defer-prewarmConfiguredPrimaryModel.patch`
+
+**Why:** `ensureOpenClawModelsJson()` inside `prewarmConfiguredPrimaryModel()`
+runs ~8s of synchronous provider discovery that blocks the event loop after
+gateway READY. This starves all channel WebSocket/polling callbacks, delaying
+webchat connection by ~9s and preventing Telegram/Feishu from processing
+inbound messages during the block.
+
+**Change:** Move `startChannels()` before prewarm, wrap prewarm in
+`setTimeout(15s)` so channels fully establish connections first.
+
+**Removal:** Drop when upstream resolves the synchronous event-loop blocking
+in `ensureOpenClawModelsJson` / provider discovery, or when prewarm is made
+truly async without blocking the event loop.
+
 ## Dropped Patches
 
 ### (Dropped in v2026.4.9 upgrade) Respect `ask=off` for obfuscation-triggered approvals
@@ -211,12 +228,8 @@ making this patch unnecessary. The `requiresExecApproval` function with
 `ask=off` still returns `false` natively, satisfying the core EasyClaw
 requirement.
 
-### (Dropped in v2026.4.11 upgrade) Defer `prewarmConfiguredPrimaryModel`
+### (Dropped in v2026.4.11 upgrade, re-added as 0007) Defer `prewarmConfiguredPrimaryModel`
 
-Previously patch 0006. Wrapped `prewarmConfiguredPrimaryModel()` in
-`setTimeout(15s)` to prevent `ensureOpenClawModelsJson()` from blocking the
-event loop ~8.5s during channel startup. v2026.4.11 refactored gateway startup
-(`server-startup.ts` → `server-startup-post-attach.ts`) and resolved the
-blocking behavior — `prewarmConfiguredPrimaryModel` no longer blocks channel
-connections. Verified by manual testing: startup without the patch shows no
-measurable delay.
+Initially dropped during v2026.4.11 upgrade because a warm-cache test showed
+no delay. Re-added as patch 0007 after cold-start testing confirmed the ~9s
+`ensureOpenClawModelsJson` event-loop block persists in v2026.4.11.
