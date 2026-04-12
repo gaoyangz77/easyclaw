@@ -251,6 +251,43 @@ export interface CustomerServiceSettingsInput {
   runProfileId?: InputMaybe<Scalars['String']['input']>;
 }
 
+/** Aftersale eligibility for an order */
+export interface EcomAftersaleEligibility {
+  skuEligibility?: Maybe<Array<EcomAftersaleSkuEligibility>>;
+}
+
+/** Eligibility for a single request type on a SKU */
+export interface EcomAftersaleLineItemEligibility {
+  eligible?: Maybe<Scalars['Boolean']['output']>;
+  ineligibleCode?: Maybe<Scalars['Int']['output']>;
+  ineligibleReason?: Maybe<Scalars['String']['output']>;
+  orderLineItemIds?: Maybe<Array<Scalars['String']['output']>>;
+  /** RETURN_AND_REFUND, REFUND, CANCEL */
+  requestType?: Maybe<Scalars['String']['output']>;
+}
+
+/** Per-SKU eligibility matrix for an order */
+export interface EcomAftersaleSkuEligibility {
+  lineItemEligibility?: Maybe<Array<EcomAftersaleLineItemEligibility>>;
+  skuId?: Maybe<Scalars['String']['output']>;
+}
+
+/** Decision for approving a refund request */
+export const EcomApproveRefundDecision = {
+  ApproveRefund: 'APPROVE_REFUND',
+  IssueReplacementRefund: 'ISSUE_REPLACEMENT_REFUND',
+  OfferPartialRefund: 'OFFER_PARTIAL_REFUND'
+} as const;
+
+export type EcomApproveRefundDecision = typeof EcomApproveRefundDecision[keyof typeof EcomApproveRefundDecision];
+/** Decision for approving a return request */
+export const EcomApproveReturnDecision = {
+  ApproveReceivedPackage: 'APPROVE_RECEIVED_PACKAGE',
+  ApproveReplacement: 'APPROVE_REPLACEMENT',
+  ApproveReturn: 'APPROVE_RETURN'
+} as const;
+
+export type EcomApproveReturnDecision = typeof EcomApproveReturnDecision[keyof typeof EcomApproveReturnDecision];
 /** Customer service performance metrics. Every field is nullable because TikTok's response body is not fully documented; not yet verified on live data. */
 export interface EcomCsPerformance {
   /** Average response time in seconds */
@@ -267,6 +304,44 @@ export interface EcomCsPerformance {
   startDate?: Maybe<Scalars['String']['output']>;
   /** Number of unique buyers served */
   uniqueBuyers?: Maybe<Scalars['Int']['output']>;
+}
+
+/** Buyer- or system-initiated order cancellation request */
+export interface EcomCancellation {
+  cancelId: Scalars['String']['output'];
+  cancelReason?: Maybe<Scalars['String']['output']>;
+  cancelReasonText?: Maybe<Scalars['String']['output']>;
+  cancelStatus?: Maybe<Scalars['String']['output']>;
+  /** BUYER_CANCEL, CANCEL */
+  cancelType?: Maybe<Scalars['String']['output']>;
+  /** Unix seconds */
+  createTime?: Maybe<Scalars['Int']['output']>;
+  lineItems?: Maybe<Array<EcomCancellationLineItem>>;
+  orderId?: Maybe<Scalars['String']['output']>;
+  refundAmount?: Maybe<EcomRefundAmount>;
+  role?: Maybe<Scalars['String']['output']>;
+  shouldReplenishStock?: Maybe<Scalars['Boolean']['output']>;
+  /** Unix seconds */
+  updateTime?: Maybe<Scalars['Int']['output']>;
+}
+
+/** Cancellation line item */
+export interface EcomCancellationLineItem {
+  cancelLineItemId?: Maybe<Scalars['String']['output']>;
+  orderLineItemId?: Maybe<Scalars['String']['output']>;
+  productImage?: Maybe<EcomImage>;
+  productName?: Maybe<Scalars['String']['output']>;
+  refundAmount?: Maybe<EcomRefundAmount>;
+  sellerSku?: Maybe<Scalars['String']['output']>;
+  skuId?: Maybe<Scalars['String']['output']>;
+  skuName?: Maybe<Scalars['String']['output']>;
+}
+
+/** Page of cancellations */
+export interface EcomCancellationPage {
+  items: Array<EcomCancellation>;
+  nextPageToken?: Maybe<Scalars['String']['output']>;
+  totalCount?: Maybe<Scalars['Int']['output']>;
 }
 
 /** A CS conversation between buyer and seller */
@@ -569,6 +644,78 @@ export interface EcomRecipientAddress {
   state?: Maybe<Scalars['String']['output']>;
 }
 
+/** Refund amount breakdown */
+export interface EcomRefundAmount {
+  currency?: Maybe<Scalars['String']['output']>;
+  refundShippingFee?: Maybe<Scalars['String']['output']>;
+  refundSubtotal?: Maybe<Scalars['String']['output']>;
+  refundTax?: Maybe<Scalars['String']['output']>;
+  refundTotal?: Maybe<Scalars['String']['output']>;
+}
+
+/** A reject reason option for a return / cancellation */
+export interface EcomRejectReason {
+  reasonId?: Maybe<Scalars['String']['output']>;
+  reasonText?: Maybe<Scalars['String']['output']>;
+}
+
+/** Buyer-initiated return / refund / replacement request */
+export interface EcomReturn {
+  /** Unix seconds */
+  createTime?: Maybe<Scalars['Int']['output']>;
+  handoverMethod?: Maybe<Scalars['String']['output']>;
+  isQuickRefund?: Maybe<Scalars['Boolean']['output']>;
+  lineItems?: Maybe<Array<EcomReturnLineItem>>;
+  orderId?: Maybe<Scalars['String']['output']>;
+  refundAmount?: Maybe<EcomRefundAmount>;
+  returnId: Scalars['String']['output'];
+  returnMethod?: Maybe<Scalars['String']['output']>;
+  returnReason?: Maybe<Scalars['String']['output']>;
+  returnReasonText?: Maybe<Scalars['String']['output']>;
+  /** e.g. AWAITING_BUYER_SHIP */
+  returnStatus?: Maybe<Scalars['String']['output']>;
+  returnTrackingNumber?: Maybe<Scalars['String']['output']>;
+  /** RETURN_AND_REFUND, REFUND_ONLY, REPLACE */
+  returnType?: Maybe<Scalars['String']['output']>;
+  /** Who filed the request: BUYER / SELLER / SYSTEM */
+  role?: Maybe<Scalars['String']['output']>;
+  /** Unix seconds */
+  updateTime?: Maybe<Scalars['Int']['output']>;
+}
+
+/** Return line item (the SKUs the buyer is returning) */
+export interface EcomReturnLineItem {
+  orderLineItemId?: Maybe<Scalars['String']['output']>;
+  productImage?: Maybe<EcomImage>;
+  productName?: Maybe<Scalars['String']['output']>;
+  refundAmount?: Maybe<EcomRefundAmount>;
+  returnLineItemId?: Maybe<Scalars['String']['output']>;
+  sellerSku?: Maybe<Scalars['String']['output']>;
+  skuId?: Maybe<Scalars['String']['output']>;
+  skuName?: Maybe<Scalars['String']['output']>;
+}
+
+/** Page of returns */
+export interface EcomReturnPage {
+  items: Array<EcomReturn>;
+  nextPageToken?: Maybe<Scalars['String']['output']>;
+  totalCount?: Maybe<Scalars['Int']['output']>;
+}
+
+/** Return audit event */
+export interface EcomReturnRecord {
+  /** Unix seconds */
+  createTime?: Maybe<Scalars['Int']['output']>;
+  description?: Maybe<Scalars['String']['output']>;
+  /** ORDER_RETURN, SELLER_AGGREE_RETURN, BUYER_RETURN_SHIPPED_TIMEOUT, ... */
+  event?: Maybe<Scalars['String']['output']>;
+  /** Free-text note left by the actor */
+  note?: Maybe<Scalars['String']['output']>;
+  reasonText?: Maybe<Scalars['String']['output']>;
+  /** BUYER, SELLER, SYSTEM */
+  role?: Maybe<Scalars['String']['output']>;
+}
+
 /** Send message result */
 export interface EcomSendMessageResult {
   /** Platform message ID of the sent message, if returned */
@@ -618,6 +765,8 @@ export const EntitlementKey = {
   EcomCsWrite: 'ECOM_CS_WRITE',
   EcomFulfillmentRead: 'ECOM_FULFILLMENT_READ',
   EcomProductRead: 'ECOM_PRODUCT_READ',
+  EcomReturnRefundRead: 'ECOM_RETURN_REFUND_READ',
+  EcomReturnRefundWrite: 'ECOM_RETURN_REFUND_WRITE',
   MultiBrowserProfiles: 'MULTI_BROWSER_PROFILES'
 } as const;
 
@@ -699,6 +848,12 @@ export interface Mutation {
   deleteShop: Scalars['Boolean']['output'];
   /** Delete a surface */
   deleteSurface: Scalars['Boolean']['output'];
+  /** Approve a cancellation request. Returns true on success. */
+  ecommerceApproveCancellation: Scalars['Boolean']['output'];
+  /** Approve a refund request. Returns true on success. */
+  ecommerceApproveRefund: Scalars['Boolean']['output'];
+  /** Approve a return/replacement request. Returns true on success. */
+  ecommerceApproveReturn: Scalars['Boolean']['output'];
   /** Create a new conversation with a buyer */
   ecommerceCreateConversation: EcomCreateConversationResult;
   /** Mark a conversation as read. Returns true on success. */
@@ -798,6 +953,32 @@ export interface MutationDeleteShopArgs {
 
 export interface MutationDeleteSurfaceArgs {
   id: Scalars['ID']['input'];
+}
+
+
+export interface MutationEcommerceApproveCancellationArgs {
+  buyerUserId?: InputMaybe<Scalars['String']['input']>;
+  cancelId: Scalars['String']['input'];
+  shopId: Scalars['String']['input'];
+}
+
+
+export interface MutationEcommerceApproveRefundArgs {
+  amount?: InputMaybe<Scalars['String']['input']>;
+  buyerKeepItem?: InputMaybe<Scalars['Boolean']['input']>;
+  buyerUserId?: InputMaybe<Scalars['String']['input']>;
+  currency?: InputMaybe<Scalars['String']['input']>;
+  decision?: InputMaybe<EcomApproveRefundDecision>;
+  returnId: Scalars['String']['input'];
+  shopId: Scalars['String']['input'];
+}
+
+
+export interface MutationEcommerceApproveReturnArgs {
+  buyerUserId?: InputMaybe<Scalars['String']['input']>;
+  decision: EcomApproveReturnDecision;
+  returnId: Scalars['String']['input'];
+  shopId: Scalars['String']['input'];
 }
 
 
@@ -1031,6 +1212,8 @@ export interface Query {
   csSessionStats: CsSessionStats;
   /** Get the platform CS skill template content (markdown). Returns null if not configured. */
   csSkillTemplate?: Maybe<Scalars['String']['output']>;
+  /** Get aftersale eligibility for an order */
+  ecommerceGetAftersaleEligibility: EcomAftersaleEligibility;
   /** Get customer service performance metrics */
   ecommerceGetCSPerformance: EcomCsPerformance;
   /** Get conversation details */
@@ -1053,10 +1236,18 @@ export interface Query {
   ecommerceGetPendingConversations: EcomConversationPage;
   /** Get product details */
   ecommerceGetProduct: EcomProduct;
+  /** Get valid reject reasons for a return or cancellation */
+  ecommerceGetRejectReasons: Array<EcomRejectReason>;
+  /** Get return event records (audit trail) */
+  ecommerceGetReturnRecords: Array<EcomReturnRecord>;
+  /** Search order cancellation requests */
+  ecommerceSearchCancellations: EcomCancellationPage;
   /** Search fulfillment packages with optional filters */
   ecommerceSearchPackages: EcomPackagePage;
   /** Search/list products with optional filters */
   ecommerceSearchProducts: EcomProductPage;
+  /** Search return/refund/replacement requests */
+  ecommerceSearchReturns: EcomReturnPage;
   /** Get LLM quota status for the current user */
   llmQuotaStatus: LlmQuotaStatus;
   /** Get current authenticated user profile */
@@ -1142,6 +1333,13 @@ export interface QueryCsSessionStatsArgs {
 }
 
 
+export interface QueryEcommerceGetAftersaleEligibilityArgs {
+  buyerUserId?: InputMaybe<Scalars['String']['input']>;
+  orderId: Scalars['String']['input'];
+  shopId: Scalars['String']['input'];
+}
+
+
 export interface QueryEcommerceGetCsPerformanceArgs {
   endTime?: InputMaybe<Scalars['String']['input']>;
   shopId: Scalars['String']['input'];
@@ -1222,6 +1420,34 @@ export interface QueryEcommerceGetProductArgs {
 }
 
 
+export interface QueryEcommerceGetRejectReasonsArgs {
+  returnOrCancelId: Scalars['String']['input'];
+  shopId: Scalars['String']['input'];
+}
+
+
+export interface QueryEcommerceGetReturnRecordsArgs {
+  buyerUserId?: InputMaybe<Scalars['String']['input']>;
+  returnId: Scalars['String']['input'];
+  shopId: Scalars['String']['input'];
+}
+
+
+export interface QueryEcommerceSearchCancellationsArgs {
+  cancelIds?: InputMaybe<Array<Scalars['String']['input']>>;
+  cancelStatus?: InputMaybe<Array<Scalars['String']['input']>>;
+  cancelTypes?: InputMaybe<Array<Scalars['String']['input']>>;
+  createTimeGe?: InputMaybe<Scalars['Float']['input']>;
+  createTimeLt?: InputMaybe<Scalars['Float']['input']>;
+  orderIds?: InputMaybe<Array<Scalars['String']['input']>>;
+  pageSize?: InputMaybe<Scalars['Float']['input']>;
+  pageToken?: InputMaybe<Scalars['String']['input']>;
+  shopId: Scalars['String']['input'];
+  updateTimeGe?: InputMaybe<Scalars['Float']['input']>;
+  updateTimeLt?: InputMaybe<Scalars['Float']['input']>;
+}
+
+
 export interface QueryEcommerceSearchPackagesArgs {
   createTimeGe?: InputMaybe<Scalars['Float']['input']>;
   createTimeLt?: InputMaybe<Scalars['Float']['input']>;
@@ -1241,6 +1467,21 @@ export interface QueryEcommerceSearchProductsArgs {
   pageToken?: InputMaybe<Scalars['String']['input']>;
   shopId: Scalars['String']['input'];
   status?: InputMaybe<EcomProductStatus>;
+}
+
+
+export interface QueryEcommerceSearchReturnsArgs {
+  createTimeGe?: InputMaybe<Scalars['Float']['input']>;
+  createTimeLt?: InputMaybe<Scalars['Float']['input']>;
+  orderIds?: InputMaybe<Array<Scalars['String']['input']>>;
+  pageSize?: InputMaybe<Scalars['Float']['input']>;
+  pageToken?: InputMaybe<Scalars['String']['input']>;
+  returnIds?: InputMaybe<Array<Scalars['String']['input']>>;
+  returnStatus?: InputMaybe<Array<Scalars['String']['input']>>;
+  returnTypes?: InputMaybe<Array<Scalars['String']['input']>>;
+  shopId: Scalars['String']['input'];
+  updateTimeGe?: InputMaybe<Scalars['Float']['input']>;
+  updateTimeLt?: InputMaybe<Scalars['Float']['input']>;
 }
 
 
@@ -1595,7 +1836,8 @@ export const ToolCategory = {
   EcomFulfillment: 'ECOM_FULFILLMENT',
   EcomOps: 'ECOM_OPS',
   EcomOrder: 'ECOM_ORDER',
-  EcomProduct: 'ECOM_PRODUCT'
+  EcomProduct: 'ECOM_PRODUCT',
+  EcomReturnRefund: 'ECOM_RETURN_REFUND'
 } as const;
 
 export type ToolCategory = typeof ToolCategory[keyof typeof ToolCategory];
@@ -1611,8 +1853,15 @@ export const ToolId = {
   BrowserProfilesGet: 'BROWSER_PROFILES_GET',
   BrowserProfilesList: 'BROWSER_PROFILES_LIST',
   BrowserProfilesManage: 'BROWSER_PROFILES_MANAGE',
+  EcomApproveCancellation: 'ECOM_APPROVE_CANCELLATION',
+  EcomApproveRefund: 'ECOM_APPROVE_REFUND',
+  EcomApproveReturn: 'ECOM_APPROVE_RETURN',
   EcomCreateConversation: 'ECOM_CREATE_CONVERSATION',
+  EcomCsApproveCancellation: 'ECOM_CS_APPROVE_CANCELLATION',
+  EcomCsApproveRefund: 'ECOM_CS_APPROVE_REFUND',
+  EcomCsApproveReturn: 'ECOM_CS_APPROVE_RETURN',
   EcomCsCreateConversation: 'ECOM_CS_CREATE_CONVERSATION',
+  EcomCsGetAftersaleEligibility: 'ECOM_CS_GET_AFTERSALE_ELIGIBILITY',
   EcomCsGetConversations: 'ECOM_CS_GET_CONVERSATIONS',
   EcomCsGetConversationDetails: 'ECOM_CS_GET_CONVERSATION_DETAILS',
   EcomCsGetConversationMessages: 'ECOM_CS_GET_CONVERSATION_MESSAGES',
@@ -1620,12 +1869,19 @@ export const ToolId = {
   EcomCsGetOrder: 'ECOM_CS_GET_ORDER',
   EcomCsGetPackageDetail: 'ECOM_CS_GET_PACKAGE_DETAIL',
   EcomCsGetProduct: 'ECOM_CS_GET_PRODUCT',
+  EcomCsGetRejectReasons: 'ECOM_CS_GET_REJECT_REASONS',
+  EcomCsGetReturnRecords: 'ECOM_CS_GET_RETURN_RECORDS',
   EcomCsGetShippingDocument: 'ECOM_CS_GET_SHIPPING_DOCUMENT',
   EcomCsListOrders: 'ECOM_CS_LIST_ORDERS',
+  EcomCsRejectCancellation: 'ECOM_CS_REJECT_CANCELLATION',
+  EcomCsRejectReturn: 'ECOM_CS_REJECT_RETURN',
+  EcomCsSearchCancellations: 'ECOM_CS_SEARCH_CANCELLATIONS',
   EcomCsSearchPackages: 'ECOM_CS_SEARCH_PACKAGES',
   EcomCsSearchProducts: 'ECOM_CS_SEARCH_PRODUCTS',
+  EcomCsSearchReturns: 'ECOM_CS_SEARCH_RETURNS',
   EcomCsSendCard: 'ECOM_CS_SEND_CARD',
   EcomCsSendMedia: 'ECOM_CS_SEND_MEDIA',
+  EcomGetAftersaleEligibility: 'ECOM_GET_AFTERSALE_ELIGIBILITY',
   EcomGetConversations: 'ECOM_GET_CONVERSATIONS',
   EcomGetConversationDetails: 'ECOM_GET_CONVERSATION_DETAILS',
   EcomGetConversationMessages: 'ECOM_GET_CONVERSATION_MESSAGES',
@@ -1635,12 +1891,18 @@ export const ToolId = {
   EcomGetPackageDetail: 'ECOM_GET_PACKAGE_DETAIL',
   EcomGetPendingConversations: 'ECOM_GET_PENDING_CONVERSATIONS',
   EcomGetProduct: 'ECOM_GET_PRODUCT',
+  EcomGetRejectReasons: 'ECOM_GET_REJECT_REASONS',
+  EcomGetReturnRecords: 'ECOM_GET_RETURN_RECORDS',
   EcomGetShippingDocument: 'ECOM_GET_SHIPPING_DOCUMENT',
   EcomListOrders: 'ECOM_LIST_ORDERS',
   EcomListShops: 'ECOM_LIST_SHOPS',
   EcomMarkConversationRead: 'ECOM_MARK_CONVERSATION_READ',
+  EcomRejectCancellation: 'ECOM_REJECT_CANCELLATION',
+  EcomRejectReturn: 'ECOM_REJECT_RETURN',
+  EcomSearchCancellations: 'ECOM_SEARCH_CANCELLATIONS',
   EcomSearchPackages: 'ECOM_SEARCH_PACKAGES',
   EcomSearchProducts: 'ECOM_SEARCH_PRODUCTS',
+  EcomSearchReturns: 'ECOM_SEARCH_RETURNS',
   EcomSearchSessions: 'ECOM_SEARCH_SESSIONS',
   EcomUpdateShop: 'ECOM_UPDATE_SHOP'
 } as const;
