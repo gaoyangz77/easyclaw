@@ -175,20 +175,6 @@ export interface CaptchaResponse {
   token: Scalars['String']['output'];
 }
 
-/** Customer info extracted from conversation participants */
-export interface ConversationCustomer {
-  nickname: Scalars['String']['output'];
-  userId: Scalars['String']['output'];
-}
-
-/** Conversation details with typed customer info */
-export interface ConversationDetailsResult {
-  code: Scalars['Float']['output'];
-  customer?: Maybe<ConversationCustomer>;
-  data?: Maybe<Scalars['String']['output']>;
-  message: Scalars['String']['output'];
-}
-
 /** Input for creating a new RunProfile */
 export interface CreateRunProfileInput {
   name: Scalars['String']['input'];
@@ -265,6 +251,69 @@ export interface CustomerServiceSettingsInput {
   runProfileId?: InputMaybe<Scalars['String']['input']>;
 }
 
+/** Customer service performance metrics. Every field is nullable because TikTok's response body is not fully documented; not yet verified on live data. */
+export interface EcomCsPerformance {
+  /** Average response time in seconds */
+  avgResponseTime?: Maybe<Scalars['Float']['output']>;
+  /** Exclusive end of the reported window (YYYY-MM-DD) */
+  endDate?: Maybe<Scalars['String']['output']>;
+  /** Number of conversations handled */
+  handledConversations?: Maybe<Scalars['Int']['output']>;
+  /** Response rate (0..1) */
+  responseRate?: Maybe<Scalars['Float']['output']>;
+  /** Customer satisfaction score (platform-defined scale) */
+  satisfactionScore?: Maybe<Scalars['Float']['output']>;
+  /** Start of the reported window (YYYY-MM-DD) */
+  startDate?: Maybe<Scalars['String']['output']>;
+  /** Number of unique buyers served */
+  uniqueBuyers?: Maybe<Scalars['Int']['output']>;
+}
+
+/** A CS conversation between buyer and seller */
+export interface EcomConversation {
+  conversationId: Scalars['String']['output'];
+  latestMessage?: Maybe<EcomMessagePreview>;
+  /** Unix seconds of last update */
+  latestMessageTime?: Maybe<Scalars['Int']['output']>;
+  /** Associated order ID if any */
+  orderId?: Maybe<Scalars['String']['output']>;
+  participants?: Maybe<Array<EcomConversationParticipant>>;
+  /** Conversation status per platform */
+  status?: Maybe<Scalars['String']['output']>;
+  unreadCount?: Maybe<Scalars['Int']['output']>;
+}
+
+/** Conversation details: the conversation itself plus a normalized buyer info slice pulled out of participants for convenience. */
+export interface EcomConversationDetails {
+  /** The buyer participant, if resolvable from the conversation's participant list. */
+  buyer?: Maybe<EcomConversationParticipant>;
+  conversation: EcomConversation;
+}
+
+/** Page of conversations */
+export interface EcomConversationPage {
+  items: Array<EcomConversation>;
+  nextPageToken?: Maybe<Scalars['String']['output']>;
+  /** Only set by ecommerceGetPendingConversations: true when pagination aborted mid-scan due to an API error. Results may be incomplete. */
+  partial?: Maybe<Scalars['Boolean']['output']>;
+  totalCount?: Maybe<Scalars['Int']['output']>;
+}
+
+/** Participant in a CS conversation */
+export interface EcomConversationParticipant {
+  avatar?: Maybe<Scalars['String']['output']>;
+  nickname?: Maybe<Scalars['String']['output']>;
+  /** BUYER, SELLER, SYSTEM, ROBOT */
+  role?: Maybe<Scalars['String']['output']>;
+  /** Platform user ID for this participant */
+  userId?: Maybe<Scalars['String']['output']>;
+}
+
+/** Create conversation result */
+export interface EcomCreateConversationResult {
+  conversationId: Scalars['String']['output'];
+}
+
 /** Shipping document format */
 export const EcomDocumentFormat = {
   Pdf: 'PDF',
@@ -290,6 +339,47 @@ export const EcomDocumentType = {
 } as const;
 
 export type EcomDocumentType = typeof EcomDocumentType[keyof typeof EcomDocumentType];
+/** Image with dimensions */
+export interface EcomImage {
+  height?: Maybe<Scalars['Int']['output']>;
+  url?: Maybe<Scalars['String']['output']>;
+  width?: Maybe<Scalars['Int']['output']>;
+}
+
+/** A single message in a CS conversation */
+export interface EcomMessage {
+  /** JSON-stringified message content per message type */
+  content?: Maybe<Scalars['String']['output']>;
+  /** Unix seconds */
+  createTime?: Maybe<Scalars['Int']['output']>;
+  /** Opaque index for ordering (larger = newer) */
+  index?: Maybe<Scalars['String']['output']>;
+  /** Whether the message is visible to the CS agent */
+  isVisible?: Maybe<Scalars['Boolean']['output']>;
+  messageId: Scalars['String']['output'];
+  sender?: Maybe<EcomConversationParticipant>;
+  /** Message type (TEXT, IMAGE, ...) — see EcomMessageType */
+  type?: Maybe<Scalars['String']['output']>;
+}
+
+/** Page of conversation messages */
+export interface EcomMessagePage {
+  items: Array<EcomMessage>;
+  nextPageToken?: Maybe<Scalars['String']['output']>;
+}
+
+/** Preview of the latest message in a conversation */
+export interface EcomMessagePreview {
+  /** JSON-stringified message content per message type */
+  content?: Maybe<Scalars['String']['output']>;
+  /** Unix seconds */
+  createTime?: Maybe<Scalars['Int']['output']>;
+  messageId?: Maybe<Scalars['String']['output']>;
+  sender?: Maybe<EcomConversationParticipant>;
+  /** Message type (TEXT, IMAGE, ...) — see EcomMessageType */
+  type?: Maybe<Scalars['String']['output']>;
+}
+
 /** Message content type for CS conversations */
 export const EcomMessageType = {
   CouponCard: 'COUPON_CARD',
@@ -302,6 +392,52 @@ export const EcomMessageType = {
 } as const;
 
 export type EcomMessageType = typeof EcomMessageType[keyof typeof EcomMessageType];
+/** Order */
+export interface EcomOrder {
+  /** Unix seconds */
+  createTime?: Maybe<Scalars['Int']['output']>;
+  currency?: Maybe<Scalars['String']['output']>;
+  lineItems?: Maybe<Array<EcomOrderLineItem>>;
+  orderId: Scalars['String']['output'];
+  /** Unix seconds */
+  paidTime?: Maybe<Scalars['Int']['output']>;
+  paymentMethodName?: Maybe<Scalars['String']['output']>;
+  recipientAddress?: Maybe<EcomRecipientAddress>;
+  shippingProvider?: Maybe<Scalars['String']['output']>;
+  /** Raw platform order status (e.g. AWAITING_SHIPMENT) */
+  status?: Maybe<Scalars['String']['output']>;
+  totalAmount?: Maybe<Scalars['String']['output']>;
+  trackingNumber?: Maybe<Scalars['String']['output']>;
+  /** Unix seconds */
+  updateTime?: Maybe<Scalars['Int']['output']>;
+  /** Platform buyer user ID */
+  userId?: Maybe<Scalars['String']['output']>;
+}
+
+/** Line item on an order */
+export interface EcomOrderLineItem {
+  currency?: Maybe<Scalars['String']['output']>;
+  /** Per-line item status */
+  displayStatus?: Maybe<Scalars['String']['output']>;
+  id?: Maybe<Scalars['String']['output']>;
+  originalPrice?: Maybe<Scalars['String']['output']>;
+  productId?: Maybe<Scalars['String']['output']>;
+  productName?: Maybe<Scalars['String']['output']>;
+  quantity?: Maybe<Scalars['Int']['output']>;
+  salePrice?: Maybe<Scalars['String']['output']>;
+  sellerSku?: Maybe<Scalars['String']['output']>;
+  skuId?: Maybe<Scalars['String']['output']>;
+  skuImage?: Maybe<EcomImage>;
+  skuName?: Maybe<Scalars['String']['output']>;
+}
+
+/** Page of orders */
+export interface EcomOrderPage {
+  items: Array<EcomOrder>;
+  nextPageToken?: Maybe<Scalars['String']['output']>;
+  totalCount?: Maybe<Scalars['Int']['output']>;
+}
+
 /** Order status filter. Use ALL to return all statuses. */
 export const EcomOrderStatus = {
   All: 'ALL',
@@ -317,6 +453,60 @@ export const EcomOrderStatus = {
 } as const;
 
 export type EcomOrderStatus = typeof EcomOrderStatus[keyof typeof EcomOrderStatus];
+/** Tracking info for an order */
+export interface EcomOrderTracking {
+  events?: Maybe<Array<EcomTrackingEvent>>;
+  orderId?: Maybe<Scalars['String']['output']>;
+  trackingNumber?: Maybe<Scalars['String']['output']>;
+  trackingStatus?: Maybe<Scalars['String']['output']>;
+}
+
+/** Fulfillment package (search hit) */
+export interface EcomPackage {
+  /** Unix seconds */
+  createTime?: Maybe<Scalars['Int']['output']>;
+  /** Order IDs contained in this package */
+  orderIds?: Maybe<Array<Scalars['String']['output']>>;
+  packageId: Scalars['String']['output'];
+  /** Raw platform package status */
+  packageStatus?: Maybe<Scalars['String']['output']>;
+  packageSubStatus?: Maybe<Scalars['String']['output']>;
+  shippingProviderName?: Maybe<Scalars['String']['output']>;
+  trackingNumber?: Maybe<Scalars['String']['output']>;
+  /** Unix seconds */
+  updateTime?: Maybe<Scalars['Int']['output']>;
+}
+
+/** Detailed package info */
+export interface EcomPackageDetail {
+  hasMultiSkus?: Maybe<Scalars['Boolean']['output']>;
+  orders?: Maybe<Array<EcomPackageOrder>>;
+  packageId: Scalars['String']['output'];
+  packageStatus?: Maybe<Scalars['String']['output']>;
+  packageSubStatus?: Maybe<Scalars['String']['output']>;
+  splitAndCombineTag?: Maybe<Scalars['String']['output']>;
+}
+
+/** Order contained in a package */
+export interface EcomPackageOrder {
+  id: Scalars['String']['output'];
+  skus?: Maybe<Array<EcomPackageSku>>;
+}
+
+/** Page of fulfillment packages */
+export interface EcomPackagePage {
+  items: Array<EcomPackage>;
+  nextPageToken?: Maybe<Scalars['String']['output']>;
+  totalCount?: Maybe<Scalars['Int']['output']>;
+}
+
+/** SKU contained in a package */
+export interface EcomPackageSku {
+  id?: Maybe<Scalars['String']['output']>;
+  name?: Maybe<Scalars['String']['output']>;
+  quantity?: Maybe<Scalars['Int']['output']>;
+}
+
 /** Package status filter. Use ALL to return all statuses. */
 export const EcomPackageStatus = {
   All: 'ALL',
@@ -327,6 +517,32 @@ export const EcomPackageStatus = {
 } as const;
 
 export type EcomPackageStatus = typeof EcomPackageStatus[keyof typeof EcomPackageStatus];
+/** Product */
+export interface EcomProduct {
+  description?: Maybe<Scalars['String']['output']>;
+  images?: Maybe<Array<EcomImage>>;
+  productId: Scalars['String']['output'];
+  skus?: Maybe<Array<EcomProductSku>>;
+  status?: Maybe<Scalars['String']['output']>;
+  title?: Maybe<Scalars['String']['output']>;
+}
+
+/** Page of products */
+export interface EcomProductPage {
+  items: Array<EcomProduct>;
+  nextPageToken?: Maybe<Scalars['String']['output']>;
+  totalCount?: Maybe<Scalars['Int']['output']>;
+}
+
+/** Product SKU */
+export interface EcomProductSku {
+  currency?: Maybe<Scalars['String']['output']>;
+  id: Scalars['String']['output'];
+  price?: Maybe<Scalars['String']['output']>;
+  sellerSku?: Maybe<Scalars['String']['output']>;
+  stockQuantity?: Maybe<Scalars['Int']['output']>;
+}
+
 /** Product status filter. Use ALL to return all statuses. */
 export const EcomProductStatus = {
   Activate: 'ACTIVATE',
@@ -341,6 +557,31 @@ export const EcomProductStatus = {
 } as const;
 
 export type EcomProductStatus = typeof EcomProductStatus[keyof typeof EcomProductStatus];
+/** Shipping address on an order */
+export interface EcomRecipientAddress {
+  city?: Maybe<Scalars['String']['output']>;
+  district?: Maybe<Scalars['String']['output']>;
+  fullAddress?: Maybe<Scalars['String']['output']>;
+  name?: Maybe<Scalars['String']['output']>;
+  phone?: Maybe<Scalars['String']['output']>;
+  postalCode?: Maybe<Scalars['String']['output']>;
+  region?: Maybe<Scalars['String']['output']>;
+  state?: Maybe<Scalars['String']['output']>;
+}
+
+/** Send message result */
+export interface EcomSendMessageResult {
+  /** Platform message ID of the sent message, if returned */
+  messageId?: Maybe<Scalars['String']['output']>;
+}
+
+/** Shipping document URL */
+export interface EcomShippingDocument {
+  /** URL of the document (label, packing slip, etc.) */
+  docUrl?: Maybe<Scalars['String']['output']>;
+  trackingNumber?: Maybe<Scalars['String']['output']>;
+}
+
 /** Sort field for package search */
 export const EcomSortField = {
   CreateTime: 'CREATE_TIME',
@@ -356,11 +597,19 @@ export const EcomSortOrder = {
 } as const;
 
 export type EcomSortOrder = typeof EcomSortOrder[keyof typeof EcomSortOrder];
-/** Generic JSON result proxied from e-commerce platform API */
-export interface EcommerceApiResult {
-  code: Scalars['Float']['output'];
-  data?: Maybe<Scalars['String']['output']>;
-  message: Scalars['String']['output'];
+/** Tracking event */
+export interface EcomTrackingEvent {
+  description?: Maybe<Scalars['String']['output']>;
+  /** Update time in Unix milliseconds (TikTok returns `update_time_millis`; preserved as-is). */
+  updateTimeMillis?: Maybe<Scalars['Int']['output']>;
+}
+
+/** Result of updating a shop through the agent-facing resolver */
+export interface EcommerceUpdateShopResult {
+  /** Human-readable confirmation message */
+  message?: Maybe<Scalars['String']['output']>;
+  /** Shop ID that was updated */
+  shopId: Scalars['String']['output'];
 }
 
 /** Feature entitlement identifiers */
@@ -451,13 +700,13 @@ export interface Mutation {
   /** Delete a surface */
   deleteSurface: Scalars['Boolean']['output'];
   /** Create a new conversation with a buyer */
-  ecommerceCreateConversation: EcommerceApiResult;
-  /** Mark a conversation as read */
-  ecommerceMarkConversationRead: EcommerceApiResult;
+  ecommerceCreateConversation: EcomCreateConversationResult;
+  /** Mark a conversation as read. Returns true on success. */
+  ecommerceMarkConversationRead: Scalars['Boolean']['output'];
   /** Send a rich card (order, product, or logistics) in a CS conversation. */
-  ecommerceSendMessage: EcommerceApiResult;
+  ecommerceSendMessage: EcomSendMessageResult;
   /** Update shop settings (agent-facing, flat params) */
-  ecommerceUpdateShop: EcommerceApiResult;
+  ecommerceUpdateShop: EcommerceUpdateShopResult;
   /** Enroll in a product module */
   enrollModule: MeResponse;
   /** Generate a 6-character pairing code for QR display */
@@ -783,31 +1032,31 @@ export interface Query {
   /** Get the platform CS skill template content (markdown). Returns null if not configured. */
   csSkillTemplate?: Maybe<Scalars['String']['output']>;
   /** Get customer service performance metrics */
-  ecommerceGetCSPerformance: EcommerceApiResult;
+  ecommerceGetCSPerformance: EcomCsPerformance;
   /** Get conversation details */
-  ecommerceGetConversationDetails: ConversationDetailsResult;
+  ecommerceGetConversationDetails: EcomConversationDetails;
   /** Get messages of a conversation */
-  ecommerceGetConversationMessages: EcommerceApiResult;
+  ecommerceGetConversationMessages: EcomMessagePage;
   /** Get conversations for a shop */
-  ecommerceGetConversations: EcommerceApiResult;
+  ecommerceGetConversations: EcomConversationPage;
   /** Get fulfillment tracking for an order. Optional buyerUserId for buyer scoping. */
-  ecommerceGetFulfillmentTracking: EcommerceApiResult;
-  /** Get order details by order ID. */
-  ecommerceGetOrder: EcommerceApiResult;
+  ecommerceGetFulfillmentTracking: EcomOrderTracking;
+  /** Get order details by order ID. Returns null if the order is not found or does not belong to the optional userId. */
+  ecommerceGetOrder?: Maybe<EcomOrder>;
   /** List/search orders. Optional buyerUserId for buyer-scoped queries. */
-  ecommerceGetOrders: EcommerceApiResult;
+  ecommerceGetOrders: EcomOrderPage;
   /** Get package detail by package ID */
-  ecommerceGetPackageDetail: EcommerceApiResult;
+  ecommerceGetPackageDetail: EcomPackageDetail;
   /** Get shipping document for a package */
-  ecommerceGetPackageShippingDocument: EcommerceApiResult;
+  ecommerceGetPackageShippingDocument: EcomShippingDocument;
   /** Get conversations pending seller reply */
-  ecommerceGetPendingConversations: EcommerceApiResult;
+  ecommerceGetPendingConversations: EcomConversationPage;
   /** Get product details */
-  ecommerceGetProduct: EcommerceApiResult;
+  ecommerceGetProduct: EcomProduct;
   /** Search fulfillment packages with optional filters */
-  ecommerceSearchPackages: EcommerceApiResult;
+  ecommerceSearchPackages: EcomPackagePage;
   /** Search/list products with optional filters */
-  ecommerceSearchProducts: EcommerceApiResult;
+  ecommerceSearchProducts: EcomProductPage;
   /** Get LLM quota status for the current user */
   llmQuotaStatus: LlmQuotaStatus;
   /** Get current authenticated user profile */

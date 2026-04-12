@@ -107,12 +107,12 @@ beforeEach(() => {
   mockReadFullModelCatalog.mockResolvedValue({});
   mockGraphqlFetch.mockImplementation(async (query: string) => {
     if (query.includes("ecommerceGetConversationDetails")) {
-      return { ecommerceGetConversationDetails: { code: 0, message: "success" } };
+      return { ecommerceGetConversationDetails: { buyer: null } };
     }
     if (query.includes("csGetOrCreateSession")) {
       return { csGetOrCreateSession: { sessionId: "sess-001", isNew: true, balance: 100 } };
     }
-    return { ecommerceSendMessage: { code: 0 } };
+    return { ecommerceSendMessage: { messageId: "msg-default" } };
   });
   mockGetAuthSession.mockReturnValue({
     getAccessToken: () => "test-token",
@@ -611,10 +611,10 @@ describe("session registration", () => {
 
     mockGraphqlFetch.mockImplementation(async (query: string) => {
       if (query.includes("ecommerceGetConversationDetails")) {
-        return { ecommerceGetConversationDetails: { code: 0, customer: { userId: "buyer-001", nickname: "Buyer" } } };
+        return { ecommerceGetConversationDetails: { buyer: { userId: "buyer-001", nickname: "Buyer" } } };
       }
       if (query.includes("ecommerceGetOrders")) {
-        return { ecommerceGetOrders: { code: 0, data: JSON.stringify({ orders: [{ id: "order-555", create_time: 1700000000 }] }) } };
+        return { ecommerceGetOrders: { items: [{ orderId: "order-555", createTime: 1700000000 }] } };
       }
       return { csGetOrCreateSession: { sessionId: "sess-001", isNew: true, balance: 100 } };
     });
@@ -688,10 +688,10 @@ describe("agent dispatch", () => {
 
     mockGraphqlFetch.mockImplementation(async (query: string) => {
       if (query.includes("ecommerceGetConversationDetails")) {
-        return { ecommerceGetConversationDetails: { code: 0, customer: { userId: "buyer-001", nickname: "Buyer" } } };
+        return { ecommerceGetConversationDetails: { buyer: { userId: "buyer-001", nickname: "Buyer" } } };
       }
       if (query.includes("ecommerceGetOrders")) {
-        return { ecommerceGetOrders: { code: 0, data: JSON.stringify({ orders: [{ id: "order-in-prompt", create_time: 1700000000 }] }) } };
+        return { ecommerceGetOrders: { items: [{ orderId: "order-in-prompt", createTime: 1700000000 }] } };
       }
       return { csGetOrCreateSession: { sessionId: "sess-001", isNew: true, balance: 100 } };
     });

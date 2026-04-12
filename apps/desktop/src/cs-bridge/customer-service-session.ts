@@ -31,7 +31,7 @@ const log = createLogger("cs-session");
 const SEND_MESSAGE_MUTATION = `
   mutation($shopId: String!, $conversationId: String!, $type: EcomMessageType!, $content: String!) {
     ecommerceSendMessage(shopId: $shopId, conversationId: $conversationId, type: $type, content: $content) {
-      code message data
+      messageId
     }
   }
 `;
@@ -39,8 +39,7 @@ const SEND_MESSAGE_MUTATION = `
 export const GET_CONVERSATION_DETAILS_QUERY = `
   query($shopId: String!, $conversationId: String!) {
     ecommerceGetConversationDetails(shopId: $shopId, conversationId: $conversationId) {
-      code message
-      customer { userId nickname }
+      buyer { userId nickname }
     }
   }
 `;
@@ -48,7 +47,7 @@ export const GET_CONVERSATION_DETAILS_QUERY = `
 const GET_BUYER_ORDERS_QUERY = `
   query($shopId: String!, $buyerUserId: String) {
     ecommerceGetOrders(shopId: $shopId, buyerUserId: $buyerUserId) {
-      code message data
+      items { orderId createTime }
     }
   }
 `;
@@ -514,12 +513,12 @@ export class CustomerServiceSession {
       const authSession = getAuthSession();
       if (authSession) {
         const detailsResult = await authSession.graphqlFetch<{
-          ecommerceGetConversationDetails: { customer?: { userId: string; nickname: string } };
+          ecommerceGetConversationDetails: { buyer?: { userId?: string; nickname?: string } };
         }>(GET_CONVERSATION_DETAILS_QUERY, {
           shopId: this.csContext.shopId,
           conversationId: this.csContext.conversationId,
         });
-        buyerNickname = detailsResult.ecommerceGetConversationDetails.customer?.nickname;
+        buyerNickname = detailsResult.ecommerceGetConversationDetails.buyer?.nickname;
       }
     } catch (err) {
       log.warn("Failed to fetch conversation details for escalation enrichment:", err);
@@ -596,12 +595,12 @@ export class CustomerServiceSession {
     try {
       // Step 1: resolve platform buyer user ID from conversation participants
       const detailsResult = await authSession.graphqlFetch<{
-        ecommerceGetConversationDetails: { code: number; customer?: { userId: string } };
+        ecommerceGetConversationDetails: { buyer?: { userId?: string } };
       }>(GET_CONVERSATION_DETAILS_QUERY, {
         shopId: this.csContext.shopId,
         conversationId: this.csContext.conversationId,
       });
-      const platformBuyerId = detailsResult.ecommerceGetConversationDetails.customer?.userId;
+      const platformBuyerId = detailsResult.ecommerceGetConversationDetails.buyer?.userId;
       if (!platformBuyerId) {
         log.warn(`Context resolution: could not resolve platform buyer ID for conv=${this.csContext.conversationId}`);
         this.csContext.recentOrders = [];
@@ -618,25 +617,19 @@ export class CustomerServiceSession {
 
       // Step 2: fetch buyer's recent orders using the platform buyer ID
       const ordersResult = await authSession.graphqlFetch<{
-        ecommerceGetOrders: { code: number; data?: string };
+        ecommerceGetOrders: { items: Array<{ orderId: string; createTime?: number }> };
       }>(GET_BUYER_ORDERS_QUERY, {
         shopId: this.csContext.shopId,
         buyerUserId: platformBuyerId,
       });
-      const raw = ordersResult.ecommerceGetOrders;
-      if (raw.code === 0 && raw.data) {
-        const parsed = JSON.parse(raw.data) as { orders?: Array<{ id?: string; create_time?: number }> };
-        const orders = (parsed.orders ?? [])
-          .filter((o): o is { id: string; create_time: number } => !!o.id && !!o.create_time)
-          .map(o => ({ orderId: o.id, createTime: o.create_time }))
-          .sort((a, b) => b.createTime - a.createTime);
-        this.csContext.recentOrders = orders;
-        this.csContext.orderId = orders[0]?.orderId ?? null;
-        log.info(`Context resolved: ${orders.length} order(s) for conv=${this.csContext.conversationId}${orders.length > 0 ? `, latest=${orders[0].orderId}` : ""}`);
-      } else {
-        this.csContext.recentOrders = [];
-        this.csContext.orderId = null;
-      }
+      const items = ordersResult.ecommerceGetOrders?.items ?? [];
+      const orders = items
+        .filter((o): o is { orderId: string; createTime: number } => !!o.orderId && typeof o.createTime === "number")
+        .map((o) => ({ orderId: o.orderId, createTime: o.createTime }))
+        .sort((a, b) => b.createTime - a.createTime);
+      this.csContext.recentOrders = orders;
+      this.csContext.orderId = orders[0]?.orderId ?? null;
+      log.info(`Context resolved: ${orders.length} order(s) for conv=${this.csContext.conversationId}${orders.length > 0 ? `, latest=${orders[0].orderId}` : ""}`);
 
       this.contextResolved = true;
     } catch (err) {
