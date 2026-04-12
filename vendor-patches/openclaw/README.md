@@ -200,23 +200,6 @@ end-to-end through the SSRF guard without corruption. Test by sending a
 voice message via Feishu or Telegram and confirming the agent receives
 the transcript text.
 
-### 0007 — Defer `prewarmConfiguredPrimaryModel` to unblock event loop
-
-**File:** `0007-vendor-openclaw-defer-prewarmConfiguredPrimaryModel.patch`
-
-**Why:** `ensureOpenClawModelsJson()` inside `prewarmConfiguredPrimaryModel()`
-runs ~8s of synchronous provider discovery that blocks the event loop after
-gateway READY. This starves all channel WebSocket/polling callbacks, delaying
-webchat connection by ~9s and preventing Telegram/Feishu from processing
-inbound messages during the block.
-
-**Change:** Move `startChannels()` before prewarm, wrap prewarm in
-`setTimeout(15s)` so channels fully establish connections first.
-
-**Removal:** Drop when upstream resolves the synchronous event-loop blocking
-in `ensureOpenClawModelsJson` / provider discovery, or when prewarm is made
-truly async without blocking the event loop.
-
 ## Dropped Patches
 
 ### (Dropped in v2026.4.9 upgrade) Respect `ask=off` for obfuscation-triggered approvals
@@ -228,8 +211,12 @@ making this patch unnecessary. The `requiresExecApproval` function with
 `ask=off` still returns `false` natively, satisfying the core EasyClaw
 requirement.
 
-### (Dropped in v2026.4.11 upgrade, re-added as 0007) Defer `prewarmConfiguredPrimaryModel`
+### (Dropped in v2026.4.11 upgrade) Defer `prewarmConfiguredPrimaryModel`
 
-Initially dropped during v2026.4.11 upgrade because a warm-cache test showed
-no delay. Re-added as patch 0007 after cold-start testing confirmed the ~9s
-`ensureOpenClawModelsJson` event-loop block persists in v2026.4.11.
+Wrapped `prewarmConfiguredPrimaryModel()` in `setTimeout(15s)`. Initially
+thought necessary for v2026.4.11, but further testing showed: (a) the ~9s
+delay was non-deterministic and correlated with specific build artifacts
+rather than the patch presence, (b) clean builds without the patch show
+375ms sidecars→webchat, (c) the patch actually caused slower startups in
+some builds. Root cause of sporadic slowness remains under investigation
+but is not consistently reproducible and not solved by this patch.
