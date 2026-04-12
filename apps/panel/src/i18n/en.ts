@@ -1627,7 +1627,7 @@ export default {
         ECOM_CS_REJECT_CANCELLATION: "Reject Cancellation",
         // E-commerce CS — Escalation
         cs_escalate: "Escalate",
-        cs_continue: "Continue (Resume)",
+        cs_respond: "Respond to Escalation",
         cs_get_escalation_result: "Get Escalation Result",
         cs_start_session: "Start Session",
         // E-commerce Shop Management

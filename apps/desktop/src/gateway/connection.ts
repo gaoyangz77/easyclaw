@@ -30,6 +30,16 @@ export function getCsBridge(): CustomerServiceBridge | null {
 
 let _csBridgeListenerRegistered = false;
 
+export function stopCsBridge(): void {
+  if (_csBridge) {
+    _csBridge.stop();
+    _csBridge = null;
+  }
+  // Don't reset _csBridgeListenerRegistered — the onUserChanged listener
+  // on authSession is permanent and harmless. tryStartCsBridge checks
+  // _csBridge !== null to avoid double-create.
+}
+
 export function tryStartCsBridge(gatewayId: string): void {
   const authSession = getAuthSession();
   if (!authSession) return;

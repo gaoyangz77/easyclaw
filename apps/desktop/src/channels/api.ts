@@ -5,9 +5,20 @@ import { sendChannelMessage } from "./channel-senders.js";
 import { openClawConnector } from "../openclaw/index.js";
 import type { RouteRegistry, EndpointHandler } from "../infra/api/route-registry.js";
 import type { ApiContext } from "../app/api-context.js";
+import type { ChannelManagerInstance } from "./channel-manager.js";
 import { sendJson, parseBody, proxiedFetch } from "../infra/api/route-utils.js";
+import type { ServerResponse } from "node:http";
 
 const log = createLogger("panel-server");
+
+/** Extract channelManager or send 503 and return null. */
+function requireChannelManager(ctx: ApiContext, res: ServerResponse): ChannelManagerInstance | null {
+  if (!ctx.channelManager) {
+    sendJson(res, 503, { error: "Channel manager not available" });
+    return null;
+  }
+  return ctx.channelManager;
+}
 
 const APPROVAL_MESSAGES = {
   zh: "✅ [RivonClaw] 您的访问已获批准！现在可以开始和我对话了。",
@@ -17,7 +28,8 @@ const APPROVAL_MESSAGES = {
 // ── GET /api/channels/status ──
 
 const channelsStatus: EndpointHandler = async (req, res, url, _params, ctx: ApiContext) => {
-  const { channelManager } = ctx;
+  const cm = requireChannelManager(ctx, res);
+  if (!cm) return;
 
   let rpcClient;
   try {
@@ -32,7 +44,7 @@ const channelsStatus: EndpointHandler = async (req, res, url, _params, ctx: ApiC
     const probeTimeoutMs = DEFAULTS.desktop.channelProbeTimeoutMs;
     const clientTimeoutMs = probe ? DEFAULTS.polling.channelProbeClientTimeoutMs : DEFAULTS.desktop.channelClientTimeoutMs;
 
-    const snapshot = await channelManager!.getChannelStatus(rpcClient, probe, probeTimeoutMs, clientTimeoutMs);
+    const snapshot = await cm.getChannelStatus(rpcClient, probe, probeTimeoutMs, clientTimeoutMs);
     sendJson(res, 200, { snapshot });
   } catch (err) {
     log.error("Failed to fetch channels status:", err);
@@ -62,7 +74,8 @@ const getAccount: EndpointHandler = async (_req, res, _url, params, ctx: ApiCont
 // ── POST /api/channels/accounts ──
 
 const createAccount: EndpointHandler = async (req, res, _url, _params, ctx: ApiContext) => {
-  const { onChannelConfigured, channelManager } = ctx;
+  const cm = requireChannelManager(ctx, res);
+  if (!cm) return;
 
   const body = (await parseBody(req)) as {
     channelId?: string;
@@ -92,7 +105,7 @@ const createAccount: EndpointHandler = async (req, res, _url, _params, ctx: ApiC
       accountConfig.name = body.name;
     }
 
-    channelManager!.addAccount({
+    cm.addAccount({
       channelId: body.channelId,
       accountId: body.accountId,
       name: body.name,
@@ -101,7 +114,7 @@ const createAccount: EndpointHandler = async (req, res, _url, _params, ctx: ApiC
     });
 
     sendJson(res, 201, { ok: true, channelId: body.channelId, accountId: body.accountId });
-    onChannelConfigured?.(body.channelId);
+    ctx.onChannelConfigured?.(body.channelId);
   } catch (err) {
     log.error("Failed to create channel account:", err);
     sendJson(res, 500, { error: String(err) });
@@ -111,7 +124,8 @@ const createAccount: EndpointHandler = async (req, res, _url, _params, ctx: ApiC
 // ── PUT /api/channels/accounts/:channelId/:accountId ──
 
 const updateAccount: EndpointHandler = async (req, res, _url, params, ctx: ApiContext) => {
-  const { onChannelConfigured, channelManager } = ctx;
+  const cm = requireChannelManager(ctx, res);
+  if (!cm) return;
   const { channelId, accountId } = params;
 
   const body = (await parseBody(req)) as {
@@ -126,7 +140,7 @@ const updateAccount: EndpointHandler = async (req, res, _url, params, ctx: ApiCo
   }
 
   try {
-    channelManager!.updateAccount({
+    cm.updateAccount({
       channelId,
       accountId,
       name: body.name,
@@ -135,7 +149,7 @@ const updateAccount: EndpointHandler = async (req, res, _url, params, ctx: ApiCo
     });
 
     sendJson(res, 200, { ok: true, channelId, accountId });
-    onChannelConfigured?.(channelId);
+    ctx.onChannelConfigured?.(channelId);
   } catch (err) {
     log.error("Failed to update channel account:", err);
     sendJson(res, 500, { error: String(err) });
@@ -145,11 +159,12 @@ const updateAccount: EndpointHandler = async (req, res, _url, params, ctx: ApiCo
 // ── DELETE /api/channels/accounts/:channelId/:accountId ──
 
 const deleteAccount: EndpointHandler = async (_req, res, _url, params, ctx: ApiContext) => {
-  const { channelManager } = ctx;
+  const cm = requireChannelManager(ctx, res);
+  if (!cm) return;
   const { channelId, accountId } = params;
 
   try {
-    channelManager!.removeAccount(channelId, accountId);
+    cm.removeAccount(channelId, accountId);
     sendJson(res, 200, { ok: true, channelId, accountId });
   } catch (err) {
     log.error("Failed to delete channel account:", err);
@@ -160,7 +175,8 @@ const deleteAccount: EndpointHandler = async (_req, res, _url, params, ctx: ApiC
 // ── POST /api/channels/qr-login/start ──
 
 const qrLoginStart: EndpointHandler = async (req, res, _url, _params, ctx: ApiContext) => {
-  const { channelManager } = ctx;
+  const cm = requireChannelManager(ctx, res);
+  if (!cm) return;
 
   let rpcClient;
   try {
@@ -173,7 +189,7 @@ const qrLoginStart: EndpointHandler = async (req, res, _url, _params, ctx: ApiCo
   const body = (await parseBody(req)) as { accountId?: string };
 
   try {
-    const result = await channelManager!.startQrLogin(rpcClient, body.accountId);
+    const result = await cm.startQrLogin(rpcClient, body.accountId);
     sendJson(res, 200, result);
   } catch (err) {
     log.error("Failed to start QR login:", err);
@@ -184,7 +200,8 @@ const qrLoginStart: EndpointHandler = async (req, res, _url, _params, ctx: ApiCo
 // ── POST /api/channels/qr-login/wait ──
 
 const qrLoginWait: EndpointHandler = async (req, res, _url, _params, ctx: ApiContext) => {
-  const { channelManager } = ctx;
+  const cm = requireChannelManager(ctx, res);
+  if (!cm) return;
 
   let rpcClient;
   try {
@@ -197,7 +214,7 @@ const qrLoginWait: EndpointHandler = async (req, res, _url, _params, ctx: ApiCon
   const body = (await parseBody(req)) as { accountId?: string; timeoutMs?: number };
 
   try {
-    const result = await channelManager!.waitQrLogin(rpcClient, body.accountId, body.timeoutMs);
+    const result = await cm.waitQrLogin(rpcClient, body.accountId, body.timeoutMs);
     sendJson(res, 200, result);
   } catch (err) {
     log.error("Failed to wait for QR login:", err);
@@ -208,11 +225,12 @@ const qrLoginWait: EndpointHandler = async (req, res, _url, _params, ctx: ApiCon
 // ── GET /api/pairing/requests/:channelId ──
 
 const pairingRequests: EndpointHandler = async (_req, res, _url, params, ctx: ApiContext) => {
-  const { channelManager } = ctx;
+  const cm = requireChannelManager(ctx, res);
+  if (!cm) return;
   const { channelId } = params;
 
   try {
-    const requests = await channelManager!.getPairingRequests(channelId);
+    const requests = await cm.getPairingRequests(channelId);
     sendJson(res, 200, { requests });
   } catch (err) {
     log.error(`Failed to list pairing requests for ${channelId}:`, err);
@@ -223,12 +241,13 @@ const pairingRequests: EndpointHandler = async (_req, res, _url, params, ctx: Ap
 // ── GET /api/pairing/allowlist/:channelId ──
 
 const getAllowlist: EndpointHandler = async (_req, res, url, params, ctx: ApiContext) => {
-  const { channelManager } = ctx;
+  const cm = requireChannelManager(ctx, res);
+  if (!cm) return;
   const { channelId } = params;
   const accountId = url.searchParams.get("accountId") || undefined;
 
   try {
-    const result = await channelManager!.getAllowlist(channelId, accountId);
+    const result = await cm.getAllowlist(channelId, accountId);
     sendJson(res, 200, result);
   } catch (err) {
     log.error(`Failed to read allowlist for ${channelId}:`, err);
@@ -239,7 +258,8 @@ const getAllowlist: EndpointHandler = async (_req, res, url, params, ctx: ApiCon
 // ── PUT /api/pairing/allowlist/:channelId/:recipientId/label ──
 
 const setLabel: EndpointHandler = async (req, res, _url, params, ctx: ApiContext) => {
-  const { channelManager } = ctx;
+  const cm = requireChannelManager(ctx, res);
+  if (!cm) return;
   const { channelId, recipientId } = params;
   const body = (await parseBody(req)) as { label?: string };
 
@@ -249,7 +269,7 @@ const setLabel: EndpointHandler = async (req, res, _url, params, ctx: ApiContext
   }
 
   try {
-    channelManager!.setRecipientLabel(channelId, recipientId, body.label);
+    cm.setRecipientLabel(channelId, recipientId, body.label);
     sendJson(res, 200, { ok: true });
   } catch (err) {
     log.error(`Failed to set recipient label:`, err);
@@ -260,7 +280,8 @@ const setLabel: EndpointHandler = async (req, res, _url, params, ctx: ApiContext
 // ── PUT /api/pairing/allowlist/:channelId/:recipientId/owner ──
 
 const setOwner: EndpointHandler = async (req, res, _url, params, ctx: ApiContext) => {
-  const { channelManager } = ctx;
+  const cm = requireChannelManager(ctx, res);
+  if (!cm) return;
   const { channelId, recipientId } = params;
   const body = (await parseBody(req)) as { isOwner?: boolean };
 
@@ -270,7 +291,7 @@ const setOwner: EndpointHandler = async (req, res, _url, params, ctx: ApiContext
   }
 
   try {
-    channelManager!.setRecipientOwner(channelId, recipientId, body.isOwner);
+    cm.setRecipientOwner(channelId, recipientId, body.isOwner);
     sendJson(res, 200, { ok: true });
   } catch (err) {
     log.error(`Failed to set recipient owner:`, err);
@@ -281,7 +302,8 @@ const setOwner: EndpointHandler = async (req, res, _url, params, ctx: ApiContext
 // ── POST /api/pairing/approve ──
 
 const approve: EndpointHandler = async (req, res, _url, _params, ctx: ApiContext) => {
-  const { channelManager } = ctx;
+  const cm = requireChannelManager(ctx, res);
+  if (!cm) return;
 
   const body = (await parseBody(req)) as {
     channelId?: string;
@@ -295,7 +317,7 @@ const approve: EndpointHandler = async (req, res, _url, _params, ctx: ApiContext
   }
 
   try {
-    const result = await channelManager!.approvePairing({ channelId: body.channelId, code: body.code });
+    const result = await cm.approvePairing({ channelId: body.channelId, code: body.code });
 
     sendJson(res, 200, { ok: true, id: result.recipientId, entry: result.entry });
 
@@ -319,13 +341,14 @@ const approve: EndpointHandler = async (req, res, _url, _params, ctx: ApiContext
 // ── DELETE /api/pairing/allowlist/:channelId/:recipientId ──
 
 const removeFromAllowlist: EndpointHandler = async (_req, res, _url, params, ctx: ApiContext) => {
-  const { channelManager } = ctx;
+  const cm = requireChannelManager(ctx, res);
+  if (!cm) return;
   const { channelId, recipientId } = params;
 
   try {
-    const { changed } = await channelManager!.removeFromAllowlist(channelId, recipientId);
+    const { changed } = await cm.removeFromAllowlist(channelId, recipientId);
     // Re-read the current allowlist for the response
-    const { allowlist } = await channelManager!.getAllowlist(channelId);
+    const { allowlist } = await cm.getAllowlist(channelId);
     sendJson(res, 200, { ok: true, changed, allowFrom: allowlist });
   } catch (err) {
     log.error("Failed to remove from allowlist:", err);

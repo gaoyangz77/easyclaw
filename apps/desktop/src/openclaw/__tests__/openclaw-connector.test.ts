@@ -308,6 +308,23 @@ describe("OpenClawConnector", () => {
       expect(mockRuntimeStatusStore.setConnectorSidecarState).toHaveBeenCalledWith("unknown");
     });
 
+    it("fires registered onRpcDisconnected callbacks on onClose", async () => {
+      connector.initDeps(deps);
+
+      const cb1 = vi.fn();
+      const cb2 = vi.fn();
+      connector.onRpcDisconnected(cb1);
+      connector.onRpcDisconnected(cb2);
+
+      await connector.connectRpc(rpcDeps);
+
+      const onClose = mockRpcClientInstance._opts!.onClose as () => void;
+      onClose();
+
+      expect(cb1).toHaveBeenCalled();
+      expect(cb2).toHaveBeenCalled();
+    });
+
     it("dispatches events via eventDispatcher on onEvent", async () => {
       connector.initDeps(deps);
       await connector.connectRpc(rpcDeps);
@@ -346,6 +363,27 @@ describe("OpenClawConnector", () => {
 
     it("is safe to call when no client exists", () => {
       expect(() => connector.disconnectRpc()).not.toThrow();
+    });
+
+    it("fires onRpcDisconnected callbacks when client existed", async () => {
+      connector.initDeps(deps);
+      await connector.connectRpc(rpcDeps);
+
+      const cb = vi.fn();
+      connector.onRpcDisconnected(cb);
+
+      connector.disconnectRpc();
+
+      expect(cb).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not fire onRpcDisconnected callbacks when no client existed", () => {
+      const cb = vi.fn();
+      connector.onRpcDisconnected(cb);
+
+      connector.disconnectRpc();
+
+      expect(cb).not.toHaveBeenCalled();
     });
   });
 

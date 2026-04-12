@@ -80,6 +80,9 @@ export class OpenClawConnector {
   /** Callbacks fired when the RPC client connects (for CS bridge, tool catalog, etc.). */
   private rpcConnectedCallbacks: RpcConnectedCallback[] = [];
 
+  /** Callbacks fired when the RPC client disconnects (for CS bridge teardown, etc.). */
+  private rpcDisconnectedCallbacks: RpcConnectedCallback[] = [];
+
   // ── Initialization ─────────────────────────────────────────────────────
 
   /**
@@ -142,6 +145,15 @@ export class OpenClawConnector {
    */
   onRpcConnected(callback: RpcConnectedCallback): void {
     this.rpcConnectedCallbacks.push(callback);
+  }
+
+  /**
+   * Register a callback that fires every time the RPC client disconnects.
+   * Business code (CS bridge teardown) uses this to clean up resources
+   * when the gateway becomes unreachable.
+   */
+  onRpcDisconnected(callback: RpcConnectedCallback): void {
+    this.rpcDisconnectedCallbacks.push(callback);
   }
 
   // ── Views ──────────────────────────────────────────────────────────────
@@ -238,6 +250,7 @@ export class OpenClawConnector {
         log.info("RPC client disconnected");
         runtimeStatusStore.setConnectorRpcConnected(false);
         runtimeStatusStore.setConnectorSidecarState("unknown");
+        this.fireRpcDisconnectedCallbacks();
       },
       onEvent: (evt: GatewayEventFrame) => {
         this.deps?.eventDispatcher(evt);
@@ -250,12 +263,34 @@ export class OpenClawConnector {
 
   /** Disconnect the RPC client and reset volatile + observable state. */
   disconnectRpc(): void {
+    const hadClient = !!this.rpcClient;
     if (this.rpcClient) {
       this.rpcClient.stop();
       this.rpcClient = null;
     }
     runtimeStatusStore.setConnectorRpcConnected(false);
     runtimeStatusStore.setConnectorSidecarState("unknown");
+    if (hadClient) {
+      this.fireRpcDisconnectedCallbacks();
+    }
+  }
+
+  // ── RPC Disconnect Callbacks ────────────────────────────────────────────
+
+  /** Fire all registered disconnect callbacks. Best-effort: errors are logged. */
+  private fireRpcDisconnectedCallbacks(): void {
+    for (const cb of this.rpcDisconnectedCallbacks) {
+      try {
+        const result = cb();
+        if (result && typeof (result as Promise<void>).catch === "function") {
+          (result as Promise<void>).catch((err) =>
+            log.error("onRpcDisconnected callback error:", err),
+          );
+        }
+      } catch (err) {
+        log.error("onRpcDisconnected callback error:", err);
+      }
+    }
   }
 
   // ── Sidecar Readiness ──────────────────────────────────────────────────

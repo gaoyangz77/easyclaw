@@ -6306,9 +6306,13 @@ tbody td {
 
 .acct-tool-chips {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 4px;
   margin-top: 4px;
+}
+
+html[lang="zh"] .acct-tool-chips {
+  grid-template-columns: repeat(4, 1fr);
 }
 
 .acct-tool-chip {

@@ -57,7 +57,7 @@ import { OUR_PLUGIN_IDS } from "../generated/our-plugin-ids.js";
 import { initCookieSync, pullAndPersistCookies, pushStoredCookiesToGateway } from "../browser-profiles/cookie-sync.js";
 import { createGatewayConfigHandlers } from "../gateway/config-handlers.js";
 import { loadClientToolSpecs } from "../gateway/client-tool-loader.js";
-import { tryStartCsBridge } from "../gateway/connection.js";
+import { tryStartCsBridge, stopCsBridge } from "../gateway/connection.js";
 import { openClawConnector } from "../openclaw/index.js";
 import { setStorageRef } from "./storage-ref.js";
 import { setProviderKeysStore } from "../gateway/provider-keys-ref.js";
@@ -750,6 +750,11 @@ app.whenReady().then(async () => {
 
     updateTray("stopped");
 
+    // Gateway stopped -- CS bridge must be torn down so it can be recreated
+    // on the next connect. (Also covered by onRpcDisconnected, but the
+    // process-death path may not fire onClose if the socket is already dead.)
+    stopCsBridge();
+
     // Gateway stopped -- managed browsers lose their runtime
     managedBrowserService.shutdown()
       .catch(err => log.warn("Failed to shutdown managed browser service:", err));
@@ -1427,6 +1432,13 @@ app.whenReady().then(async () => {
     // 6. Push locally-stored cookies for managed profiles to the gateway plugin
     pushStoredCookiesToGateway()
       .catch((e: unknown) => log.debug("Failed to push stored cookies to gateway (best-effort):", e));
+  });
+
+  // ── Register onRpcDisconnected callback ────────────────────────────────────
+  // Stop CS bridge when RPC disconnects (network blip, gateway crash, etc.)
+  // so it can be recreated on the next connect.
+  openClawConnector.onRpcDisconnected(() => {
+    stopCsBridge();
   });
 
   Promise.all([

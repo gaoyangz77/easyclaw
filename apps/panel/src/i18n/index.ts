@@ -5,14 +5,18 @@ import zh from "./zh.js";
 
 const browserLang = navigator.language.split("-")[0];
 
+const lng = browserLang === "zh" ? "zh" : "en";
+
 i18n.use(initReactI18next).init({
   resources: {
     en: { translation: en },
     zh: { translation: zh },
   },
-  lng: browserLang === "zh" ? "zh" : "en",
+  lng,
   fallbackLng: "en",
   interpolation: { escapeValue: false },
 });
+
+document.documentElement.lang = lng;
 
 export default i18n;
