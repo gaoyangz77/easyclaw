@@ -132,8 +132,8 @@ export const REDEEM_CREDIT_MUTATION = gql`
   }
 `;
 
-export const CS_SKILL_TEMPLATE_QUERY = gql`
-  query CsSkillTemplate {
-    csSkillTemplate
+export const CS_GET_PRESET_SKILLS_QUERY = gql`
+  query CsGetPresetSkills {
+    csGetPresetSkills
   }
 `;

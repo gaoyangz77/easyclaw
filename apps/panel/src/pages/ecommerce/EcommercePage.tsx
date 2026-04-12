@@ -6,7 +6,6 @@ import { observer } from "mobx-react-lite";
 import { useEntityStore } from "../../store/EntityStoreProvider.js";
 import type { ServiceCredit } from "@rivonclaw/core/models";
 import { useToast } from "../../components/Toast.js";
-import { fetchInstalledSkills, writeSkillTemplate } from "../../api/skills.js";
 import { hasUpgradeRequired } from "./ecommerce-utils.js";
 import type { DrawerTab } from "./ecommerce-types.js";
 import { useOAuthFlow } from "./hooks/useOAuthFlow.js";
@@ -192,16 +191,6 @@ export const EcommercePage = observer(function EcommercePage() {
         services: { customerService: { enabled: !currentValue } },
       });
       showToast(t(!currentValue ? "ecommerce.csEnabled" : "ecommerce.csDisabled"), "success");
-      // If enabling CS, auto-download skill template if not already installed (fire-and-forget)
-      if (!currentValue) {
-        fetchInstalledSkills()
-          .then(async (installed) => {
-            if (installed.some((s) => s.slug === "customer-service")) return;
-            const content = await entityStore.fetchCsSkillTemplate();
-            if (content) await writeSkillTemplate("customer-service", content);
-          })
-          .catch(() => {}); // Silent — skill template is optional
-      }
       // If disabling CS while on the AI CS tab, switch back to overview
       if (currentValue && activeTab === "aiCustomerService") {
         setActiveTab("overview");

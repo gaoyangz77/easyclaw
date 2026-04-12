@@ -21,7 +21,7 @@ import {
   PLATFORM_APPS_QUERY,
   MY_CREDITS_QUERY,
   INITIATE_TIKTOK_OAUTH_MUTATION,
-  CS_SKILL_TEMPLATE_QUERY,
+  CS_GET_PRESET_SKILLS_QUERY,
 } from "../api/shops-queries.js";
 import { GENERATE_PAIRING_CODE, WAIT_FOR_PAIRING, GET_INSTALL_URL } from "../api/pairing-queries.js";
 import { SURFACES_QUERY } from "../api/surfaces-queries.js";
@@ -338,15 +338,17 @@ const PanelRootStoreModel = RootStoreModel.props({
       return result.data!.createRunProfile;
     }),
 
-    // ── CS skill template ──
+    // ── CS preset skills ──
 
-    /** Fetch CS skill template from backend. Returns template content or null. */
-    fetchCsSkillTemplate: flow(function* () {
+    /** Fetch all CS preset skills from backend. Returns { key: content } map or null. */
+    fetchCsPresetSkills: flow(function* () {
       const result = yield client().query({
-        query: CS_SKILL_TEMPLATE_QUERY,
+        query: CS_GET_PRESET_SKILLS_QUERY,
         fetchPolicy: "network-only",
       });
-      return (result.data?.csSkillTemplate as string) ?? null;
+      const raw = result.data?.csGetPresetSkills as string | null;
+      if (!raw) return null;
+      return JSON.parse(raw) as Record<string, string>;
     }),
 
     // ── Mobile pairing mutations (temporary data, not stored in MST) ──

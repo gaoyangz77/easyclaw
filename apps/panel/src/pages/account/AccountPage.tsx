@@ -16,6 +16,7 @@ import { RunProfilesSection } from "./components/RunProfilesSection.js";
 import { RunProfileFormModal } from "./components/RunProfileFormModal.js";
 import { RunProfilePresetModal } from "./components/RunProfilePresetModal.js";
 import { ModulesSection } from "./components/ModulesSection.js";
+import { writeSkillTemplate } from "../../api/skills.js";
 
 /** Resolve a display name for system-provided surfaces/profiles via i18n. */
 function useSystemName() {
@@ -80,6 +81,15 @@ export const AccountPage = observer(function AccountPage({ onNavigate }: { onNav
         await entityStore.currentUser!.unenrollModule("GLOBAL_ECOMMERCE_SELLER");
       } else {
         await entityStore.currentUser!.enrollModule("GLOBAL_ECOMMERCE_SELLER");
+        // Download all CS preset skills on module enrollment (fire-and-forget, always overwrite)
+        entityStore.fetchCsPresetSkills()
+          .then(async (skills: Record<string, string> | null) => {
+            if (!skills) return;
+            for (const [key, content] of Object.entries(skills)) {
+              await writeSkillTemplate(key, content);
+            }
+          })
+          .catch(() => {});
       }
     } catch {
       // Error will surface via network layer
