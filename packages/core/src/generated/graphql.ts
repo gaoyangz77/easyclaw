@@ -1849,18 +1849,15 @@ export interface ToolContextBinding {
 
 /** Unique tool identifier */
 export const ToolId = {
-  BrowserProfilesFind: 'BROWSER_PROFILES_FIND',
   BrowserProfilesGet: 'BROWSER_PROFILES_GET',
   BrowserProfilesList: 'BROWSER_PROFILES_LIST',
   BrowserProfilesManage: 'BROWSER_PROFILES_MANAGE',
   EcomApproveCancellation: 'ECOM_APPROVE_CANCELLATION',
   EcomApproveRefund: 'ECOM_APPROVE_REFUND',
   EcomApproveReturn: 'ECOM_APPROVE_RETURN',
-  EcomCreateConversation: 'ECOM_CREATE_CONVERSATION',
   EcomCsApproveCancellation: 'ECOM_CS_APPROVE_CANCELLATION',
   EcomCsApproveRefund: 'ECOM_CS_APPROVE_REFUND',
   EcomCsApproveReturn: 'ECOM_CS_APPROVE_RETURN',
-  EcomCsCreateConversation: 'ECOM_CS_CREATE_CONVERSATION',
   EcomCsGetAftersaleEligibility: 'ECOM_CS_GET_AFTERSALE_ELIGIBILITY',
   EcomCsGetConversations: 'ECOM_CS_GET_CONVERSATIONS',
   EcomCsGetConversationDetails: 'ECOM_CS_GET_CONVERSATION_DETAILS',
@@ -1883,7 +1880,6 @@ export const ToolId = {
   EcomCsSendMedia: 'ECOM_CS_SEND_MEDIA',
   EcomGetAftersaleEligibility: 'ECOM_GET_AFTERSALE_ELIGIBILITY',
   EcomGetConversations: 'ECOM_GET_CONVERSATIONS',
-  EcomGetConversationDetails: 'ECOM_GET_CONVERSATION_DETAILS',
   EcomGetConversationMessages: 'ECOM_GET_CONVERSATION_MESSAGES',
   EcomGetCsPerformance: 'ECOM_GET_CS_PERFORMANCE',
   EcomGetFulfillmentTracking: 'ECOM_GET_FULFILLMENT_TRACKING',
@@ -1903,7 +1899,6 @@ export const ToolId = {
   EcomSearchPackages: 'ECOM_SEARCH_PACKAGES',
   EcomSearchProducts: 'ECOM_SEARCH_PRODUCTS',
   EcomSearchReturns: 'ECOM_SEARCH_RETURNS',
-  EcomSearchSessions: 'ECOM_SEARCH_SESSIONS',
   EcomUpdateShop: 'ECOM_UPDATE_SHOP'
 } as const;
 
