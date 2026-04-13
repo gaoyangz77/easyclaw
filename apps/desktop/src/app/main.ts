@@ -595,10 +595,24 @@ app.whenReady().then(async () => {
 
   updateTray("stopped");
 
+  /** Run updater.check() and sync the panel banner with the result. */
+  function checkAndSyncBanner() {
+    updater.check().then(() => {
+      if (!updater.getLatestInfo()) {
+        pushChatSSE("update-available", {
+          updateAvailable: false,
+          currentVersion: app.getVersion(),
+          latestVersion: null,
+          downloadUrl: null,
+        });
+      }
+    }).catch((err: unknown) => {
+      log.warn("Update check failed:", err);
+    });
+  }
+
   // Startup update check (fallback for non-authenticated users)
-  updater.check().catch((err: unknown) => {
-    log.warn("Startup update check failed:", err);
-  });
+  checkAndSyncBanner();
 
   // Real-time update push via GraphQL subscription (replaces 4h polling)
   backendSubscription.subscribeToUpdates(app.getVersion(), (payload) => {
@@ -610,9 +624,7 @@ app.whenReady().then(async () => {
       latestVersion: payload.version,
       downloadUrl: payload.downloadUrl ?? null,
     });
-    updater.check().catch((err: unknown) => {
-      log.warn("Update check after subscription push failed:", err);
-    });
+    checkAndSyncBanner();
   }, () => {
     log.info("Server dismissed update — clearing banner");
     updater.clearServerPushInfo();

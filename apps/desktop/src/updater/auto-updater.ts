@@ -136,6 +136,13 @@ export function createAutoUpdater(deps: AutoUpdaterDeps) {
 
   autoUpdater.on("update-not-available", () => {
     log.info(`Already up to date (${app.getVersion()})`);
+    // Clear any stale update info (e.g. from a prior server push notification
+    // for a version that has since been installed). This ensures the update
+    // banner disappears after restart when the app is already up to date.
+    if (latestUpdateInfo) {
+      latestUpdateInfo = null;
+      deps.updateTray();
+    }
   });
 
   autoUpdater.on("download-progress", (progress: ProgressInfo) => {
