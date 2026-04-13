@@ -1,6 +1,6 @@
-From 36a1e258b3fa85718bc5dfce07c21935db23c072 Mon Sep 17 00:00:00 2001
+From 470b582bc7680134b4c34eeef82b66bce5c01268 Mon Sep 17 00:00:00 2001
 From: RivonClaw CI <ci@rivonclaw.com>
-Date: Mon, 13 Apr 2026 03:07:37 -0700
+Date: Mon, 13 Apr 2026 09:11:51 -0700
 Subject: [PATCH] vendor(openclaw): defer prewarmConfiguredPrimaryModel to
  unblock event loop
 
@@ -23,14 +23,14 @@ Removal:
 Tests:
 - apps/desktop/test/vendor-patch-prewarm-defer.test.ts
 ---
- src/gateway/server-startup-post-attach.ts | 16 ++++++++++++----
- 1 file changed, 12 insertions(+), 4 deletions(-)
+ src/gateway/server-startup-post-attach.ts | 18 ++++++++++++++----
+ 1 file changed, 14 insertions(+), 4 deletions(-)
 
 diff --git a/src/gateway/server-startup-post-attach.ts b/src/gateway/server-startup-post-attach.ts
-index 3f5a5ef674..0dc4bdcc3b 100644
+index 3f5a5ef674..d35c468389 100644
 --- a/src/gateway/server-startup-post-attach.ts
 +++ b/src/gateway/server-startup-post-attach.ts
-@@ -170,11 +170,19 @@ export async function startGatewaySidecars(params: {
+@@ -170,11 +170,21 @@ export async function startGatewaySidecars(params: {
      isTruthyEnvValue(process.env.OPENCLAW_SKIP_PROVIDERS);
    if (!skipChannels) {
      try {
