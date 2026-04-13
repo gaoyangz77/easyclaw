@@ -24,7 +24,7 @@
     "dist:mac:dir:arm64": "node scripts/prune-vendor-deps.cjs && electron-builder --mac --dir --arm64 --publish never",
     "dist:mac:dir:x64": "node scripts/prune-vendor-deps.cjs && electron-builder --mac --dir --x64 --publish never",
     "dist:mac:universal:merge": "node scripts/merge-universal-mac.cjs",
-    "dist:mac:universal:package": "electron-builder --mac --prepackaged release/mac-universal --publish never",
+    "dist:mac:universal:package": "electron-builder --mac --prepackaged release/mac-universal/RivonClaw.app --publish never",
     "dist:win": "node scripts/prune-vendor-deps.cjs && electron-builder --win --config electron-builder.win.yml --publish never",
     "dist:linux": "node scripts/prune-vendor-deps.cjs && electron-builder --linux --config electron-builder.linux.yml --publish never"
   },

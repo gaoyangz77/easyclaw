@@ -330,6 +330,11 @@ jobs:
           name: macos-x64-app
           path: apps/desktop/release/mac/
 
+      - name: Restore macOS binary permissions
+        run: |
+          chmod +x "apps/desktop/release/mac-arm64/RivonClaw.app/Contents/MacOS/RivonClaw"
+          chmod +x "apps/desktop/release/mac/RivonClaw.app/Contents/MacOS/RivonClaw"
+
       - name: Merge universal app
         run: |
           cd apps/desktop

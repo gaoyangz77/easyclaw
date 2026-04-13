@@ -15,6 +15,7 @@ files:
 
 extraMetadata:
   main: dist/main.cjs
+  type: commonjs
 
 asar: true
 icon: build/icon
