@@ -288,22 +288,26 @@ export const EcomApproveReturnDecision = {
 } as const;
 
 export type EcomApproveReturnDecision = typeof EcomApproveReturnDecision[keyof typeof EcomApproveReturnDecision];
-/** Customer service performance metrics. Every field is nullable because TikTok's response body is not fully documented; not yet verified on live data. */
+/** Customer service performance metrics */
 export interface EcomCsPerformance {
-  /** Average response time in seconds */
-  avgResponseTime?: Maybe<Scalars['Float']['output']>;
-  /** Exclusive end of the reported window (YYYY-MM-DD) */
+  /** Conversion rate as a percentage string (e.g. '66.67') */
+  conversionRate?: Maybe<Scalars['String']['output']>;
+  /** CS-guided GMV as a decimal string (e.g. '36500') */
+  csGuidedGmv?: Maybe<Scalars['String']['output']>;
+  /** Currency code for GMV (e.g. 'USD') */
+  currency?: Maybe<Scalars['String']['output']>;
+  /** Exclusive end of the reported window (YYYY-MM-DD), injected from request params */
   endDate?: Maybe<Scalars['String']['output']>;
-  /** Number of conversations handled */
-  handledConversations?: Maybe<Scalars['Int']['output']>;
-  /** Response rate (0..1) */
-  responseRate?: Maybe<Scalars['Float']['output']>;
-  /** Customer satisfaction score (platform-defined scale) */
-  satisfactionScore?: Maybe<Scalars['Float']['output']>;
-  /** Start of the reported window (YYYY-MM-DD) */
+  /** Response rate as a percentage string (e.g. '93.4') */
+  responsePercentage?: Maybe<Scalars['String']['output']>;
+  /** Average response time in minutes as a string (e.g. '3.4') */
+  responseTimeMins?: Maybe<Scalars['String']['output']>;
+  /** Customer satisfaction as a percentage string (e.g. '95.2') */
+  satisfactionPercentage?: Maybe<Scalars['String']['output']>;
+  /** Start of the reported window (YYYY-MM-DD), injected from request params */
   startDate?: Maybe<Scalars['String']['output']>;
-  /** Number of unique buyers served */
-  uniqueBuyers?: Maybe<Scalars['Int']['output']>;
+  /** Number of support sessions in the window */
+  supportSessionCount?: Maybe<Scalars['Int']['output']>;
 }
 
 /** Cancellation status filter for searching cancellations */
