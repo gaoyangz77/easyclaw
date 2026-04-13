@@ -1,11 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import type { GatewayChatClient } from "../../../lib/gateway-client.js";
-import type { RunTracker } from "../run-tracker.js";
-import type { ChatMessage, SessionTabInfo } from "../chat-utils.js";
+import type { SessionTabInfo } from "../chat-utils.js";
 import { checkContextOverflow } from "../chat-utils.js";
 import { formatError } from "@rivonclaw/core";
 import { trackEvent } from "../../../api/index.js";
-import { clearImages } from "../image-cache.js";
 import { useEntityStore } from "../../../store/EntityStoreProvider.js";
 import { useToast } from "../../../components/Toast.js";
 import { useTranslation } from "react-i18next";
@@ -19,24 +16,18 @@ export interface ActiveModelInfo {
 
 export interface UseChatModelControlsParams {
   sessionKeyRef: React.RefObject<string>;
-  clientRef: React.RefObject<GatewayChatClient | null>;
-  trackerRef: React.RefObject<RunTracker>;
-  lastAgentStreamRef: React.RefObject<string | null>;
   connectionState: string;
-  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
   sessions: SessionTabInfo[];
   activeSessionKey: string;
+  onOverflowClear: () => void;
 }
 
 export function useChatModelControls({
   sessionKeyRef,
-  clientRef,
-  trackerRef,
-  lastAgentStreamRef,
   connectionState,
-  setMessages,
   sessions,
   activeSessionKey,
+  onOverflowClear,
 }: UseChatModelControlsParams) {
   const { t } = useTranslation();
   const { showToast } = useToast();
@@ -44,7 +35,6 @@ export function useChatModelControls({
 
   const [activeModel, setActiveModel] = useState<ActiveModelInfo | null>(null);
   const [hasProviderKeys, setHasProviderKeys] = useState(true);
-  const [thinkingLevel, setThinkingLevel] = useState("");
   const [pendingModelSwitch, setPendingModelSwitch] = useState<{
     provider: string;
     model: string;
@@ -172,29 +162,15 @@ export function useChatModelControls({
   }
 
   async function handleOverflowClear() {
-    if (!pendingModelSwitch || !clientRef.current) return;
-    // Switch first, then reset the session -- suppress toast since user already acted via modal
+    if (!pendingModelSwitch) return;
     doModelSwitch(pendingModelSwitch.provider, pendingModelSwitch.model);
     setPendingModelSwitch(null);
-    // Reset session on gateway (same as confirmReset but without the abort check)
-    clientRef.current.request("sessions.reset", {
-      key: sessionKeyRef.current,
-    }).then(() => {
-      setMessages([]);
-      clearImages(sessionKeyRef.current).catch(() => {});
-      trackerRef.current.reset();
-      lastAgentStreamRef.current = null;
-    }).catch((err) => {
-      const errText = formatError(err) || t("chat.unknownError");
-      setMessages((prev) => [...prev, { role: "assistant", text: `\u26A0 ${errText}`, timestamp: Date.now() }]);
-    });
+    onOverflowClear();
   }
 
   return {
     activeModel,
     hasProviderKeys,
-    thinkingLevel,
-    setThinkingLevel,
     pendingModelSwitch,
     setPendingModelSwitch,
     refreshModel,

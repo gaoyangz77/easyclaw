@@ -2,14 +2,18 @@ import { useTranslation } from "react-i18next";
 import type { ChatMessage } from "../chat-utils.js";
 import { cleanMessageText, IMAGE_PLACEHOLDER, formatTimestamp } from "../chat-utils.js";
 import { MarkdownMessage, CopyButton, CollapsibleContent, ToolArgsDisplay } from "../ChatMessage.js";
-import type { RunTracker } from "../run-tracker.js";
 
 export interface ChatMessageListProps {
   visibleMessages: ChatMessage[];
   streaming: string | null;
   runId: string | null;
   externalPending: boolean;
-  trackerRef: React.RefObject<RunTracker>;
+  /** Display phase from RunTracker view (via store). */
+  displayPhase: string | null;
+  /** Tool name when displayPhase === "tooling". */
+  displayToolName: string | null;
+  /** Whether any run is active. */
+  isRunActive: boolean;
   showAgentEvents: boolean;
   preserveToolEvents: boolean;
   collapseMessages: boolean;
@@ -24,7 +28,9 @@ export function ChatMessageList({
   streaming,
   runId,
   externalPending,
-  trackerRef,
+  displayPhase,
+  displayToolName,
+  isRunActive,
   showAgentEvents,
   preserveToolEvents,
   collapseMessages,
@@ -94,20 +100,19 @@ export function ChatMessageList({
         );
       })}
       {(() => {
-        const view = trackerRef.current.getView();
         // Show the thinking bubble only when there's no streaming text.
         // When streaming text is visible, it IS the visual feedback --
         // showing both would cause duplicate/overlapping bubbles.
         const showThinking = streaming === null && (
-          runId !== null || externalPending || (view.isActive && view.displayPhase !== "done")
+          runId !== null || externalPending || (isRunActive && displayPhase !== "done")
         );
         return showThinking ? (
           <div className="chat-bubble chat-bubble-assistant chat-thinking">
-            {view.displayPhase && showAgentEvents ? (
+            {displayPhase && showAgentEvents ? (
               <span className="chat-agent-phase">
-                {view.displayPhase === "tooling"
-                  ? t("chat.phaseUsingTool", { tool: view.displayToolName ?? "" })
-                  : t(`chat.phase_${view.displayPhase}`)}
+                {displayPhase === "tooling"
+                  ? t("chat.phaseUsingTool", { tool: displayToolName ?? "" })
+                  : t(`chat.phase_${displayPhase}`)}
               </span>
             ) : null}
             <span className="chat-thinking-dots"><span /><span /><span /></span>
@@ -116,14 +121,11 @@ export function ChatMessageList({
       })()}
       {streaming !== null && (
         <>
-          {(() => {
-            const view = trackerRef.current.getView();
-            return view.displayPhase === "tooling" && showAgentEvents ? (
-              <div className="chat-agent-phase-inline">
-                {t("chat.phaseUsingTool", { tool: view.displayToolName ?? "" })}
-              </div>
-            ) : null;
-          })()}
+          {displayPhase === "tooling" && showAgentEvents ? (
+            <div className="chat-agent-phase-inline">
+              {t("chat.phaseUsingTool", { tool: displayToolName ?? "" })}
+            </div>
+          ) : null}
           <div className="chat-bubble-wrap chat-bubble-wrap-assistant">
             <div className="chat-bubble chat-bubble-assistant chat-streaming-cursor">
               <MarkdownMessage text={cleanMessageText(streaming).replaceAll(IMAGE_PLACEHOLDER, t("chat.imageAttachment"))} />

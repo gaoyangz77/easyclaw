@@ -371,11 +371,24 @@ const ow=process.stdout.write;process.stdout.write=function(c,...a){if(String(c)
       }
     });
 
+    // Substrings that identify known harmless gateway warnings:
+    // - "closed before connect": caused by EasyClaw's WS readiness probe
+    //   (openclaw-connector opens a throwaway WebSocket and immediately closes it)
+    // - "dangerouslyDisableDeviceAuth": intentionally set by EasyClaw since the
+    //   gateway only listens on localhost and Desktop provides its own auth layer
+    const HARMLESS_WARN_PATTERNS = [
+      "closed before connect",
+      "dangerouslyDisableDeviceAuth",
+    ];
+
     child.stderr?.on("data", (data: Buffer) => {
       hasOutput = true;
       const lines = data.toString().trim().split("\n");
       for (const line of lines) {
-        if (line.startsWith("[startup-timer]")) {
+        if (
+          line.startsWith("[startup-timer]") ||
+          HARMLESS_WARN_PATTERNS.some((p) => line.includes(p))
+        ) {
           log.debug(`[gateway stderr] ${line}`);
         } else {
           log.warn(`[gateway stderr] ${line}`);

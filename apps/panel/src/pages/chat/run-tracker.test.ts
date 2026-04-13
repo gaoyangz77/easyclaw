@@ -1,50 +1,50 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { RunTracker, FINAL_FALLBACK_MS, RECENTLY_COMPLETED_TTL_MS } from "./run-tracker.js";
-function createTracker() {
-  const onChange = vi.fn();
-  const tracker = new RunTracker(onChange);
-  return { tracker, onChange };
+import { describe, it, expect, vi } from "vitest";
+import { ChatRunStateModel } from "./store/models/ChatRunStateModel.js";
+import type { IChatRunState } from "./store/models/ChatRunStateModel.js";
+
+function createRunState(): IChatRunState {
+  return ChatRunStateModel.create({});
 }
 
-describe("RunTracker", () => {
+describe("ChatRunStateModel", () => {
   // ---------------------------------------------------------------------------
-  // LOCAL_SEND
+  // beginLocalRun (was LOCAL_SEND)
   // ---------------------------------------------------------------------------
-  describe("LOCAL_SEND", () => {
+  describe("beginLocalRun", () => {
     it("creates a run in processing phase", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      const run = tracker.getRun("r1");
-      expect(run).toBeDefined();
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      const run = rs.getRun("r1");
+      expect(run).not.toBeNull();
       expect(run!.phase).toBe("processing");
       expect(run!.source).toBe("local");
-      expect(tracker.getLocalRunId()).toBe("r1");
+      expect(rs.localRunId).toBe("r1");
     });
   });
 
   // ---------------------------------------------------------------------------
-  // EXTERNAL_INBOUND
+  // beginExternalRun (was EXTERNAL_INBOUND)
   // ---------------------------------------------------------------------------
-  describe("EXTERNAL_INBOUND", () => {
+  describe("beginExternalRun", () => {
     it("creates a run in queued phase", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "r1", sessionKey: "s1", channel: "wechat" });
-      const run = tracker.getRun("r1");
-      expect(run).toBeDefined();
+      const rs = createRunState();
+      rs.beginExternalRun("r1", "s1", "wechat");
+      const run = rs.getRun("r1");
+      expect(run).not.toBeNull();
       expect(run!.phase).toBe("queued");
       expect(run!.source).toBe("wechat");
     });
 
-    it("maps telegram channel", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "r1", sessionKey: "s1", channel: "telegram" });
-      expect(tracker.getRun("r1")!.source).toBe("telegram");
+    it("maps telegram source", () => {
+      const rs = createRunState();
+      rs.beginExternalRun("r1", "s1", "telegram");
+      expect(rs.getRun("r1")!.source).toBe("telegram");
     });
 
-    it("maps unknown channel", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "r1", sessionKey: "s1", channel: "discord" });
-      expect(tracker.getRun("r1")!.source).toBe("unknown");
+    it("maps unknown source", () => {
+      const rs = createRunState();
+      rs.beginExternalRun("r1", "s1", "unknown");
+      expect(rs.getRun("r1")!.source).toBe("unknown");
     });
   });
 
@@ -52,83 +52,83 @@ describe("RunTracker", () => {
   // State transitions
   // ---------------------------------------------------------------------------
   describe("state transitions", () => {
-    it("queued → awaiting_llm on LIFECYCLE_START", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "r1", sessionKey: "s1", channel: "wechat" });
-      tracker.dispatch({ type: "LIFECYCLE_START", runId: "r1" });
-      expect(tracker.getRun("r1")!.phase).toBe("awaiting_llm");
+    it("queued -> awaiting_llm on markLifecycleStart", () => {
+      const rs = createRunState();
+      rs.beginExternalRun("r1", "s1", "wechat");
+      rs.markLifecycleStart("r1");
+      expect(rs.getRun("r1")!.phase).toBe("awaiting_llm");
     });
 
-    it("processing → tooling on TOOL_START", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "browser" });
-      const run = tracker.getRun("r1")!;
+    it("processing -> tooling on startTool", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.startTool("r1", "browser");
+      const run = rs.getRun("r1")!;
       expect(run.phase).toBe("tooling");
       expect(run.toolName).toBe("browser");
     });
 
-    it("tooling → awaiting_llm on TOOL_RESULT", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "browser" });
-      tracker.dispatch({ type: "TOOL_RESULT", runId: "r1" });
-      const run = tracker.getRun("r1")!;
+    it("tooling -> awaiting_llm on finishTool", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.startTool("r1", "browser");
+      rs.finishTool("r1");
+      const run = rs.getRun("r1")!;
       expect(run.phase).toBe("awaiting_llm");
-      expect(run.toolName).toBeUndefined();
+      expect(run.toolName).toBeNull();
     });
 
-    it("processing → generating on ASSISTANT_STREAM", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "ASSISTANT_STREAM", runId: "r1" });
-      expect(tracker.getRun("r1")!.phase).toBe("generating");
+    it("processing -> generating on markAssistantStream", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.markAssistantStream("r1");
+      expect(rs.getRun("r1")!.phase).toBe("generating");
     });
 
-    it("tooling does NOT transition to generating on ASSISTANT_STREAM", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "browser" });
-      tracker.dispatch({ type: "ASSISTANT_STREAM", runId: "r1" });
-      expect(tracker.getRun("r1")!.phase).toBe("tooling");
+    it("tooling does NOT transition to generating on markAssistantStream", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.startTool("r1", "browser");
+      rs.markAssistantStream("r1");
+      expect(rs.getRun("r1")!.phase).toBe("tooling");
     });
 
-    it("generating → tooling on TOOL_START", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "ASSISTANT_STREAM", runId: "r1" });
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "exec" });
-      expect(tracker.getRun("r1")!.phase).toBe("tooling");
+    it("generating -> tooling on startTool", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.markAssistantStream("r1");
+      rs.startTool("r1", "exec");
+      expect(rs.getRun("r1")!.phase).toBe("tooling");
     });
 
-    it("processing → awaiting_llm on LIFECYCLE_START", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "LIFECYCLE_START", runId: "r1" });
-      expect(tracker.getRun("r1")!.phase).toBe("awaiting_llm");
+    it("processing -> awaiting_llm on markLifecycleStart", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.markLifecycleStart("r1");
+      expect(rs.getRun("r1")!.phase).toBe("awaiting_llm");
     });
 
-    it("awaiting_llm → generating on ASSISTANT_STREAM", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "LIFECYCLE_START", runId: "r1" });
-      tracker.dispatch({ type: "ASSISTANT_STREAM", runId: "r1" });
-      expect(tracker.getRun("r1")!.phase).toBe("generating");
+    it("awaiting_llm -> generating on markAssistantStream", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.markLifecycleStart("r1");
+      rs.markAssistantStream("r1");
+      expect(rs.getRun("r1")!.phase).toBe("generating");
     });
 
-    it("awaiting_llm → generating on CHAT_DELTA", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "LIFECYCLE_START", runId: "r1" });
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "hi" });
-      expect(tracker.getRun("r1")!.phase).toBe("generating");
+    it("awaiting_llm -> generating on appendDelta", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.markLifecycleStart("r1");
+      rs.appendDelta("r1", "hi");
+      expect(rs.getRun("r1")!.phase).toBe("generating");
     });
 
-    it("queued → generating on CHAT_DELTA (race condition)", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "r1", sessionKey: "s1", channel: "wechat" });
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "hello" });
-      const run = tracker.getRun("r1")!;
+    it("queued -> generating on appendDelta (race condition)", () => {
+      const rs = createRunState();
+      rs.beginExternalRun("r1", "s1", "wechat");
+      rs.appendDelta("r1", "hello");
+      const run = rs.getRun("r1")!;
       expect(run.phase).toBe("generating");
       expect(run.streaming).toBe("hello");
     });
@@ -138,79 +138,82 @@ describe("RunTracker", () => {
   // Terminal states
   // ---------------------------------------------------------------------------
   describe("terminal states", () => {
-    it("CHAT_FINAL → done", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      expect(tracker.getRun("r1")!.phase).toBe("done");
-      expect(tracker.getLocalRunId()).toBeNull();
+    it("finalizeRun -> done", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.finalizeRun("r1");
+      expect(rs.getRun("r1")!.phase).toBe("done");
+      expect(rs.localRunId).toBeNull();
     });
 
-    it("CHAT_ERROR → error", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_ERROR", runId: "r1" });
-      expect(tracker.getRun("r1")!.phase).toBe("error");
-      expect(tracker.getLocalRunId()).toBeNull();
+    it("failRun -> error", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.failRun("r1");
+      expect(rs.getRun("r1")!.phase).toBe("error");
+      expect(rs.localRunId).toBeNull();
     });
 
-    it("CHAT_ABORTED → aborted", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_ABORTED", runId: "r1" });
-      expect(tracker.getRun("r1")!.phase).toBe("aborted");
-      expect(tracker.getLocalRunId()).toBeNull();
+    it("abortRun -> aborted", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.abortRun("r1");
+      expect(rs.getRun("r1")!.phase).toBe("aborted");
+      expect(rs.localRunId).toBeNull();
     });
 
-    it("CHAT_FINAL clears toolName", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "browser" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      expect(tracker.getRun("r1")!.toolName).toBeUndefined();
+    it("finalizeRun clears toolName", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.startTool("r1", "browser");
+      rs.finalizeRun("r1");
+      expect(rs.getRun("r1")!.toolName).toBeNull();
     });
   });
 
   // ---------------------------------------------------------------------------
-  // CHAT_DELTA
+  // appendDelta (was CHAT_DELTA)
   // ---------------------------------------------------------------------------
-  describe("CHAT_DELTA", () => {
+  describe("appendDelta", () => {
     it("updates streaming text without changing phase", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "ASSISTANT_STREAM", runId: "r1" });
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "Hello" });
-      const run = tracker.getRun("r1")!;
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.markAssistantStream("r1");
+      rs.appendDelta("r1", "Hello");
+      const run = rs.getRun("r1")!;
       expect(run.phase).toBe("generating");
       expect(run.streaming).toBe("Hello");
     });
 
     it("does not update terminal-state runs", () => {
-      const { tracker, onChange } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      onChange.mockClear();
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "late" });
-      expect(onChange).not.toHaveBeenCalled();
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.finalizeRun("r1");
+      rs.appendDelta("r1", "late");
+      expect(rs.getRun("r1")!.streaming).toBeNull();
     });
   });
 
   // ---------------------------------------------------------------------------
-  // RUN_CLEANUP
+  // cleanupTerminalRuns (was RUN_CLEANUP)
   // ---------------------------------------------------------------------------
-  describe("RUN_CLEANUP", () => {
-    it("removes a run", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "RUN_CLEANUP", runId: "r1" });
-      expect(tracker.isTracked("r1")).toBe(false);
+  describe("cleanupTerminalRuns", () => {
+    it("removes only terminal-state runs", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.beginExternalRun("r2", "s1", "wechat");
+      rs.finalizeRun("r1");
+      rs.cleanupTerminalRuns();
+      expect(rs.isTracked("r1")).toBe(false);
+      expect(rs.isTracked("r2")).toBe(true);
     });
 
-    it("does not fire onChange for unknown runId", () => {
-      const { tracker, onChange } = createTracker();
-      onChange.mockClear();
-      tracker.dispatch({ type: "RUN_CLEANUP", runId: "unknown" });
-      expect(onChange).not.toHaveBeenCalled();
+    it("returns removed runIds", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.finalizeRun("r1");
+      const removed = rs.cleanupTerminalRuns();
+      expect(removed).toEqual(["r1"]);
     });
   });
 
@@ -219,98 +222,89 @@ describe("RunTracker", () => {
   // ---------------------------------------------------------------------------
   describe("isTracked", () => {
     it("returns true for active run", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      expect(tracker.isTracked("r1")).toBe(true);
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      expect(rs.isTracked("r1")).toBe(true);
     });
 
     it("returns true for terminal-state run (not yet cleaned up)", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      expect(tracker.isTracked("r1")).toBe(true);
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.finalizeRun("r1");
+      expect(rs.isTracked("r1")).toBe(true);
     });
 
     it("returns false for unknown runId", () => {
-      const { tracker } = createTracker();
-      expect(tracker.isTracked("unknown")).toBe(false);
+      const rs = createRunState();
+      expect(rs.isTracked("unknown")).toBe(false);
     });
   });
 
   // ---------------------------------------------------------------------------
-  // getView
+  // Views (was getView)
   // ---------------------------------------------------------------------------
-  describe("getView", () => {
+  describe("views", () => {
     it("returns idle view when no runs", () => {
-      const { tracker } = createTracker();
-      const view = tracker.getView();
-      expect(view.isActive).toBe(false);
-      expect(view.displayPhase).toBeNull();
-      expect(view.displayToolName).toBeNull();
-      expect(view.displayStreaming).toBeNull();
-      expect(view.canAbort).toBe(false);
-      expect(view.abortTargetRunId).toBeNull();
+      const rs = createRunState();
+      expect(rs.isActive).toBe(false);
+      expect(rs.displayPhase).toBeNull();
+      expect(rs.displayToolName).toBeNull();
+      expect(rs.displayStreaming).toBeNull();
+      expect(rs.canAbort).toBe(false);
+      expect(rs.abortTargetRunId).toBeNull();
     });
 
     it("shows local run phase", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      const view = tracker.getView();
-      expect(view.isActive).toBe(true);
-      expect(view.displayPhase).toBe("processing");
-      expect(view.canAbort).toBe(true);
-      expect(view.abortTargetRunId).toBe("r1");
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      expect(rs.isActive).toBe(true);
+      expect(rs.displayPhase).toBe("processing");
+      expect(rs.canAbort).toBe(true);
+      expect(rs.abortTargetRunId).toBe("r1");
     });
 
     it("shows tool name when tooling", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "browser" });
-      const view = tracker.getView();
-      expect(view.displayPhase).toBe("tooling");
-      expect(view.displayToolName).toBe("browser");
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.startTool("r1", "browser");
+      expect(rs.displayPhase).toBe("tooling");
+      expect(rs.displayToolName).toBe("browser");
     });
 
     it("does not show toolName when not tooling", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      const view = tracker.getView();
-      expect(view.displayToolName).toBeNull();
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      expect(rs.displayToolName).toBeNull();
     });
 
     it("prioritises local run over external run", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "ext1", sessionKey: "s1", channel: "wechat" });
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "local1", sessionKey: "s1" });
-      const view = tracker.getView();
-      expect(view.displayPhase).toBe("processing"); // local
-      expect(view.abortTargetRunId).toBe("local1");
+      const rs = createRunState();
+      rs.beginExternalRun("ext1", "s1", "wechat");
+      rs.beginLocalRun("local1", "s1");
+      expect(rs.displayPhase).toBe("processing"); // local
+      expect(rs.abortTargetRunId).toBe("local1");
     });
 
     it("falls back to external run when no local run", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "ext1", sessionKey: "s1", channel: "wechat" });
-      const view = tracker.getView();
-      expect(view.displayPhase).toBe("queued");
-      expect(view.canAbort).toBe(true);
-      expect(view.abortTargetRunId).toBe("ext1");
+      const rs = createRunState();
+      rs.beginExternalRun("ext1", "s1", "wechat");
+      expect(rs.displayPhase).toBe("queued");
+      expect(rs.canAbort).toBe(true);
+      expect(rs.abortTargetRunId).toBe("ext1");
     });
 
-    it("excludes terminal-state runs from activeRuns", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      const view = tracker.getView();
-      expect(view.activeRuns.size).toBe(0);
-      expect(view.isActive).toBe(false);
+    it("excludes terminal-state runs from isActive", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.finalizeRun("r1");
+      expect(rs.isActive).toBe(false);
     });
 
     it("shows streaming text from display run", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "Hello world" });
-      const view = tracker.getView();
-      expect(view.displayStreaming).toBe("Hello world");
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.appendDelta("r1", "Hello world");
+      expect(rs.displayStreaming).toBe("Hello world");
     });
   });
 
@@ -319,23 +313,28 @@ describe("RunTracker", () => {
   // ---------------------------------------------------------------------------
   describe("concurrent runs", () => {
     it("tracks multiple runs simultaneously", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "ext1", sessionKey: "s1", channel: "wechat" });
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "ext2", sessionKey: "s1", channel: "telegram" });
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "local1", sessionKey: "s1" });
-      const view = tracker.getView();
-      expect(view.activeRuns.size).toBe(3);
+      const rs = createRunState();
+      rs.beginExternalRun("ext1", "s1", "wechat");
+      rs.beginExternalRun("ext2", "s1", "telegram");
+      rs.beginLocalRun("local1", "s1");
+      // Count active runs
+      let activeCount = 0;
+      for (const run of rs.runs.values()) {
+        if (["queued", "processing", "awaiting_llm", "tooling", "generating"].includes(run.phase)) {
+          activeCount++;
+        }
+      }
+      expect(activeCount).toBe(3);
     });
 
     it("finishing one run does not affect others", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "ext1", sessionKey: "s1", channel: "wechat" });
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "local1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "ext1" });
-      const view = tracker.getView();
-      expect(view.activeRuns.size).toBe(1);
-      expect(view.displayPhase).toBe("processing");
-      expect(view.abortTargetRunId).toBe("local1");
+      const rs = createRunState();
+      rs.beginExternalRun("ext1", "s1", "wechat");
+      rs.beginLocalRun("local1", "s1");
+      rs.finalizeRun("ext1");
+      expect(rs.isActive).toBe(true);
+      expect(rs.displayPhase).toBe("processing");
+      expect(rs.abortTargetRunId).toBe("local1");
     });
 
     it("picks most recent external run when no local run", () => {
@@ -343,78 +342,53 @@ describe("RunTracker", () => {
       vi.spyOn(Date, "now")
         .mockReturnValueOnce(now)       // ext1 startedAt
         .mockReturnValueOnce(now + 100); // ext2 startedAt
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "ext1", sessionKey: "s1", channel: "wechat" });
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "ext2", sessionKey: "s1", channel: "telegram" });
+      const rs = createRunState();
+      rs.beginExternalRun("ext1", "s1", "wechat");
+      rs.beginExternalRun("ext2", "s1", "telegram");
       vi.restoreAllMocks();
-      const view = tracker.getView();
-      expect(view.abortTargetRunId).toBe("ext2");
+      expect(rs.abortTargetRunId).toBe("ext2");
     });
   });
 
   // ---------------------------------------------------------------------------
   // cleanup and reset
   // ---------------------------------------------------------------------------
-  describe("cleanup", () => {
+  describe("cleanupTerminalRuns", () => {
     it("removes only terminal-state runs", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "r2", sessionKey: "s1", channel: "wechat" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      tracker.cleanup();
-      expect(tracker.isTracked("r1")).toBe(false);
-      expect(tracker.isTracked("r2")).toBe(true);
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.beginExternalRun("r2", "s1", "wechat");
+      rs.finalizeRun("r1");
+      rs.cleanupTerminalRuns();
+      expect(rs.isTracked("r1")).toBe(false);
+      expect(rs.isTracked("r2")).toBe(true);
     });
   });
 
-  describe("reset", () => {
+  describe("resetAll", () => {
     it("clears everything", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "r2", sessionKey: "s1", channel: "wechat" });
-      tracker.reset();
-      expect(tracker.isTracked("r1")).toBe(false);
-      expect(tracker.isTracked("r2")).toBe(false);
-      expect(tracker.getLocalRunId()).toBeNull();
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // onChange callback
-  // ---------------------------------------------------------------------------
-  describe("onChange", () => {
-    it("fires on state change", () => {
-      const { tracker, onChange } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      expect(onChange).toHaveBeenCalledTimes(1);
-    });
-
-    it("does not fire when action has no effect", () => {
-      const { tracker, onChange } = createTracker();
-      // ABORT_REQUESTED doesn't change state
-      tracker.dispatch({ type: "ABORT_REQUESTED" });
-      expect(onChange).not.toHaveBeenCalled();
-    });
-
-    it("does not fire for TOOL_START on unknown runId", () => {
-      const { tracker, onChange } = createTracker();
-      tracker.dispatch({ type: "TOOL_START", runId: "unknown", toolName: "x" });
-      expect(onChange).not.toHaveBeenCalled();
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.beginExternalRun("r2", "s1", "wechat");
+      rs.resetAll();
+      expect(rs.isTracked("r1")).toBe(false);
+      expect(rs.isTracked("r2")).toBe(false);
+      expect(rs.localRunId).toBeNull();
     });
   });
 
   // ---------------------------------------------------------------------------
   // TOOL_START clears streaming
   // ---------------------------------------------------------------------------
-  describe("TOOL_START clears streaming", () => {
+  describe("startTool clears streaming", () => {
     it("clears streaming text when entering tooling phase", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "partial text" });
-      expect(tracker.getRun("r1")!.streaming).toBe("partial text");
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.appendDelta("r1", "partial text");
+      expect(rs.getRun("r1")!.streaming).toBe("partial text");
 
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "browser" });
-      expect(tracker.getRun("r1")!.streaming).toBeUndefined();
+      rs.startTool("r1", "browser");
+      expect(rs.getRun("r1")!.streaming).toBeNull();
     });
   });
 
@@ -423,63 +397,61 @@ describe("RunTracker", () => {
   // ---------------------------------------------------------------------------
   describe("flushedOffset", () => {
     it("starts at 0", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      expect(tracker.getRun("r1")!.flushedOffset).toBe(0);
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      expect(rs.getRun("r1")!.flushedOffset).toBe(0);
     });
 
-    it("records streaming length on TOOL_START", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "Hello world" });
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "browser" });
-      expect(tracker.getRun("r1")!.flushedOffset).toBe(11); // "Hello world".length
+    it("records streaming length on startTool", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.appendDelta("r1", "Hello world");
+      rs.startTool("r1", "browser");
+      expect(rs.getRun("r1")!.flushedOffset).toBe(11); // "Hello world".length
     });
 
     it("accumulates across multiple tool calls", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
       // First generation: 10 chars
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "0123456789" });
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "tool1" });
-      expect(tracker.getRun("r1")!.flushedOffset).toBe(10);
+      rs.appendDelta("r1", "0123456789");
+      rs.startTool("r1", "tool1");
+      expect(rs.getRun("r1")!.flushedOffset).toBe(10);
 
       // After tool completes, new accumulated text includes old + new
-      tracker.dispatch({ type: "TOOL_RESULT", runId: "r1" });
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "0123456789ABCDE" }); // 15 chars total
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "tool2" });
-      expect(tracker.getRun("r1")!.flushedOffset).toBe(15);
+      rs.finishTool("r1");
+      rs.appendDelta("r1", "0123456789ABCDE"); // 15 chars total
+      rs.startTool("r1", "tool2");
+      expect(rs.getRun("r1")!.flushedOffset).toBe(15);
     });
 
-    it("does not change flushedOffset when no streaming text at TOOL_START", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      // TOOL_START without any prior CHAT_DELTA
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "browser" });
-      expect(tracker.getRun("r1")!.flushedOffset).toBe(0);
+    it("does not change flushedOffset when no streaming text at startTool", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      // startTool without any prior appendDelta
+      rs.startTool("r1", "browser");
+      expect(rs.getRun("r1")!.flushedOffset).toBe(0);
     });
 
     it("displayStreaming slices off flushed prefix", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "pre-tool" });
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "browser" });
-      tracker.dispatch({ type: "TOOL_RESULT", runId: "r1" });
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.appendDelta("r1", "pre-tool");
+      rs.startTool("r1", "browser");
+      rs.finishTool("r1");
       // Gateway sends accumulated text: pre-tool + new content
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "pre-toolNEW CONTENT" });
+      rs.appendDelta("r1", "pre-toolNEW CONTENT");
 
-      const view = tracker.getView();
-      expect(view.displayStreaming).toBe("NEW CONTENT");
-      expect(view.displayFlushedOffset).toBe(8); // "pre-tool".length
+      expect(rs.displayStreaming).toBe("NEW CONTENT");
+      expect(rs.displayFlushedOffset).toBe(8); // "pre-tool".length
     });
 
     it("displayFlushedOffset is 0 when no tools used", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "Hello" });
-      const view = tracker.getView();
-      expect(view.displayStreaming).toBe("Hello");
-      expect(view.displayFlushedOffset).toBe(0);
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.appendDelta("r1", "Hello");
+      expect(rs.displayStreaming).toBe("Hello");
+      expect(rs.displayFlushedOffset).toBe(0);
     });
   });
 
@@ -488,71 +460,67 @@ describe("RunTracker", () => {
   // ---------------------------------------------------------------------------
   describe("updateFlushedOffset", () => {
     it("increases flushed offset when patched text is longer", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "partial" });
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "browser" });
-      expect(tracker.getRun("r1")!.flushedOffset).toBe(7); // "partial".length
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.appendDelta("r1", "partial");
+      rs.startTool("r1", "browser");
+      expect(rs.getRun("r1")!.flushedOffset).toBe(7); // "partial".length
 
       // History patch recovered more text
-      tracker.updateFlushedOffset("r1", 20);
-      expect(tracker.getRun("r1")!.flushedOffset).toBe(20);
+      rs.updateFlushedOffset("r1", 20);
+      expect(rs.getRun("r1")!.flushedOffset).toBe(20);
     });
 
     it("does not decrease flushed offset", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "1234567890" });
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "browser" });
-      expect(tracker.getRun("r1")!.flushedOffset).toBe(10);
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.appendDelta("r1", "1234567890");
+      rs.startTool("r1", "browser");
+      expect(rs.getRun("r1")!.flushedOffset).toBe(10);
 
-      tracker.updateFlushedOffset("r1", 5);
-      expect(tracker.getRun("r1")!.flushedOffset).toBe(10); // stays at 10
+      rs.updateFlushedOffset("r1", 5);
+      expect(rs.getRun("r1")!.flushedOffset).toBe(10); // stays at 10
     });
 
     it("is a no-op for unknown runs", () => {
-      const { tracker } = createTracker();
+      const rs = createRunState();
       // Should not throw
-      tracker.updateFlushedOffset("unknown", 100);
+      rs.updateFlushedOffset("unknown", 100);
     });
   });
 
   // ---------------------------------------------------------------------------
-  // getView — localRunId and localStreaming
+  // Views — activeLocalRunId and localStreaming
   // ---------------------------------------------------------------------------
-  describe("getView localRunId / localStreaming", () => {
-    it("returns localRunId and localStreaming for active local run", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_DELTA", runId: "r1", text: "hi" });
-      const view = tracker.getView();
-      expect(view.localRunId).toBe("r1");
-      expect(view.localStreaming).toBe("hi");
+  describe("activeLocalRunId / localStreaming", () => {
+    it("returns activeLocalRunId and localStreaming for active local run", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.appendDelta("r1", "hi");
+      expect(rs.activeLocalRunId).toBe("r1");
+      expect(rs.localStreaming).toBe("hi");
     });
 
-    it("returns null localRunId when local run is terminal", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      const view = tracker.getView();
-      expect(view.localRunId).toBeNull();
-      expect(view.localStreaming).toBeNull();
+    it("returns null activeLocalRunId when local run is terminal", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.finalizeRun("r1");
+      expect(rs.activeLocalRunId).toBeNull();
+      expect(rs.localStreaming).toBeNull();
     });
 
     it("returns null when no local run exists", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "ext1", sessionKey: "s1", channel: "wechat" });
-      const view = tracker.getView();
-      expect(view.localRunId).toBeNull();
-      expect(view.localStreaming).toBeNull();
+      const rs = createRunState();
+      rs.beginExternalRun("ext1", "s1", "wechat");
+      expect(rs.activeLocalRunId).toBeNull();
+      expect(rs.localStreaming).toBeNull();
     });
 
     it("returns null localStreaming when local run has no streaming text", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      const view = tracker.getView();
-      expect(view.localRunId).toBe("r1");
-      expect(view.localStreaming).toBeNull();
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      expect(rs.activeLocalRunId).toBe("r1");
+      expect(rs.localStreaming).toBeNull();
     });
   });
 
@@ -560,310 +528,266 @@ describe("RunTracker", () => {
   // No-op actions for unknown or terminal runs
   // ---------------------------------------------------------------------------
   describe("no-op for invalid transitions", () => {
-    it("LIFECYCLE_START on unknown run does nothing", () => {
-      const { tracker, onChange } = createTracker();
-      tracker.dispatch({ type: "LIFECYCLE_START", runId: "unknown" });
-      expect(onChange).not.toHaveBeenCalled();
+    it("markLifecycleStart on unknown run does nothing", () => {
+      const rs = createRunState();
+      // Should not throw
+      rs.markLifecycleStart("unknown");
+      expect(rs.runs.size).toBe(0);
     });
 
-    it("TOOL_RESULT on non-tooling run does nothing", () => {
-      const { tracker, onChange } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      onChange.mockClear();
-      tracker.dispatch({ type: "TOOL_RESULT", runId: "r1" }); // phase is processing, not tooling
-      expect(onChange).not.toHaveBeenCalled();
+    it("finishTool on non-tooling run does nothing", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.finishTool("r1"); // phase is processing, not tooling
+      expect(rs.getRun("r1")!.phase).toBe("processing");
     });
 
-    it("ASSISTANT_STREAM on done run does nothing", () => {
-      const { tracker, onChange } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      onChange.mockClear();
-      tracker.dispatch({ type: "ASSISTANT_STREAM", runId: "r1" });
-      expect(onChange).not.toHaveBeenCalled();
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // LIFECYCLE_END fallback timer
-  // ---------------------------------------------------------------------------
-  describe("LIFECYCLE_END fallback timer", () => {
-    beforeEach(() => { vi.useFakeTimers(); });
-    afterEach(() => { vi.useRealTimers(); });
-
-    it("force-transitions to done after timeout when CHAT_FINAL never arrives", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "LIFECYCLE_START", runId: "r1" });
-      expect(tracker.getRun("r1")!.phase).toBe("awaiting_llm");
-
-      tracker.dispatch({ type: "LIFECYCLE_END", runId: "r1" });
-      // Still active immediately after LIFECYCLE_END
-      expect(tracker.getRun("r1")!.phase).toBe("awaiting_llm");
-
-      // Advance past the fallback timeout
-      vi.advanceTimersByTime(FINAL_FALLBACK_MS);
-
-      expect(tracker.getRun("r1")!.phase).toBe("done");
-      expect(tracker.getLocalRunId()).toBeNull();
+    it("markAssistantStream on done run does nothing", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.finalizeRun("r1");
+      rs.markAssistantStream("r1");
+      expect(rs.getRun("r1")!.phase).toBe("done");
     });
 
-    it("cancels fallback timer when CHAT_FINAL arrives in time", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "LIFECYCLE_END", runId: "r1" });
-
-      // CHAT_FINAL arrives before the timeout
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      expect(tracker.getRun("r1")!.phase).toBe("done");
-
-      // Advance past the timeout — should NOT cause any error or double-transition
-      vi.advanceTimersByTime(FINAL_FALLBACK_MS + 1000);
-      expect(tracker.getRun("r1")!.phase).toBe("done");
-    });
-
-    it("cancels fallback timer when CHAT_ERROR arrives in time", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "LIFECYCLE_ERROR", runId: "r1" });
-
-      tracker.dispatch({ type: "CHAT_ERROR", runId: "r1" });
-      expect(tracker.getRun("r1")!.phase).toBe("error");
-
-      vi.advanceTimersByTime(FINAL_FALLBACK_MS + 1000);
-      expect(tracker.getRun("r1")!.phase).toBe("error");
-    });
-
-    it("cancels fallback timer when CHAT_ABORTED arrives in time", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "LIFECYCLE_END", runId: "r1" });
-
-      tracker.dispatch({ type: "CHAT_ABORTED", runId: "r1" });
-      expect(tracker.getRun("r1")!.phase).toBe("aborted");
-
-      vi.advanceTimersByTime(FINAL_FALLBACK_MS + 1000);
-      expect(tracker.getRun("r1")!.phase).toBe("aborted");
-    });
-
-    it("does not set timer for already-terminal runs", () => {
-      const { tracker, onChange } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      onChange.mockClear();
-
-      tracker.dispatch({ type: "LIFECYCLE_END", runId: "r1" });
-      vi.advanceTimersByTime(FINAL_FALLBACK_MS + 1000);
-
-      // No state change should have occurred
-      expect(onChange).not.toHaveBeenCalled();
-      expect(tracker.getRun("r1")!.phase).toBe("done");
-    });
-
-    it("does not set timer for unknown runs", () => {
-      const { tracker, onChange } = createTracker();
-      onChange.mockClear();
-
-      tracker.dispatch({ type: "LIFECYCLE_END", runId: "unknown" });
-      vi.advanceTimersByTime(FINAL_FALLBACK_MS + 1000);
-
-      expect(onChange).not.toHaveBeenCalled();
-    });
-
-    it("reset clears all fallback timers", () => {
-      const { tracker, onChange } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "LIFECYCLE_END", runId: "r1" });
-
-      tracker.reset();
-      onChange.mockClear();
-
-      // Timer should have been cleared by reset — FORCE_DONE should NOT fire
-      vi.advanceTimersByTime(FINAL_FALLBACK_MS + 1000);
-      expect(onChange).not.toHaveBeenCalled();
-    });
-
-    it("works with LIFECYCLE_ERROR too", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "ext1", sessionKey: "s1", channel: "wechat" });
-      tracker.dispatch({ type: "LIFECYCLE_START", runId: "ext1" });
-
-      tracker.dispatch({ type: "LIFECYCLE_ERROR", runId: "ext1" });
-      expect(tracker.getRun("ext1")!.phase).toBe("awaiting_llm");
-
-      vi.advanceTimersByTime(FINAL_FALLBACK_MS);
-      expect(tracker.getRun("ext1")!.phase).toBe("done");
+    it("startTool on unknown runId does nothing", () => {
+      const rs = createRunState();
+      rs.startTool("unknown", "x");
+      expect(rs.runs.size).toBe(0);
     });
   });
 
   // ---------------------------------------------------------------------------
-  // recentlyCompleted (phantom run suppression)
+  // forceDone (fallback terminal transition — timer logic in controller)
   // ---------------------------------------------------------------------------
-  describe("recentlyCompleted", () => {
-    beforeEach(() => { vi.useFakeTimers(); });
-    afterEach(() => { vi.useRealTimers(); });
-
-    it("marks run as recently completed after CHAT_FINAL + cleanup", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      tracker.cleanup();
-
-      // Run is no longer tracked but is recently completed
-      expect(tracker.isTracked("r1")).toBe(false);
-      expect(tracker.isRecentlyCompleted("r1")).toBe(true);
-    });
-
-    it("expires recently completed status after TTL", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      tracker.cleanup();
-
-      expect(tracker.isRecentlyCompleted("r1")).toBe(true);
-
-      vi.advanceTimersByTime(RECENTLY_COMPLETED_TTL_MS);
-
-      expect(tracker.isRecentlyCompleted("r1")).toBe(false);
-    });
-
-    it("marks run as recently completed on CHAT_FINAL even before cleanup", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-
-      // Still tracked (not yet cleaned up) but also recently completed
-      expect(tracker.isTracked("r1")).toBe(true);
-      expect(tracker.isRecentlyCompleted("r1")).toBe(true);
-    });
-
-    it("marks run as recently completed on CHAT_ERROR", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_ERROR", runId: "r1" });
-      tracker.cleanup();
-
-      expect(tracker.isTracked("r1")).toBe(false);
-      expect(tracker.isRecentlyCompleted("r1")).toBe(true);
-    });
-
-    it("marks run as recently completed on CHAT_ABORTED", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_ABORTED", runId: "r1" });
-      tracker.cleanup();
-
-      expect(tracker.isTracked("r1")).toBe(false);
-      expect(tracker.isRecentlyCompleted("r1")).toBe(true);
-    });
-
-    it("marks run as recently completed on FORCE_DONE", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "FORCE_DONE", runId: "r1" });
-      tracker.cleanup();
-
-      expect(tracker.isTracked("r1")).toBe(false);
-      expect(tracker.isRecentlyCompleted("r1")).toBe(true);
-    });
-
-    it("reset clears recently completed state", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      tracker.cleanup();
-
-      expect(tracker.isRecentlyCompleted("r1")).toBe(true);
-
-      tracker.reset();
-      expect(tracker.isRecentlyCompleted("r1")).toBe(false);
-    });
-
-    it("reset clears recently completed timers (no late expiry side effects)", () => {
-      const { tracker, onChange } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      tracker.cleanup();
-
-      tracker.reset();
-      onChange.mockClear();
-
-      // Timer from the old recently-completed should have been cleared
-      vi.advanceTimersByTime(RECENTLY_COMPLETED_TTL_MS + 1000);
-      expect(onChange).not.toHaveBeenCalled();
-    });
-
-    it("returns false for unknown runId", () => {
-      const { tracker } = createTracker();
-      expect(tracker.isRecentlyCompleted("unknown")).toBe(false);
-    });
-  });
-
-  // ---------------------------------------------------------------------------
-  // FORCE_DONE
-  // ---------------------------------------------------------------------------
-  describe("FORCE_DONE", () => {
+  describe("forceDone", () => {
     it("transitions active run to done", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "ASSISTANT_STREAM", runId: "r1" });
-      expect(tracker.getRun("r1")!.phase).toBe("generating");
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.markAssistantStream("r1");
+      expect(rs.getRun("r1")!.phase).toBe("generating");
 
-      tracker.dispatch({ type: "FORCE_DONE", runId: "r1" });
-      expect(tracker.getRun("r1")!.phase).toBe("done");
-      expect(tracker.getLocalRunId()).toBeNull();
+      rs.forceDone("r1");
+      expect(rs.getRun("r1")!.phase).toBe("done");
+      expect(rs.localRunId).toBeNull();
     });
 
     it("clears toolName when force-done from tooling", () => {
-      const { tracker } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "browser" });
-      expect(tracker.getRun("r1")!.toolName).toBe("browser");
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.startTool("r1", "browser");
+      expect(rs.getRun("r1")!.toolName).toBe("browser");
 
-      tracker.dispatch({ type: "FORCE_DONE", runId: "r1" });
-      expect(tracker.getRun("r1")!.toolName).toBeUndefined();
-      expect(tracker.getRun("r1")!.phase).toBe("done");
+      rs.forceDone("r1");
+      expect(rs.getRun("r1")!.toolName).toBeNull();
+      expect(rs.getRun("r1")!.phase).toBe("done");
     });
 
     it("does nothing for already-terminal runs", () => {
-      const { tracker, onChange } = createTracker();
-      tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
-      tracker.dispatch({ type: "CHAT_FINAL", runId: "r1" });
-      onChange.mockClear();
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.finalizeRun("r1");
 
-      tracker.dispatch({ type: "FORCE_DONE", runId: "r1" });
-      expect(onChange).not.toHaveBeenCalled();
+      rs.forceDone("r1");
+      expect(rs.getRun("r1")!.phase).toBe("done");
     });
 
     it("does nothing for unknown runId", () => {
-      const { tracker, onChange } = createTracker();
-      tracker.dispatch({ type: "FORCE_DONE", runId: "unknown" });
-      expect(onChange).not.toHaveBeenCalled();
+      const rs = createRunState();
+      rs.forceDone("unknown");
+      expect(rs.runs.size).toBe(0);
     });
 
     it("transitions all active phases to done", () => {
       const phases = ["queued", "processing", "awaiting_llm", "tooling", "generating"] as const;
       for (const phase of phases) {
-        const { tracker } = createTracker();
+        const rs = createRunState();
         // Set up a run and manipulate it to the desired phase
         if (phase === "queued") {
-          tracker.dispatch({ type: "EXTERNAL_INBOUND", runId: "r1", sessionKey: "s1", channel: "wechat" });
+          rs.beginExternalRun("r1", "s1", "wechat");
         } else {
-          tracker.dispatch({ type: "LOCAL_SEND", runId: "r1", sessionKey: "s1" });
+          rs.beginLocalRun("r1", "s1");
           if (phase === "awaiting_llm") {
-            tracker.dispatch({ type: "LIFECYCLE_START", runId: "r1" });
+            rs.markLifecycleStart("r1");
           } else if (phase === "tooling") {
-            tracker.dispatch({ type: "TOOL_START", runId: "r1", toolName: "t" });
+            rs.startTool("r1", "t");
           } else if (phase === "generating") {
-            tracker.dispatch({ type: "ASSISTANT_STREAM", runId: "r1" });
+            rs.markAssistantStream("r1");
           }
-          // "processing" is the initial state for LOCAL_SEND, no extra dispatch needed
+          // "processing" is the initial state for beginLocalRun, no extra action needed
         }
 
-        expect(tracker.getRun("r1")!.phase).toBe(phase);
-        tracker.dispatch({ type: "FORCE_DONE", runId: "r1" });
-        expect(tracker.getRun("r1")!.phase).toBe("done");
+        expect(rs.getRun("r1")!.phase).toBe(phase);
+        rs.forceDone("r1");
+        expect(rs.getRun("r1")!.phase).toBe("done");
       }
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // recentlyCompleted (phantom run suppression — timer logic in controller)
+  // ---------------------------------------------------------------------------
+  describe("recentlyCompleted", () => {
+    it("marks run as recently completed", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.finalizeRun("r1");
+      rs.markRecentlyCompleted("r1");
+      rs.cleanupTerminalRuns();
+
+      // Run is no longer tracked but is recently completed
+      expect(rs.isTracked("r1")).toBe(false);
+      expect(rs.isRecentlyCompleted("r1")).toBe(true);
+    });
+
+    it("clearRecentlyCompleted removes the runId", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.finalizeRun("r1");
+      rs.markRecentlyCompleted("r1");
+
+      expect(rs.isRecentlyCompleted("r1")).toBe(true);
+      rs.clearRecentlyCompleted("r1");
+      expect(rs.isRecentlyCompleted("r1")).toBe(false);
+    });
+
+    it("marks run as recently completed on finalizeRun (via markRecentlyCompleted)", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.finalizeRun("r1");
+      rs.markRecentlyCompleted("r1");
+
+      // Still tracked (not yet cleaned up) but also recently completed
+      expect(rs.isTracked("r1")).toBe(true);
+      expect(rs.isRecentlyCompleted("r1")).toBe(true);
+    });
+
+    it("works for failRun", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.failRun("r1");
+      rs.markRecentlyCompleted("r1");
+      rs.cleanupTerminalRuns();
+
+      expect(rs.isTracked("r1")).toBe(false);
+      expect(rs.isRecentlyCompleted("r1")).toBe(true);
+    });
+
+    it("works for abortRun", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.abortRun("r1");
+      rs.markRecentlyCompleted("r1");
+      rs.cleanupTerminalRuns();
+
+      expect(rs.isTracked("r1")).toBe(false);
+      expect(rs.isRecentlyCompleted("r1")).toBe(true);
+    });
+
+    it("works for forceDone", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.forceDone("r1");
+      rs.markRecentlyCompleted("r1");
+      rs.cleanupTerminalRuns();
+
+      expect(rs.isTracked("r1")).toBe(false);
+      expect(rs.isRecentlyCompleted("r1")).toBe(true);
+    });
+
+    it("resetAll clears recently completed state", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.finalizeRun("r1");
+      rs.markRecentlyCompleted("r1");
+      rs.cleanupTerminalRuns();
+
+      expect(rs.isRecentlyCompleted("r1")).toBe(true);
+
+      rs.resetAll();
+      expect(rs.isRecentlyCompleted("r1")).toBe(false);
+    });
+
+    it("returns false for unknown runId", () => {
+      const rs = createRunState();
+      expect(rs.isRecentlyCompleted("unknown")).toBe(false);
+    });
+
+    it("does not duplicate when markRecentlyCompleted is called twice", () => {
+      const rs = createRunState();
+      rs.markRecentlyCompleted("r1");
+      rs.markRecentlyCompleted("r1");
+      expect(rs.recentlyCompletedIds.length).toBe(1);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle tracking fields
+  // ---------------------------------------------------------------------------
+  describe("lifecycle tracking", () => {
+    it("setExternalPending / setLastAgentStream / setLastActivity / setSendStartedAt", () => {
+      const rs = createRunState();
+      rs.setExternalPending(true);
+      expect(rs.externalPending).toBe(true);
+      rs.setLastAgentStream("tool");
+      expect(rs.lastAgentStream).toBe("tool");
+      rs.setLastActivity(12345);
+      expect(rs.lastActivityAt).toBe(12345);
+      rs.setSendStartedAt(67890);
+      expect(rs.sendStartedAt).toBe(67890);
+    });
+
+    it("resetAll clears lifecycle tracking fields", () => {
+      const rs = createRunState();
+      rs.setExternalPending(true);
+      rs.setLastAgentStream("assistant");
+      rs.setLastActivity(99999);
+      rs.setSendStartedAt(88888);
+      rs.resetAll();
+      expect(rs.externalPending).toBe(false);
+      expect(rs.lastAgentStream).toBeNull();
+      expect(rs.lastActivityAt).toBe(0);
+      expect(rs.sendStartedAt).toBe(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Edge cases — multiple operations
+  // ---------------------------------------------------------------------------
+  describe("edge cases", () => {
+    it("beginLocalRun replaces previous local run reference", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.beginLocalRun("r2", "s1");
+      expect(rs.localRunId).toBe("r2");
+      // Both runs exist
+      expect(rs.isTracked("r1")).toBe(true);
+      expect(rs.isTracked("r2")).toBe(true);
+    });
+
+    it("finalizeRun on non-local run does not clear localRunId", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("local1", "s1");
+      rs.beginExternalRun("ext1", "s1", "wechat");
+      rs.finalizeRun("ext1");
+      expect(rs.localRunId).toBe("local1");
+    });
+
+    it("appendDelta does not affect terminal runs", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.appendDelta("r1", "initial");
+      rs.finalizeRun("r1");
+      rs.appendDelta("r1", "should-not-apply");
+      expect(rs.getRun("r1")!.streaming).toBe("initial");
+    });
+
+    it("startTool on terminal run does nothing", () => {
+      const rs = createRunState();
+      rs.beginLocalRun("r1", "s1");
+      rs.finalizeRun("r1");
+      rs.startTool("r1", "browser");
+      expect(rs.getRun("r1")!.phase).toBe("done");
     });
   });
 });
