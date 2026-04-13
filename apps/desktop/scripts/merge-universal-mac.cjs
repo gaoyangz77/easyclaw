@@ -25,12 +25,19 @@ const outAppPath = path.join(universalDir, `${productName}.app`);
 // Must stay in sync with electron-builder.yml mac.x64ArchFiles.
 // Built dynamically to avoid tripping the vendor boundary checker (ADR-030).
 const vendorNM = ["vendor", "openclaw", "node_modules"].join("/");
-// build-info.json contains a builtAt timestamp that differs between arm64/x64
-// runners. Include it in x64ArchFiles so the merger takes one copy instead of
-// failing the identical-SHA check.
-const vendorDist = ["vendor", "openclaw", "dist"].join("/");
 const x64ArchFiles =
-  `Contents/Resources/{${vendorNM}/.pnpm/**,${vendorNM}/**,${vendorDist}/build-info.json,${vendorDist}/.buildstamp,${vendorDist}/.dist-complete,app.asar.unpacked/node_modules/better-sqlite3/**}`;
+  `Contents/Resources/{${vendorNM}/.pnpm/**,${vendorNM}/**,app.asar.unpacked/node_modules/better-sqlite3/**}`;
+
+// Plain (non-Mach-O) files that differ between arm64/x64 builds due to
+// timestamps or runner-specific values. @electron/universal's x64ArchFiles
+// only exempts Mach-O binaries, so we must manually sync these before merge
+// by copying the x64 version over the arm64 version.
+const vendorDist = ["vendor", "openclaw", "dist"].join("/");
+const PLAIN_FILES_TO_SYNC = [
+  `Contents/Resources/${vendorDist}/build-info.json`,
+  `Contents/Resources/${vendorDist}/.buildstamp`,
+  `Contents/Resources/${vendorDist}/.dist-complete`,
+];
 
 async function main() {
   if (!fs.existsSync(arm64AppPath)) {
@@ -44,6 +51,17 @@ async function main() {
     fs.rmSync(universalDir, { recursive: true });
   }
   fs.mkdirSync(universalDir, { recursive: true });
+
+  // Sync plain files that differ between builds (timestamps, etc.)
+  // so @electron/universal doesn't reject them during SHA comparison.
+  for (const rel of PLAIN_FILES_TO_SYNC) {
+    const src = path.join(x64AppPath, rel);
+    const dst = path.join(arm64AppPath, rel);
+    if (fs.existsSync(src) && fs.existsSync(dst)) {
+      fs.cpSync(src, dst);
+      console.log(`[merge-universal] Synced ${path.basename(rel)} from x64 → arm64`);
+    }
+  }
 
   console.log("[merge-universal] Merging:");
   console.log(`  arm64: ${arm64AppPath}`);
