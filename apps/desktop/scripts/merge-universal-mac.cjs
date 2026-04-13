@@ -10,6 +10,7 @@
 //   release/mac-universal/RivonClaw.app
 
 const { makeUniversalApp } = require("@electron/universal");
+const { execFileSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 
@@ -77,7 +78,86 @@ async function main() {
   });
 
   const elapsed = ((Date.now() - start) / 1000).toFixed(1);
-  console.log(`[merge-universal] Done in ${elapsed}s — ${outAppPath}`);
+  console.log(`[merge-universal] Merged in ${elapsed}s — ${outAppPath}`);
+
+  // @electron/universal's lipo merge invalidates the original ad-hoc code
+  // signatures on Mach-O binaries. Without valid signatures, macOS blocks
+  // V8 JIT (MAP_JIT) and the app crashes with SIGTRAP on launch.
+  // Sign every Mach-O bottom-up: native modules → dylibs → helper apps →
+  // frameworks → main binary → outer bundle. codesign requires inner
+  // components to be signed before their parent bundle.
+  console.log("[merge-universal] Ad-hoc codesigning...");
+  const contentsDir = path.join(outAppPath, "Contents");
+  const frameworksDir = path.join(contentsDir, "Frameworks");
+
+  /** Sign a single path, ignoring "already signed" or missing-file errors. */
+  function sign(target) {
+    execFileSync("codesign", ["--force", "--sign", "-", target], { stdio: "inherit" });
+  }
+
+  // 1) Native .node modules inside asar.unpacked
+  const unpackedDirs = fs.readdirSync(path.join(contentsDir, "Resources"))
+    .filter((n) => n.endsWith(".asar.unpacked"));
+  for (const dir of unpackedDirs) {
+    const base = path.join(contentsDir, "Resources", dir);
+    findFiles(base, (f) => f.endsWith(".node") || f.endsWith(".dylib")).forEach(sign);
+  }
+
+  // 2) Dylibs inside Electron Framework
+  const efVersioned = path.join(frameworksDir, "Electron Framework.framework", "Versions", "A");
+  findFiles(path.join(efVersioned, "Libraries"), (f) => f.endsWith(".dylib")).forEach(sign);
+
+  // 3) Helper executables inside Electron Framework (both .app bundles and
+  //    standalone binaries like chrome_crashpad_handler)
+  const helpersInEF = path.join(efVersioned, "Helpers");
+  if (fs.existsSync(helpersInEF)) {
+    for (const entry of fs.readdirSync(helpersInEF, { withFileTypes: true })) {
+      const full = path.join(helpersInEF, entry.name);
+      if (entry.isFile() || entry.name.endsWith(".app")) {
+        sign(full);
+      }
+    }
+  }
+
+  // 4) Electron Framework main binary, then the .framework bundle
+  sign(path.join(efVersioned, "Electron Framework"));
+  sign(path.join(frameworksDir, "Electron Framework.framework"));
+
+  // 5) Top-level helper apps
+  for (const entry of fs.readdirSync(frameworksDir)) {
+    if (entry.endsWith(".app")) {
+      sign(path.join(frameworksDir, entry));
+    }
+  }
+
+  // 6) Remaining frameworks (Squirrel, Mantle, ReactiveObjC) — sign binary then bundle
+  for (const entry of fs.readdirSync(frameworksDir)) {
+    if (entry.endsWith(".framework") && entry !== "Electron Framework.framework") {
+      const fwName = entry.replace(".framework", "");
+      const fwBinary = path.join(frameworksDir, entry, "Versions", "A", fwName);
+      if (fs.existsSync(fwBinary)) sign(fwBinary);
+      sign(path.join(frameworksDir, entry));
+    }
+  }
+
+  // 7) Main app bundle
+  sign(outAppPath);
+  console.log("[merge-universal] Done.");
+}
+
+/** Recursively find files matching a predicate. */
+function findFiles(dir, predicate) {
+  const results = [];
+  if (!fs.existsSync(dir)) return results;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...findFiles(full, predicate));
+    } else if (predicate(entry.name)) {
+      results.push(full);
+    }
+  }
+  return results;
 }
 
 main().catch((err) => {
