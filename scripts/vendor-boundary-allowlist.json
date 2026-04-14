@@ -47,9 +47,9 @@
       "reason": "Drift guard — validates system prompt override is re-applied before LLM call (vendor patch 0006)"
     },
     {
-      "file": "apps/desktop/src/gateway/vendor-image-capability-fallback.sentinel.test.ts",
-      "vendorPath": "vendor/openclaw/src/gateway/session-utils.ts",
-      "reason": "Drift guard — validates id-only catalog fallback for image capability (vendor patch 0008)"
+      "file": "apps/desktop/src/gateway/vendor-pi-compat-shim.sentinel.test.ts",
+      "vendorPath": "vendor/openclaw/src/agents/model-catalog.ts",
+      "reason": "Drift guard — validates Pi SDK compatibility shim exists for auth-mode providers (vendor patch 0008)"
     }
   ],
   "allowlist": [

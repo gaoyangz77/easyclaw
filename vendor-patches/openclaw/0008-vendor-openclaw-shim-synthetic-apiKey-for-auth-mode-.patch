@@ -1,0 +1,102 @@
+From 796571c47b1679e00f760047a94208f83699ec5e Mon Sep 17 00:00:00 2001
+From: RivonClaw CI <ci@rivonclaw.com>
+Date: Mon, 13 Apr 2026 18:06:47 -0700
+Subject: [PATCH] vendor(openclaw): shim synthetic apiKey for auth-mode
+ providers before Pi SDK validation
+
+Why:
+- Pi SDK ModelRegistry.validateConfig() requires apiKey for any provider
+  with models, but OpenClaw generates providers with auth: "token"/"oauth"/
+  "aws-sdk" and no apiKey (e.g. codex OAuth provider).
+- This causes Pi SDK to reject ALL custom models, breaking catalog loading
+  for unrelated providers like rivonclaw-pro.
+- The shim injects narrow synthetic apiKey values for qualified auth-mode
+  providers into a temp copy of models.json before Pi SDK reads it.
+
+Removal:
+- When Pi SDK accepts auth: "token"/"oauth"/"aws-sdk" as valid
+  alternatives to apiKey in validateConfig, or OpenClaw's models-config
+  generation ensures apiKey is always present for providers with models
+
+Tests:
+- apps/desktop/src/gateway/vendor-pi-compat-shim.sentinel.test.ts
+---
+ src/agents/model-catalog.ts | 51 ++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 50 insertions(+), 1 deletion(-)
+
+diff --git a/src/agents/model-catalog.ts b/src/agents/model-catalog.ts
+index e9ffbff06a..11e71e5c0b 100644
+--- a/src/agents/model-catalog.ts
++++ b/src/agents/model-catalog.ts
+@@ -107,6 +107,47 @@ export async function loadModelCatalog(params?: {
+       const cfg = params?.config ?? loadConfig();
+       await ensureOpenClawModelsJson(cfg);
+       logStage("models-json-ready");
++
++      // Pi SDK compatibility shim: inject synthetic apiKey for providers that
++      // use OpenClaw auth modes (token/oauth/aws-sdk) but lack apiKey.
++      // Pi SDK's validateConfig() rejects ALL custom models when any provider
++      // has models but no apiKey, even if the provider uses a valid non-apiKey
++      // auth mode. This shim bridges the contract mismatch without modifying
++      // Pi SDK or persisting fake keys to the real models.json.
++      const COMPAT_AUTH_MODES = new Set(["token", "oauth", "aws-sdk"]);
++      let shimmedModelsPath: string | undefined;
++      try {
++        const { join: joinPath } = await import("node:path");
++        const { readFileSync, writeFileSync, unlinkSync } = await import("node:fs");
++        const agentDirForShim = resolveOpenClawAgentDir();
++        const realModelsPath = joinPath(agentDirForShim, "models.json");
++        const rawModels = readFileSync(realModelsPath, "utf-8");
++        const modelsConfig = JSON.parse(rawModels) as {
++          providers?: Record<string, { models?: unknown[]; apiKey?: string; auth?: string }>;
++        };
++        let needsShim = false;
++        if (modelsConfig.providers) {
++          for (const [, providerCfg] of Object.entries(modelsConfig.providers)) {
++            if (
++              Array.isArray(providerCfg.models) &&
++              providerCfg.models.length > 0 &&
++              !providerCfg.apiKey &&
++              typeof providerCfg.auth === "string" &&
++              COMPAT_AUTH_MODES.has(providerCfg.auth)
++            ) {
++              providerCfg.apiKey = `__oc_synthetic_${providerCfg.auth}`;
++              needsShim = true;
++            }
++          }
++        }
++        if (needsShim) {
++          shimmedModelsPath = joinPath(agentDirForShim, "models.pi-compat.json");
++          writeFileSync(shimmedModelsPath, JSON.stringify(modelsConfig), "utf-8");
++        }
++      } catch {
++        // Shim failed — fall through to original path
++      }
++
+       // IMPORTANT: keep the dynamic import *inside* the try/catch.
+       // If this fails once (e.g. during a pnpm install that temporarily swaps node_modules),
+       // we must not poison the cache with a rejected promise (otherwise all channel handlers
+@@ -119,11 +160,19 @@ export async function loadModelCatalog(params?: {
+       const { join } = await import("node:path");
+       const authStorage = piSdk.discoverAuthStorage(agentDir);
+       logStage("auth-storage-ready");
++      const modelsJsonPath = shimmedModelsPath ?? join(agentDir, "models.json");
+       const registry = instantiatePiModelRegistry(
+         piSdk,
+         authStorage,
+-        join(agentDir, "models.json"),
++        modelsJsonPath,
+       );
++      // Clean up shimmed temp file
++      if (shimmedModelsPath) {
++        try {
++          const { unlinkSync } = await import("node:fs");
++          unlinkSync(shimmedModelsPath);
++        } catch { /* best-effort cleanup */ }
++      }
+       logStage("registry-ready");
+       const entries = Array.isArray(registry) ? registry : registry.getAll();
+       logStage("registry-read", `entries=${entries.length}`);
+-- 
+2.50.1 (Apple Git-155)
+

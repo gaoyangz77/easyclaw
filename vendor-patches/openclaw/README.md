@@ -239,28 +239,29 @@ to a worker thread. Verify by measuring time from "starting channels and
 sidecars…" to "webchat connected" in vendor log — should be <1s without
 this patch if upstream fixed the blocking.
 
-### 0008 — Id-only catalog fallback in `resolveGatewayModelSupportsImages`
+### 0008 — Pi SDK compatibility shim for auth-mode providers
 
-**File:** `0008-vendor-openclaw-fallback-to-id-only-catalog-match-in.patch`
+**File:** `0008-vendor-openclaw-shim-synthetic-apiKey-for-auth-mode-.patch`
 
-**Why:** Pi SDK's `ModelRegistry.validateConfig()` has an all-or-nothing
-behavior: if ANY provider in models.json has models but no `apiKey` (e.g.
-codex with `auth:token`), it rejects the ENTIRE models.json. This silently
-drops ALL custom models from the catalog, including correctly configured
-providers like `rivonclaw-pro`. When `resolveGatewayModelSupportsImages`
-cannot find the custom provider's entry, it returns `false` and images are
-dropped from messages.
+**Why:** Pi SDK's `ModelRegistry.validateConfig()` requires `apiKey` for any
+provider with models, but OpenClaw legitimately generates providers with
+`auth: "token"/"oauth"/"aws-sdk"` and no `apiKey` (e.g. codex OAuth provider).
+This causes Pi SDK to reject the ENTIRE models.json, dropping ALL custom models
+including correctly configured providers like `rivonclaw-pro`.
 
-**Change:** Add a nullish coalescing fallback to the catalog lookup in
-`resolveGatewayModelSupportsImages`. When exact provider+model match fails
-AND a provider was specified, try a second id-only lookup. This allows the
-function to find the same model under a built-in provider (e.g.
-`openai/gpt-5.4` instead of `rivonclaw-pro/gpt-5.4`) and use its `input`
-capabilities.
+**Change:** In `loadModelCatalog()`, between `ensureOpenClawModelsJson` and
+`instantiatePiModelRegistry`, add a shim that reads the generated models.json,
+injects `apiKey: "__oc_synthetic_<auth_mode>"` for providers that have models
+but no apiKey and use a recognized auth mode (token/oauth/aws-sdk), writes the
+shimmed config to a temp `models.pi-compat.json`, passes the temp file to
+`instantiatePiModelRegistry`, and deletes the temp file after the registry is
+instantiated. The shim is narrow -- only qualified auth-mode providers get
+synthetic keys, not a blanket bypass.
 
-**Removal:** Drop when Pi SDK fixes `validateConfig` to accept `auth:token`
-as an alternative to `apiKey`, or stops using all-or-nothing rejection for
-the models.json catalog (upstream issue TBD).
+**Removal:** Drop when Pi SDK accepts `auth: "token"/"oauth"/"aws-sdk"` as
+valid alternatives to `apiKey` in `validateConfig`, or when OpenClaw's
+models-config generation ensures `apiKey` is always present for providers
+with models.
 
 ## Dropped Patches
 
