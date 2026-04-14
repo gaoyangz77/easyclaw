@@ -107,6 +107,9 @@ export function createAutoUpdater(deps: AutoUpdaterDeps) {
   autoUpdater.setFeedURL({
     provider: "generic",
     url: updateFeedUrl,
+    // Per-arch update channel: electron-updater appends "-mac" on macOS,
+    // so channel "arm64" reads "arm64-mac.yml", "x64" reads "x64-mac.yml".
+    ...(process.platform === "darwin" ? { channel: process.arch } : {}),
   });
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;

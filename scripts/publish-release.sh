@@ -61,7 +61,7 @@ echo "$ASSET_NAMES" | while read -r name; do
 done
 
 # Current split-mac flow:
-#   macOS:   arm64.dmg + x64.dmg + arm64.zip + x64.zip + latest-mac-arm64.yml + latest-mac-x64.yml (6)
+#   macOS:   arm64.dmg + x64.dmg + arm64.zip + x64.zip + arm64-mac.yml + x64-mac.yml (6)
 #   Windows: NSIS EXE + portable EXE + EXE.blockmap + latest.yml (4)
 #   Linux:   AppImage + deb + latest-linux.yml (3)
 EXPECTED_ARTIFACTS=13

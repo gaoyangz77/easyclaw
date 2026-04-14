@@ -234,14 +234,14 @@ jobs:
             apps/desktop/release/*-arm64*.blockmap
           retention-days: 30
 
-      - name: Rename latest-mac.yml for arm64
-        run: mv apps/desktop/release/latest-mac.yml apps/desktop/release/latest-mac-arm64.yml
+      - name: Rename update manifest for arm64
+        run: mv apps/desktop/release/latest-mac.yml apps/desktop/release/arm64-mac.yml
 
       - name: Upload update metadata
         uses: actions/upload-artifact@v6
         with:
           name: macos-arm64-update-meta
-          path: apps/desktop/release/latest-mac-arm64.yml
+          path: apps/desktop/release/arm64-mac.yml
           retention-days: 30
 
   build-macos-x64:
@@ -361,14 +361,14 @@ jobs:
             apps/desktop/release/*-x64*.blockmap
           retention-days: 30
 
-      - name: Rename latest-mac.yml for x64
-        run: mv apps/desktop/release/latest-mac.yml apps/desktop/release/latest-mac-x64.yml
+      - name: Rename update manifest for x64
+        run: mv apps/desktop/release/latest-mac.yml apps/desktop/release/x64-mac.yml
 
       - name: Upload update metadata
         uses: actions/upload-artifact@v6
         with:
           name: macos-x64-update-meta
-          path: apps/desktop/release/latest-mac-x64.yml
+          path: apps/desktop/release/x64-mac.yml
           retention-days: 30
 
   build-linux:
