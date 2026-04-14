@@ -250,12 +250,12 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
       agentWorkspace: join(stateDir, "workspace"),
       extraSkillDirs: [resolveUserSkillsDir()],
       // ADR-031: allow all core + plugin tools by default (visibility controlled at runtime by capability-manager).
-      // Core tool section groups cover all system tools; "group:plugins" covers all optional plugin tools.
-      // All groups are needed because v2026.4.11+ treats a plugin-only allowlist as excluding core tools.
+      // "group:openclaw" covers most core tools (25/32). Section groups "fs" and "runtime" add the
+      // remaining tools (read, write, edit, apply_patch, exec, process) not in the openclaw group.
+      // "group:plugins" covers all optional plugin tools.
+      // All non-plugin groups are needed because v2026.4.11+ treats a plugin-only allowlist as excluding core tools.
       toolAllowlist: overrides?.toolAllowlist ?? [
-        "group:fs", "group:runtime", "group:web", "group:memory",
-        "group:sessions", "group:ui", "group:messaging", "group:automation",
-        "group:nodes", "group:agents", "group:media",
+        "group:openclaw", "group:fs", "group:runtime",
         "group:plugins",
       ],
     };
