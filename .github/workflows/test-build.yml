@@ -74,8 +74,7 @@ jobs:
 
       - name: Test macOS build (no signing)
         run: |
-          ulimit -n 65536
           cd apps/desktop
-          pnpm run pack
+          npx electron-builder --dir --config.mac.identity=null
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
