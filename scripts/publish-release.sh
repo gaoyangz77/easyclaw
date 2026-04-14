@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
-# publish-release.sh — Publish a draft GitHub Release
+# publish-release.sh — Publish a draft GitHub Release (idempotent)
 #
-# Promotes a draft release created by the CI build workflow to a public release.
-# Run this after both CI build and local tests have passed.
+# Promotes the newest draft release created by the CI build workflow to a public
+# release. If an older public release already exists for the same tag, delete it
+# first, then publish the newest draft.
 #
 # Usage:
 #   ./scripts/publish-release.sh [version]
@@ -18,7 +19,6 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-DESKTOP_DIR="$REPO_ROOT/apps/desktop"
 
 # ---- Helpers ----
 info()  { echo "$(date +%H:%M:%S) [INFO]  $*"; }
@@ -37,33 +37,39 @@ info "Publishing release $TAG..."
 # ---- Validate prerequisites ----
 command -v gh &>/dev/null || error "gh CLI not found. Install: https://cli.github.com/"
 gh auth status || error "gh not authenticated. Run: gh auth login"
+command -v jq &>/dev/null || error "jq not found. Install jq first."
 
-# ---- Verify the draft release exists ----
-gh release view "$TAG" --json isDraft &>/dev/null \
-  || error "Release $TAG not found on GitHub. Has the CI build workflow completed?"
+# ---- Load all releases for this tag ----
+RELEASES_JSON=$(gh api repos/gaoyangz77/rivonclaw/releases --paginate | jq --arg tag "$TAG" '[.[] | select(.tag_name == $tag)]')
+RELEASE_COUNT=$(echo "$RELEASES_JSON" | jq 'length')
+[ "$RELEASE_COUNT" -gt 0 ] || error "Release $TAG not found on GitHub. Has the CI build workflow completed?"
 
-IS_DRAFT=$(gh release view "$TAG" --json isDraft -q .isDraft)
-[ "$IS_DRAFT" = "true" ] || error "Release $TAG is not a draft. It may have already been published."
+info "Found $RELEASE_COUNT release object(s) for $TAG:"
+echo "$RELEASES_JSON" | jq -r '.[] | "  - id=\(.id) draft=\(.draft) published_at=\(.published_at // "null") assets=\(.assets|length)"'
 
-# ---- Verify artifacts are complete ----
-ASSET_COUNT=$(gh release view "$TAG" --json assets -q '.assets | length')
-ASSET_NAMES=$(gh release view "$TAG" --json assets -q '.assets[].name')
+DRAFT_COUNT=$(echo "$RELEASES_JSON" | jq '[.[] | select(.draft == true)] | length')
+[ "$DRAFT_COUNT" -gt 0 ] || error "No draft release found for $TAG. Refusing to delete/replace public release without a draft."
 
-info "Draft release $TAG found with $ASSET_COUNT artifact(s):"
+NEWEST_DRAFT_JSON=$(echo "$RELEASES_JSON" | jq '[.[] | select(.draft == true)] | sort_by(.created_at, .id) | last')
+NEWEST_DRAFT_ID=$(echo "$NEWEST_DRAFT_JSON" | jq -r '.id')
+ASSET_COUNT=$(echo "$NEWEST_DRAFT_JSON" | jq '.assets | length')
+ASSET_NAMES=$(echo "$NEWEST_DRAFT_JSON" | jq -r '.assets[].name')
+
+info "Selected newest draft release id=$NEWEST_DRAFT_ID with $ASSET_COUNT artifact(s):"
 echo "$ASSET_NAMES" | while read -r name; do
   [ -n "$name" ] && echo "  - $name"
 done
 
-# Expect 12 artifacts:
-#   macOS:   DMG + ZIP + ZIP.blockmap + latest-mac.yml (4)
+# Current split-mac flow:
+#   macOS:   arm64.dmg + x64.dmg + arm64.zip + x64.zip + latest-mac.yml (5)
 #   Windows: NSIS EXE + portable EXE + EXE.blockmap + latest.yml (4)
-#   Linux:   AppImage + AppImage.blockmap + deb + latest-linux.yml (4)
-EXPECTED_ARTIFACTS=11
+#   Linux:   AppImage + deb + latest-linux.yml (3)
+EXPECTED_ARTIFACTS=12
 if [ "$ASSET_COUNT" -lt "$EXPECTED_ARTIFACTS" ]; then
-  error "Expected at least $EXPECTED_ARTIFACTS artifacts, but found $ASSET_COUNT. CI build may be incomplete."
+  error "Expected at least $EXPECTED_ARTIFACTS artifacts on draft $NEWEST_DRAFT_ID, but found $ASSET_COUNT. CI build may be incomplete."
 fi
 
-# ---- Push git tag (if not already present) ----
+# ---- Ensure tag exists remotely (release object may exist before tag push) ----
 if git rev-parse "$TAG" &>/dev/null; then
   info "Tag $TAG already exists locally."
 else
@@ -78,9 +84,35 @@ else
   git push origin "$TAG"
 fi
 
-# ---- Publish the draft release ----
-gh release edit "$TAG" --draft=false --latest
+# ---- Delete any existing public release(s) for this tag ----
+PUBLIC_IDS=$(echo "$RELEASES_JSON" | jq -r '.[] | select(.draft == false) | .id')
+if [ -n "$PUBLIC_IDS" ]; then
+  while read -r id; do
+    [ -z "$id" ] && continue
+    info "Deleting existing public release id=$id for $TAG..."
+    gh api -X DELETE "repos/gaoyangz77/rivonclaw/releases/$id"
+  done <<< "$PUBLIC_IDS"
+else
+  info "No existing public release found for $TAG."
+fi
+
+# ---- Publish the newest draft release ----
+info "Publishing draft release id=$NEWEST_DRAFT_ID for $TAG..."
+gh api -X PATCH "repos/gaoyangz77/rivonclaw/releases/$NEWEST_DRAFT_ID" -f draft=false -f make_latest=true >/dev/null
+
+# ---- Final verification ----
+FINAL_JSON=$(gh api repos/gaoyangz77/rivonclaw/releases --paginate | jq --arg tag "$TAG" '[.[] | select(.tag_name == $tag)]')
+FINAL_PUBLIC_COUNT=$(echo "$FINAL_JSON" | jq '[.[] | select(.draft == false)] | length')
+[ "$FINAL_PUBLIC_COUNT" -eq 1 ] || error "Expected exactly 1 public release for $TAG after publish, found $FINAL_PUBLIC_COUNT"
+
+FINAL_PUBLIC_ID=$(echo "$FINAL_JSON" | jq -r '[.[] | select(.draft == false)] | first | .id')
+FINAL_PUBLIC_URL=$(echo "$FINAL_JSON" | jq -r '[.[] | select(.draft == false)] | first | .html_url')
+FINAL_PUBLIC_ASSET_COUNT=$(echo "$FINAL_JSON" | jq '[.[] | select(.draft == false)] | first | .assets | length')
+
+[ "$FINAL_PUBLIC_ID" = "$NEWEST_DRAFT_ID" ] || error "Published release id ($FINAL_PUBLIC_ID) does not match selected draft id ($NEWEST_DRAFT_ID)"
+[ "$FINAL_PUBLIC_ASSET_COUNT" -ge "$EXPECTED_ARTIFACTS" ] || error "Published release has only $FINAL_PUBLIC_ASSET_COUNT artifacts; expected at least $EXPECTED_ARTIFACTS"
+
 info "==============================================="
 info "  Release $TAG published!"
-info "  https://github.com/$(gh repo view --json nameWithOwner -q .nameWithOwner)/releases/tag/$TAG"
+info "  $FINAL_PUBLIC_URL"
 info "==============================================="
