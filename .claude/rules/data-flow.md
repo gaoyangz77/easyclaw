@@ -3,11 +3,24 @@
 ## Communication Architecture
 
 ```
-Panel → Desktop:  REST API (HTTP request/response)
-Desktop → Panel:  SSE patch stream (push)
+Panel → Desktop:      REST API (HTTP request/response)
+Desktop → Panel:      SSE patch stream (push)
+Backend → Desktop:    GraphQL subscriptions (graphql-ws over WebSocket)
 ```
 
 Panel never talks to the cloud backend directly — all cloud requests go through Desktop's proxy (`/api/cloud/graphql` for GraphQL, `/api/cloud/*` for REST), which injects JWT and ingests responses into MST.
+
+Backend pushes real-time updates to Desktop via GraphQL subscriptions (`shopUpdated`, `oauthComplete`, `updateAvailable`). Desktop ingests these into MST the same way as query responses — patches flow to Panel via SSE automatically.
+
+### Three SSE Channels (Desktop → Panel)
+
+| Endpoint | Purpose | Content |
+|----------|---------|---------|
+| `/api/store/stream` | Entity store sync | MST snapshots + JSON patches (shops, tools, profiles, etc.) |
+| `/api/status/stream` | Runtime status sync | MST patches (appSettings, csBridge state, deviceId, connector state) |
+| `/api/chat/events` | Notification events | Named events: `shop-updated`, `oauth-complete`, `update-available` |
+
+The first two carry MST patches and are consumed by Panel's `entityStore` and `runtimeStatusStore` via `applyPatch()`. The third carries discrete notification events (e.g. for toast display) and is consumed by `Layout.tsx`.
 
 ## API Contract
 
@@ -74,6 +87,37 @@ All Desktop HTTP endpoints are registered via `RouteRegistry` in `apps/desktop/s
 - Handler signature: `(req, res, url, params, ctx) => Promise<void>` — no path checking, no boolean return.
 - Parametric path segments (`:id`, `:channelId`) are extracted into `params` automatically.
 - A few endpoints remain inline in `panel-server.ts` (SSE streams, app update closures) — these are listed in `PANEL_SERVER_CLOSURE_ROUTES` in `route-coverage.test.ts`.
+
+## LLM Key & Model Lifecycle
+
+All LLM provider key and model management is centralized in `LLMProviderManager` (Desktop: `apps/desktop/src/store/llm-provider-manager.ts`, Panel: `apps/panel/src/store/models/LLMProviderModel.ts`).
+
+### Authentication Flow
+
+API keys are stored in the system Keychain (macOS) / DPAPI (Windows). At startup and on key changes, `syncAllAuthProfiles()` writes ALL provider keys to `auth-profiles.json` in the OpenClaw state directory. The gateway reads this file on each LLM turn — no restart needed for key changes.
+
+LLM provider keys are **not** injected as environment variables. `resolveSecretEnv()` only handles non-LLM secrets (STT, file permissions). The gateway authenticates exclusively via `auth-profiles.json`.
+
+### Model Switching
+
+Model switches use `sessions.patch` RPC — no gateway restart, no config file write.
+
+| Scope | Mechanism | Restart? |
+|-------|-----------|----------|
+| **Per-session** (ChatPage) | `llmManager.switchModelForSession(sessionKey, provider, model)` → `sessions.patch` RPC | No |
+| **Global default** (ProvidersPage) | `llmManager.switchModel(keyId, model)` → SQLite + `writeDefaultModel` (config) + reset active sessions | No (hot reload only) |
+| **Per-shop CS** (EcommercePage) | `llmManager.applyModelForSession(key, scope)` → scope resolution + `sessions.patch` RPC | No |
+
+### Model Resolution Priority
+
+When a session runs, OpenClaw resolves the model in this order:
+1. **Session override** (`sessions.patch` — set by LLMProviderManager)
+2. **Config default** (`agents.defaults.model.primary` — written by `writeDefaultModel`)
+3. **Hardcoded fallback** (OpenClaw's DEFAULT_MODEL)
+
+### Cloud GraphQL Proxy — Extension vs Panel Requests
+
+Desktop's cloud GraphQL proxy (`cloud-graphql-routes.ts`) forwards requests from both Panel and gateway extensions to the backend. Only Panel responses are ingested into Desktop MST (`ingestGraphQLResponse`). Extension responses (marked with `X-Request-Source: extension` header) are returned directly without ingestion — this prevents tool execution results (which return partial entities) from overwriting complete store data.
 
 ## Telemetry Allowlist
 
