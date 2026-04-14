@@ -392,10 +392,20 @@ app.whenReady().then(async () => {
   normalizeCronStoreIds(join(stateDir, "cron", "jobs.json"));
 
   // In packaged app, vendor lives in Resources/vendor/openclaw (extraResources).
+  // On macOS packaged builds, the vendor runtime ships as a tar.gz archive to
+  // avoid EMFILE during code signing (33k+ files). It's extracted on first launch
+  // to ~/Library/Application Support/RivonClaw/runtime/<version>/openclaw/.
   // In dev, resolveVendorEntryPath() resolves relative to source via import.meta.url.
-  const vendorDir = app.isPackaged
-    ? join(process.resourcesPath, "vendor", "openclaw")
-    : join(import.meta.dirname, "..", "..", "..", "vendor", "openclaw");
+  let vendorDir: string;
+  if (app.isPackaged && process.platform === "darwin") {
+    const archiveDir = join(process.resourcesPath, "vendor", "openclaw");
+    const { ensureVendorRuntime } = await import("../vendor-runtime/extractor.js");
+    vendorDir = await ensureVendorRuntime(archiveDir);
+  } else if (app.isPackaged) {
+    vendorDir = join(process.resourcesPath, "vendor", "openclaw");
+  } else {
+    vendorDir = join(import.meta.dirname, "..", "..", "..", "vendor", "openclaw");
+  }
   setVendorDir(vendorDir);
 
   // Initialize Channel Manager -- loads accounts from SQLite (runs migration if needed).

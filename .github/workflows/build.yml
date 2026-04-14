@@ -64,7 +64,7 @@ jobs:
             vendor/openclaw/node_modules
             vendor/openclaw/.gitignore
             vendor/openclaw/dist-runtime
-          key: vendor-prod-${{ runner.os }}-${{ hashFiles('.openclaw-version') }}-${{ hashFiles('vendor-patches/openclaw/*.patch') }}-${{ hashFiles('apps/desktop/scripts/prune-vendor-deps.cjs', 'apps/desktop/scripts/copy-vendor-deps.cjs') }}
+          key: vendor-prod-${{ runner.os }}-${{ hashFiles('.openclaw-version') }}-${{ hashFiles('vendor-patches/openclaw/*.patch') }}-${{ hashFiles('apps/desktop/scripts/prune-vendor-deps.cjs', 'apps/desktop/scripts/copy-vendor-deps.cjs', 'apps/desktop/scripts/archive-vendor-runtime.cjs') }}
 
       - name: Setup OpenClaw vendor
         if: steps.cache-vendor-prod.outputs.cache-hit != 'true'
@@ -172,7 +172,7 @@ jobs:
             vendor/openclaw/node_modules
             vendor/openclaw/.gitignore
             vendor/openclaw/dist-runtime
-          key: vendor-prod-${{ runner.os }}-${{ hashFiles('.openclaw-version') }}-${{ hashFiles('vendor-patches/openclaw/*.patch') }}-${{ hashFiles('apps/desktop/scripts/prune-vendor-deps.cjs', 'apps/desktop/scripts/copy-vendor-deps.cjs') }}
+          key: vendor-prod-${{ runner.os }}-${{ hashFiles('.openclaw-version') }}-${{ hashFiles('vendor-patches/openclaw/*.patch') }}-${{ hashFiles('apps/desktop/scripts/prune-vendor-deps.cjs', 'apps/desktop/scripts/copy-vendor-deps.cjs', 'apps/desktop/scripts/archive-vendor-runtime.cjs') }}
 
       - name: Setup OpenClaw vendor
         if: steps.cache-vendor-prod.outputs.cache-hit != 'true'
@@ -204,13 +204,25 @@ jobs:
 
       - name: Build macOS arm64 DMG + ZIP
         run: |
-          ulimit -n 65536
           cd apps/desktop
           pnpm run dist:mac:arm64
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Validate macOS bundle
+        run: |
+          APP=$(find apps/desktop/release -name "*.app" -maxdepth 3 | head -1)
+          VENDOR="$APP/Contents/Resources/vendor/openclaw"
+          # Must have archive
+          test -f "$VENDOR/vendor-runtime.tar.gz" || { echo "FAIL: archive missing"; exit 1; }
+          # Must NOT have node_modules
+          test ! -d "$VENDOR/node_modules" || { echo "FAIL: exploded node_modules in bundle"; exit 1; }
+          FILE_COUNT=$(find "$VENDOR" -type f | wc -l)
+          echo "Vendor dir: $FILE_COUNT files"
+          test "$FILE_COUNT" -le 10 || { echo "FAIL: >10 files in vendor dir"; exit 1; }
+          echo "PASS"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -277,7 +289,7 @@ jobs:
             vendor/openclaw/node_modules
             vendor/openclaw/.gitignore
             vendor/openclaw/dist-runtime
-          key: vendor-prod-${{ runner.os }}-${{ hashFiles('.openclaw-version') }}-${{ hashFiles('vendor-patches/openclaw/*.patch') }}-${{ hashFiles('apps/desktop/scripts/prune-vendor-deps.cjs', 'apps/desktop/scripts/copy-vendor-deps.cjs') }}
+          key: vendor-prod-${{ runner.os }}-${{ hashFiles('.openclaw-version') }}-${{ hashFiles('vendor-patches/openclaw/*.patch') }}-${{ hashFiles('apps/desktop/scripts/prune-vendor-deps.cjs', 'apps/desktop/scripts/copy-vendor-deps.cjs', 'apps/desktop/scripts/archive-vendor-runtime.cjs') }}
 
       - name: Setup OpenClaw vendor
         if: steps.cache-vendor-prod.outputs.cache-hit != 'true'
@@ -309,13 +321,25 @@ jobs:
 
       - name: Build macOS x64 DMG + ZIP
         run: |
-          ulimit -n 65536
           cd apps/desktop
           pnpm run dist:mac:x64
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Validate macOS bundle
+        run: |
+          APP=$(find apps/desktop/release -name "*.app" -maxdepth 3 | head -1)
+          VENDOR="$APP/Contents/Resources/vendor/openclaw"
+          # Must have archive
+          test -f "$VENDOR/vendor-runtime.tar.gz" || { echo "FAIL: archive missing"; exit 1; }
+          # Must NOT have node_modules
+          test ! -d "$VENDOR/node_modules" || { echo "FAIL: exploded node_modules in bundle"; exit 1; }
+          FILE_COUNT=$(find "$VENDOR" -type f | wc -l)
+          echo "Vendor dir: $FILE_COUNT files"
+          test "$FILE_COUNT" -le 10 || { echo "FAIL: >10 files in vendor dir"; exit 1; }
+          echo "PASS"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
@@ -386,7 +410,7 @@ jobs:
             vendor/openclaw/node_modules
             vendor/openclaw/.gitignore
             vendor/openclaw/dist-runtime
-          key: vendor-prod-${{ runner.os }}-${{ hashFiles('.openclaw-version') }}-${{ hashFiles('vendor-patches/openclaw/*.patch') }}-${{ hashFiles('apps/desktop/scripts/prune-vendor-deps.cjs', 'apps/desktop/scripts/copy-vendor-deps.cjs') }}
+          key: vendor-prod-${{ runner.os }}-${{ hashFiles('.openclaw-version') }}-${{ hashFiles('vendor-patches/openclaw/*.patch') }}-${{ hashFiles('apps/desktop/scripts/prune-vendor-deps.cjs', 'apps/desktop/scripts/copy-vendor-deps.cjs', 'apps/desktop/scripts/archive-vendor-runtime.cjs') }}
 
       - name: Setup OpenClaw vendor
         if: steps.cache-vendor-prod.outputs.cache-hit != 'true'

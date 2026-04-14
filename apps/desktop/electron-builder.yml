@@ -90,8 +90,9 @@ mac:
   identity: "-"
   # Skip signing files that can't be signed (vendor binaries with
   # unsupported formats, git objects, etc.)
+  # Note: vendor/openclaw/node_modules is no longer in the bundle — macOS ships
+  # the vendor runtime as a single tar.gz archive (extracted on first launch).
   signIgnore:
-    - "vendor/openclaw/node_modules"
     - "extensions-merchant"
   notarize: false
   artifactName: "${productName}-${version}-${arch}.${ext}"
