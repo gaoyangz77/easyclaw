@@ -1,6 +1,8 @@
 import { describe, it, expect, vi } from "vitest";
 import { ChatRunStateModel } from "./store/models/ChatRunStateModel.js";
 import type { IChatRunState } from "./store/models/ChatRunStateModel.js";
+import { isHiddenSession } from "./chat-utils.js";
+import { createChatStore } from "./store/chat-store.js";
 
 function createRunState(): IChatRunState {
   return ChatRunStateModel.create({});
@@ -830,5 +832,51 @@ describe("ChatRunStateModel", () => {
       rs.forceDone("r1"); // should be no-op since already done
       expect(rs.getRun("r1")!.phase).toBe("done");
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isHiddenSession + ChatStore.sessionList hidden-session filtering
+// ---------------------------------------------------------------------------
+
+describe("isHiddenSession", () => {
+  it("hides CS sessions", () => {
+    expect(isHiddenSession("agent:main:cs:tiktok:conv123")).toBe(true);
+    expect(isHiddenSession("agent:main:cs:shopee:conv456")).toBe(true);
+  });
+
+  it("hides internal API sessions", () => {
+    expect(isHiddenSession("agent:main:openai-user:rivonclaw-rule-compiler")).toBe(true);
+  });
+
+  it("does not hide normal sessions", () => {
+    expect(isHiddenSession("agent:main:main")).toBe(false);
+    expect(isHiddenSession("agent:main:telegram:acct_123:direct:456")).toBe(false);
+    expect(isHiddenSession("agent:main:panel-abc123")).toBe(false);
+    expect(isHiddenSession("agent:main:feishu:acct_123:direct:ou_456")).toBe(false);
+  });
+});
+
+describe("ChatStore.sessionList hides CS sessions", () => {
+  it("CS session in store does not appear in sessionList", () => {
+    const store = createChatStore();
+    // Add a normal session + a CS session
+    store.getOrCreateSession("agent:main:telegram:user1");
+    store.getOrCreateSession("agent:main:cs:tiktok:conv123");
+    store.getOrCreateSession("agent:main:main");
+
+    const keys = store.sessionList.map((s) => s.key);
+    expect(keys).toContain("agent:main:telegram:user1");
+    expect(keys).toContain("agent:main:main");
+    expect(keys).not.toContain("agent:main:cs:tiktok:conv123");
+  });
+
+  it("CS session marked unread still does not appear in sessionList", () => {
+    const store = createChatStore();
+    const csSession = store.getOrCreateSession("agent:main:cs:shopee:conv789");
+    csSession.setUnread(true);
+
+    const keys = store.sessionList.map((s) => s.key);
+    expect(keys).not.toContain("agent:main:cs:shopee:conv789");
   });
 });

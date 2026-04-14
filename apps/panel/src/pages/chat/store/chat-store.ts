@@ -1,6 +1,6 @@
 import { types, cast, type Instance } from "mobx-state-tree";
 import { ChatSessionModel } from "./models/ChatSessionModel.js";
-import { DEFAULT_SESSION_KEY, INITIAL_VISIBLE } from "../chat-utils.js";
+import { DEFAULT_SESSION_KEY, INITIAL_VISIBLE, isHiddenSession } from "../chat-utils.js";
 import type { SessionTabInfo } from "../chat-utils.js";
 
 // ---------------------------------------------------------------------------
@@ -33,6 +33,7 @@ export const ChatStoreModel = types
       const tabs: SessionTabInfo[] = [];
       for (const [, session] of self.sessions) {
         if (session.archived) continue;
+        if (isHiddenSession(session.key)) continue;
         tabs.push({
           key: session.key,
           displayName: session.displayName ?? undefined,

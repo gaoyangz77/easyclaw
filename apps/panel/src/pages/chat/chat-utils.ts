@@ -74,6 +74,20 @@ export const COMPRESS_INITIAL_QUALITY = DEFAULTS.chat.compressInitialQuality;
 export const COMPRESS_MIN_QUALITY = DEFAULTS.chat.compressMinQuality;
 
 export const DEFAULT_SESSION_KEY = "agent:main:main";
+
+/**
+ * Session key patterns that belong to dedicated subsystems and should NOT
+ * appear as tabs in the Chat Page.  Each entry is tested via `key.includes()`.
+ */
+const HIDDEN_SESSION_KEY_PATTERNS: string[] = [
+  ":openai-user:rivonclaw-",  // Internal API sessions (rule compilation LLM calls)
+  ":cs:",                      // Customer Service sessions (e.g. agent:main:cs:tiktok:{id})
+];
+
+/** Returns true if the session key belongs to a hidden subsystem. */
+export function isHiddenSession(key: string): boolean {
+  return HIDDEN_SESSION_KEY_PATTERNS.some((pattern) => key.includes(pattern));
+}
 export const INITIAL_VISIBLE = DEFAULTS.chat.initialVisibleMessages;
 export const PAGE_SIZE = 20;
 export const FETCH_BATCH = DEFAULTS.chat.fetchBatch;

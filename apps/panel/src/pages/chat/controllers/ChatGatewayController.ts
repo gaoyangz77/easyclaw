@@ -44,6 +44,7 @@ import {
   localizeError,
   parseRawMessages,
   cleanDerivedTitle,
+  isHiddenSession,
 } from "../chat-utils.js";
 
 // ---------------------------------------------------------------------------
@@ -51,15 +52,6 @@ import {
 // ---------------------------------------------------------------------------
 
 const REFRESH_DEBOUNCE = DEFAULTS.chat.sessionRefreshDebounceMs;
-
-const HIDDEN_SESSION_KEY_PATTERNS: string[] = [
-  ":openai-user:rivonclaw-",
-  ":cs:",
-];
-
-function isHiddenSession(key: string): boolean {
-  return HIDDEN_SESSION_KEY_PATTERNS.some((pattern) => key.includes(pattern));
-}
 
 function loadCustomOrder(): string[] | null {
   try {
@@ -348,6 +340,8 @@ export class ChatGatewayController {
         },
         onMirrorEvent: (mirror: ChatMirrorSSEPayload) => {
           if (this.cancelled) return;
+          // Hidden sessions (CS, internal API) — don't create tabs or track state
+          if (isHiddenSession(mirror.sessionKey)) return;
           const isActiveMirror = mirror.sessionKey === this.store.activeSessionKey;
           const data = mirror.data as Record<string, unknown>;
 
@@ -470,6 +464,8 @@ export class ChatGatewayController {
       const isBackground = agentPayload.sessionKey && agentPayload.sessionKey !== activeKey;
 
       if (isBackground) {
+        // Hidden sessions (CS, internal API) — don't create tabs or track state
+        if (isHiddenSession(agentPayload.sessionKey!)) return;
         this.markUnread(agentPayload.sessionKey!);
         if (!this.store.sessions.has(agentPayload.sessionKey!)) {
           this.refreshSessions();
@@ -622,6 +618,8 @@ export class ChatGatewayController {
 
     // Background sessions
     if (payload.sessionKey && payload.sessionKey !== activeKey) {
+      // Hidden sessions (CS, internal API) — don't create tabs or track state
+      if (isHiddenSession(payload.sessionKey)) return;
       this.markUnread(payload.sessionKey);
       if (!this.store.sessions.has(payload.sessionKey)) {
         this.refreshSessions();
@@ -1240,6 +1238,8 @@ export class ChatGatewayController {
 
   markUnread(key: string): void {
     if (key === this.store.activeSessionKey) return;
+    // Hidden sessions (CS, internal API) should never appear in the tab list
+    if (isHiddenSession(key)) return;
     // Auto-restore archived sessions when they receive new messages
     if (this.archivedKeys.has(key)) {
       this.archivedKeys.delete(key);
