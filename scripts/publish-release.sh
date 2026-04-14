@@ -61,10 +61,10 @@ echo "$ASSET_NAMES" | while read -r name; do
 done
 
 # Current split-mac flow:
-#   macOS:   arm64.dmg + x64.dmg + arm64.zip + x64.zip + latest-mac.yml (5)
+#   macOS:   arm64.dmg + x64.dmg + arm64.zip + x64.zip + latest-mac-arm64.yml + latest-mac-x64.yml (6)
 #   Windows: NSIS EXE + portable EXE + EXE.blockmap + latest.yml (4)
 #   Linux:   AppImage + deb + latest-linux.yml (3)
-EXPECTED_ARTIFACTS=12
+EXPECTED_ARTIFACTS=13
 if [ "$ASSET_COUNT" -lt "$EXPECTED_ARTIFACTS" ]; then
   error "Expected at least $EXPECTED_ARTIFACTS artifacts on draft $NEWEST_DRAFT_ID, but found $ASSET_COUNT. CI build may be incomplete."
 fi
