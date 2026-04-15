@@ -368,12 +368,18 @@ export interface EcomCancellationPage {
 
 /** A CS conversation between buyer and seller */
 export interface EcomConversation {
+  /** Whether the seller can send messages in this conversation */
+  canSendMessage?: Maybe<Scalars['Boolean']['output']>;
   conversationId: Scalars['String']['output'];
+  /** Unix seconds when the conversation was created */
+  createTime?: Maybe<Scalars['Int']['output']>;
   latestMessage?: Maybe<EcomMessagePreview>;
   /** Unix seconds of last update */
   latestMessageTime?: Maybe<Scalars['Int']['output']>;
   /** Associated order ID if any */
   orderId?: Maybe<Scalars['String']['output']>;
+  /** Number of participants in the conversation */
+  participantCount?: Maybe<Scalars['Int']['output']>;
   participants?: Maybe<Array<EcomConversationParticipant>>;
   /** Conversation status per platform */
   status?: Maybe<Scalars['String']['output']>;
@@ -399,6 +405,8 @@ export interface EcomConversationPage {
 /** Participant in a CS conversation */
 export interface EcomConversationParticipant {
   avatar?: Maybe<Scalars['String']['output']>;
+  /** IM-specific user ID (may differ from userId on some platforms) */
+  imUserId?: Maybe<Scalars['String']['output']>;
   nickname?: Maybe<Scalars['String']['output']>;
   /** BUYER, SELLER, SYSTEM, ROBOT */
   role?: Maybe<Scalars['String']['output']>;
@@ -449,11 +457,15 @@ export interface EcomMessage {
   content?: Maybe<Scalars['String']['output']>;
   /** Unix seconds */
   createTime?: Maybe<Scalars['Int']['output']>;
+  /** JSON blob with package tracking enrichment */
+  data?: Maybe<Scalars['String']['output']>;
   /** Opaque index for ordering (larger = newer) */
   index?: Maybe<Scalars['String']['output']>;
   /** Whether the message is visible to the CS agent */
   isVisible?: Maybe<Scalars['Boolean']['output']>;
   messageId: Scalars['String']['output'];
+  /** Plain-text rendering of rich messages */
+  plaintext?: Maybe<Scalars['String']['output']>;
   sender?: Maybe<EcomConversationParticipant>;
   /** Message type (TEXT, IMAGE, ...) — see EcomMessageType */
   type?: Maybe<Scalars['String']['output']>;
@@ -524,7 +536,7 @@ export interface EcomOrderLineItem {
   salePrice?: Maybe<Scalars['String']['output']>;
   sellerSku?: Maybe<Scalars['String']['output']>;
   skuId?: Maybe<Scalars['String']['output']>;
-  skuImage?: Maybe<EcomImage>;
+  skuImage?: Maybe<Scalars['String']['output']>;
   skuName?: Maybe<Scalars['String']['output']>;
 }
 
@@ -567,7 +579,6 @@ export interface EcomPackage {
   packageId: Scalars['String']['output'];
   /** Raw platform package status */
   packageStatus?: Maybe<Scalars['String']['output']>;
-  packageSubStatus?: Maybe<Scalars['String']['output']>;
   shippingProviderName?: Maybe<Scalars['String']['output']>;
   trackingNumber?: Maybe<Scalars['String']['output']>;
   /** Unix seconds */
@@ -616,12 +627,16 @@ export const EcomPackageStatus = {
 export type EcomPackageStatus = typeof EcomPackageStatus[keyof typeof EcomPackageStatus];
 /** Product */
 export interface EcomProduct {
+  /** Unix seconds */
+  createTime?: Maybe<Scalars['Int']['output']>;
   description?: Maybe<Scalars['String']['output']>;
   images?: Maybe<Array<EcomImage>>;
   productId: Scalars['String']['output'];
   skus?: Maybe<Array<EcomProductSku>>;
   status?: Maybe<Scalars['String']['output']>;
   title?: Maybe<Scalars['String']['output']>;
+  /** Unix seconds */
+  updateTime?: Maybe<Scalars['Int']['output']>;
 }
 
 /** Page of products */
@@ -663,7 +678,6 @@ export interface EcomRecipientAddress {
   phone?: Maybe<Scalars['String']['output']>;
   postalCode?: Maybe<Scalars['String']['output']>;
   region?: Maybe<Scalars['String']['output']>;
-  state?: Maybe<Scalars['String']['output']>;
 }
 
 /** Refund amount breakdown */
