@@ -1,0 +1,22 @@
+---
+import { t, type Lang } from "../i18n/strings.ts";
+interface Props { lang: Lang; }
+const { lang } = Astro.props;
+const c = t(lang).why;
+---
+<section class="section">
+  <div class="container">
+    <div class="section-header">
+      <h2>{c.title}</h2>
+      <p>{c.subtitle}</p>
+    </div>
+    <div class="grid grid-3">
+      {c.cards.map((card) => (
+        <div class="card">
+          <h3>{card.title}</h3>
+          <p>{card.body}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

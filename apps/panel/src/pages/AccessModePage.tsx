@@ -1,33 +1,24 @@
 import { useState, useEffect } from "react";
 import { fetchAccessMode, setAccessMode } from "../api/credits.js";
-import type { AccessMode } from "@rivonclaw/core";
-
-const MODES: { id: AccessMode; label: string; desc: string }[] = [
-  {
-    id: "credits",
-    label: "默认模型（积分）",
-    desc: "新用户免费体验，消耗积分使用 AI。积分耗尽后可充值。",
-  },
-  {
-    id: "coding-plan",
-    label: "编程订阅计划",
-    desc: "使用您自己的编程订阅（智谱编程、Moonshot Coding、通义编程等）。",
-  },
-  {
-    id: "subscription",
-    label: "订阅 / API Key",
-    desc: "使用您自己的 Claude/Gemini 订阅或 OpenAI、Anthropic、OpenRouter 等 API Key。",
-  },
-];
+import { fetchJson } from "../api/client.js";
+import type { AccessMode, ProviderKeyEntry } from "@rivonclaw/core";
 
 export function AccessModePage() {
   const [current, setCurrent] = useState<AccessMode | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [activeKey, setActiveKey] = useState<ProviderKeyEntry | null>(null);
 
   useEffect(() => {
     fetchAccessMode()
       .then((r) => setCurrent(r.mode))
+      .catch(() => {});
+
+    fetchJson<ProviderKeyEntry[]>("/provider-keys")
+      .then((keys) => {
+        const active = keys.find((k) => k.isDefault) ?? keys[0] ?? null;
+        setActiveKey(active);
+      })
       .catch(() => {});
   }, []);
 
@@ -44,6 +35,30 @@ export function AccessModePage() {
       setSaving(false);
     }
   }
+
+  const defaultModelLabel = activeKey
+    ? `默认模型（${activeKey.label || activeKey.model}）`
+    : "默认模型";
+
+  const MODES: { id: AccessMode; label: string; desc: string }[] = [
+    {
+      id: "credits",
+      label: "积分模式",
+      desc: "新用户免费体验，消耗积分使用 AI。积分耗尽后可充值。",
+    },
+    {
+      id: "subscription",
+      label: defaultModelLabel,
+      desc: activeKey
+        ? `使用您配置的 ${activeKey.provider} 模型（${activeKey.model}）。`
+        : "使用您自己配置的 API Key 或本地模型。",
+    },
+    {
+      id: "coding-plan",
+      label: "编程订阅计划",
+      desc: "使用您自己的编程订阅（智谱编程、Moonshot Coding、通义编程等）。",
+    },
+  ];
 
   return (
     <div className="page access-mode-page">

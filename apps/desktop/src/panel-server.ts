@@ -36,7 +36,6 @@ import { handleSkillsRoutes } from "./api-routes/skills-routes.js";
 import { handleChatSessionRoutes } from "./api-routes/chat-session-routes.js";
 import { handleMobileChatRoutes } from "./api-routes/mobile-chat-routes.js";
 import { handleBrowserProfilesRoutes } from "./api-routes/browser-profiles-routes.js";
-import { handleAuthRoutes } from "./api-routes/auth-routes.js";
 import { handleCloudGraphqlRoutes } from "./api-routes/cloud-graphql-routes.js";
 import { handleCloudRestRoutes } from "./api-routes/cloud-rest-routes.js";
 import { handleDoctorRoutes } from "./api-routes/doctor-routes.js";
@@ -249,10 +248,9 @@ export interface PanelServerOptions {
 // --- Route handlers (dispatched in order, first match wins) ---
 
 const routeHandlers: RouteHandler[] = [
-  handleAuthRoutes,
+  handleCreditsRoutes,
   handleCloudGraphqlRoutes,
   handleCloudRestRoutes,
-  handleCreditsRoutes,
   handleRulesRoutes,
   handleSettingsRoutes,
   handleProviderRoutes,

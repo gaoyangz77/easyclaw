@@ -1,0 +1,233 @@
+---
+import "../styles/global.css";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+import { docsNav, docsLabels, docUrl } from "../i18n/docs.ts";
+import type { Lang } from "../i18n/strings.ts";
+
+interface Props {
+  lang: Lang;
+  slug: string;
+  title: string;
+  description: string;
+}
+
+const { lang, slug, title, description } = Astro.props;
+const sections = docsNav[lang];
+const labels = docsLabels[lang];
+---
+<!doctype html>
+<html lang={lang === "zh" ? "zh-CN" : "en"}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content={description} />
+    <meta property="og:title" content={`${title} — ${labels.docsTitle}`} />
+    <meta property="og:description" content={description} />
+    <meta property="og:type" content="article" />
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <title>{title} — {labels.docsTitle}</title>
+  </head>
+  <body>
+    <Header lang={lang} />
+    <div class="docs-layout">
+      <aside class="docs-sidebar">
+        <nav>
+          {sections.map((section) => (
+            <div class="docs-nav-section">
+              <h4>{section.title}</h4>
+              <ul>
+                {section.pages.map((page) => {
+                  const url = docUrl(lang, page.slug);
+                  const isActive = page.slug === slug;
+                  return (
+                    <li>
+                      <a href={url} class={isActive ? "active" : ""}>{page.title}</a>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ))}
+        </nav>
+      </aside>
+      <main class="docs-main">
+        <article class="docs-article">
+          <slot />
+        </article>
+      </main>
+    </div>
+    <Footer lang={lang} />
+
+    <style>
+      .docs-layout {
+        display: grid;
+        grid-template-columns: 260px 1fr;
+        gap: 56px;
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 64px 24px 96px;
+      }
+      .docs-sidebar {
+        position: sticky;
+        top: 96px;
+        align-self: start;
+        max-height: calc(100vh - 120px);
+        overflow-y: auto;
+        padding-right: 12px;
+      }
+      .docs-sidebar::-webkit-scrollbar {
+        width: 6px;
+      }
+      .docs-sidebar::-webkit-scrollbar-thumb {
+        background: var(--ring-warm);
+        border-radius: 3px;
+      }
+      .docs-nav-section {
+        margin-bottom: 28px;
+      }
+      .docs-nav-section h4 {
+        font-family: var(--font-sans);
+        font-size: 0.75rem;
+        font-weight: 500;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--text-tertiary);
+        margin-bottom: 12px;
+      }
+      .docs-nav-section ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .docs-nav-section li {
+        margin-bottom: 4px;
+      }
+      .docs-nav-section a {
+        display: block;
+        padding: 6px 12px;
+        font-size: 0.94rem;
+        color: var(--text-secondary);
+        border-radius: var(--r-sm);
+        transition: background 0.15s ease, color 0.15s ease;
+      }
+      .docs-nav-section a:hover {
+        color: var(--text-primary);
+        background: var(--warm-sand);
+      }
+      .docs-nav-section a.active {
+        color: var(--brand);
+        background: var(--ivory);
+        box-shadow: 0 0 0 1px var(--border-warm);
+        font-weight: 500;
+      }
+
+      .docs-main { min-width: 0; }
+      .docs-article {
+        max-width: 760px;
+      }
+      .docs-article :global(h1) {
+        font-size: 2.6rem;
+        line-height: 1.10;
+        margin-bottom: 12px;
+      }
+      .docs-article :global(h2) {
+        font-size: 1.8rem;
+        line-height: 1.20;
+        margin-top: 56px;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border-cream);
+      }
+      .docs-article :global(h3) {
+        font-size: 1.3rem;
+        line-height: 1.20;
+        margin-top: 36px;
+        margin-bottom: 12px;
+      }
+      .docs-article :global(p) {
+        font-size: 1.06rem;
+        line-height: 1.65;
+        color: var(--text-dark-warm);
+        margin: 0 0 16px;
+      }
+      .docs-article :global(ul),
+      .docs-article :global(ol) {
+        font-size: 1.06rem;
+        line-height: 1.7;
+        color: var(--text-dark-warm);
+        padding-left: 28px;
+        margin: 0 0 20px;
+      }
+      .docs-article :global(li) {
+        margin-bottom: 8px;
+      }
+      .docs-article :global(li::marker) {
+        color: var(--text-tertiary);
+      }
+      .docs-article :global(code) {
+        font-family: var(--font-mono);
+        font-size: 0.9em;
+        background: var(--warm-sand);
+        padding: 2px 6px;
+        border-radius: var(--r-xs);
+        color: var(--text-primary);
+      }
+      .docs-article :global(pre) {
+        background: var(--deep-dark);
+        color: var(--text-on-dark);
+        padding: 20px 24px;
+        border-radius: var(--r-md);
+        overflow-x: auto;
+        margin: 0 0 24px;
+        font-size: 0.9rem;
+        line-height: 1.6;
+        box-shadow: 0 0 0 1px var(--border-warm);
+      }
+      .docs-article :global(pre code) {
+        background: transparent;
+        padding: 0;
+        color: inherit;
+        font-size: inherit;
+      }
+      .docs-article :global(.lead) {
+        font-size: 1.2rem;
+        line-height: 1.6;
+        color: var(--text-secondary);
+        margin-bottom: 32px;
+      }
+      .docs-article :global(.callout) {
+        background: var(--ivory);
+        border-radius: var(--r-md);
+        box-shadow: 0 0 0 1px var(--border-warm);
+        padding: 16px 20px;
+        margin: 0 0 24px;
+        font-size: 0.98rem;
+        color: var(--text-dark-warm);
+      }
+      .docs-article :global(.callout strong) {
+        color: var(--brand);
+      }
+      .docs-article :global(a) {
+        color: var(--brand);
+        text-decoration: underline;
+        text-underline-offset: 3px;
+        text-decoration-thickness: 1px;
+      }
+      .docs-article :global(a:hover) {
+        color: var(--brand-coral);
+      }
+
+      @media (max-width: 991px) {
+        .docs-layout {
+          grid-template-columns: 1fr;
+          gap: 32px;
+        }
+        .docs-sidebar {
+          position: static;
+          max-height: none;
+        }
+      }
+    </style>
+  </body>
+</html>

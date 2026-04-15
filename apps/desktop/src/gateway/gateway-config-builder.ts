@@ -1,7 +1,16 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { LLMProvider } from "@rivonclaw/core";
-import { resolveModelConfig, LOCAL_PROVIDER_IDS, getProviderMeta, getOllamaOpenAiBaseUrl } from "@rivonclaw/core";
+import {
+  resolveModelConfig,
+  LOCAL_PROVIDER_IDS,
+  getProviderMeta,
+  getOllamaOpenAiBaseUrl,
+  ACCESS_MODE_KEY,
+  DEFAULT_ACCESS_MODE,
+  CLOUD_API_URL_KEY,
+  DEFAULT_CLOUD_API_URL,
+} from "@rivonclaw/core";
 import { resolveUserSkillsDir } from "@rivonclaw/core/node";
 import { buildExtraProviderConfigs, writeGatewayConfig } from "@rivonclaw/gateway";
 import type { Storage } from "@rivonclaw/storage";
@@ -67,6 +76,57 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
     return overrides;
   }
 
+  /**
+   * When access_mode is "credits", inject an openrouter provider override that
+   * routes all OpenRouter traffic through our cloud-api proxy. The cloud-api
+   * authenticates the user (via the JWT stored as "openrouter-api-key" in
+   * secretStore), checks daily/monthly quota, deducts credits, and forwards
+   * the request to OpenRouter using the master API key on the server side.
+   *
+   * The OpenAI-completions handler in OpenClaw appends "/chat/completions"
+   * to baseUrl, producing:
+   *   POST ${cloudApiUrl}/api/proxy/openrouter/chat/completions
+   * which matches the route registered in apps/cloud-api/src/routes/proxy.ts.
+   *
+   * The model list mirrors the FREE_MODELS list in
+   * apps/cloud-api/src/config/free-models.ts. Keep them in sync when adding
+   * or removing free-tier models on the cloud side.
+   */
+  function buildCreditsProviderOverride(): Record<string, { baseUrl: string; api: string; models: Array<{ id: string; name: string; input?: Array<"text" | "image"> }> }> {
+    const accessMode = storage.settings.get(ACCESS_MODE_KEY) ?? DEFAULT_ACCESS_MODE;
+    if (accessMode !== "credits") return {};
+
+    const cloudApiUrl = (storage.settings.get(CLOUD_API_URL_KEY) ?? DEFAULT_CLOUD_API_URL).replace(/\/+$/, "");
+    const baseUrl = `${cloudApiUrl}/api/proxy/openrouter`;
+
+    // Free-tier models the cloud-api proxy will accept without a subscription.
+    // Mirrors FREE_MODELS in apps/cloud-api/src/config/free-models.ts.
+    const freeModels = [
+      "openrouter/free",
+      "qwen/qwen3-next-80b-a3b-instruct:free",
+      "nvidia/nemotron-3-super-120b-a12b:free",
+      "nvidia/nemotron-3-nano-30b-a3b:free",
+      "nvidia/nemotron-nano-9b-v2:free",
+      "minimax/minimax-m2.5:free",
+      "stepfun/step-3.5-flash:free",
+      "arcee-ai/trinity-large-preview:free",
+      "arcee-ai/trinity-mini:free",
+      "liquid/lfm-2.5-1.2b-instruct:free",
+    ];
+
+    return {
+      openrouter: {
+        baseUrl,
+        api: "openai-completions",
+        models: freeModels.map((id) => ({
+          id,
+          name: id,
+          input: ["text"] as Array<"text" | "image">,
+        })),
+      },
+    };
+  }
+
   function buildCustomProviderOverrides(): Record<string, { baseUrl: string; api: string; models: Array<{ id: string; name: string; input?: Array<"text" | "image"> }> }> {
     const overrides: Record<string, { baseUrl: string; api: string; models: Array<{ id: string; name: string; input?: Array<"text" | "image"> }> }> = {};
     const allKeys = storage.providerKeys.getAll();
@@ -115,9 +175,20 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
 
   async function buildFullGatewayConfig(gatewayPort: number, overrides?: { toolAllowlist?: string[] }): Promise<Parameters<typeof writeGatewayConfig>[0]> {
     const activeKey = storage.providerKeys.getActive();
-    const curProvider = activeKey?.provider as LLMProvider | undefined;
+    const accessMode = storage.settings.get(ACCESS_MODE_KEY) ?? DEFAULT_ACCESS_MODE;
+
+    // In credits mode, when the user has no provider key configured, fall back
+    // to the openrouter override that buildCreditsProviderOverride() injects.
+    // This way users in credits mode get a working default model out of the box
+    // — no need to manually add a key.
+    let curProvider = activeKey?.provider as LLMProvider | undefined;
+    let curModelId = activeKey?.model;
+    if (!curProvider && accessMode === "credits") {
+      curProvider = "openrouter" as LLMProvider;
+      curModelId = "openrouter/free";
+    }
+
     const curRegion = storage.settings.get("region") ?? (locale === "zh" ? "cn" : "us");
-    const curModelId = activeKey?.model;
     const curModel = resolveModelConfig({
       region: curRegion,
       userProvider: curProvider,
@@ -212,7 +283,11 @@ export function createGatewayConfigBuilder(deps: GatewayConfigDeps) {
         provider: curEmbeddingProvider,
         apiKeyEnvVar: embKeyExists ? EMB_ENV_MAP[curEmbeddingProvider] : undefined,
       },
-      extraProviders: { ...buildExtraProviderConfigs(), ...buildCustomProviderOverrides() },
+      extraProviders: {
+        ...buildExtraProviderConfigs(),
+        ...buildCustomProviderOverrides(),
+        ...buildCreditsProviderOverride(),
+      },
       localProviderOverrides: buildLocalProviderOverrides(),
       browserMode: curBrowserMode,
       browserCdpPort: curBrowserCdpPort,

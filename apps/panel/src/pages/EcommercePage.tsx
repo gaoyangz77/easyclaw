@@ -202,9 +202,8 @@ export const EcommercePage = observer(function EcommercePage() {
         const options: Array<{ value: string; label: string }> = [];
         for (const [channelId, accounts] of Object.entries(snapshot.channelAccounts)) {
           const knownChannel = KNOWN_CHANNELS.find((c) => c.id === channelId);
-          const channelLabel = knownChannel
-            ? t(knownChannel.labelKey)
-            : snapshot.channelLabels[channelId] || channelId;
+          if (!knownChannel) continue;
+          const channelLabel = t(knownChannel.labelKey);
 
           for (const account of accounts) {
             // Only skip accounts that are explicitly disabled (null/undefined = plugin channels)

@@ -1,0 +1,273 @@
+/* DlxAI marketing site — strict Anthropic Claude design system per DESIGN.md */
+
+:root {
+  /* ── Surfaces ─────────────────────────────────────────────────────────── */
+  --parchment: #f5f4ed;        /* page background — warm cream, the personality */
+  --ivory:     #faf9f5;        /* cards / elevated containers on parchment */
+  --white:     #ffffff;        /* button surfaces, max-contrast only */
+  --warm-sand: #e8e6dc;        /* secondary button bg, prominent surfaces */
+  --dark-surface: #30302e;     /* dark containers, nav borders */
+  --deep-dark: #141413;        /* dark page bg, primary dark surface */
+
+  /* ── Text ─────────────────────────────────────────────────────────────── */
+  --text-primary:   #141413;   /* Anthropic Near Black */
+  --text-charcoal:  #4d4c48;   /* Charcoal Warm — buttons on warm */
+  --text-dark-warm: #3d3d3a;   /* emphasized secondary */
+  --text-secondary: #5e5d59;   /* Olive Gray — body secondary */
+  --text-tertiary:  #87867f;   /* Stone Gray — meta */
+  --text-on-dark:   #b0aea5;   /* Warm Silver — text on dark */
+  --text-ivory:     #faf9f5;   /* on dark surfaces */
+
+  /* ── Brand accents ────────────────────────────────────────────────────── */
+  --brand:        #c96442;     /* Terracotta — primary CTA only */
+  --brand-coral:  #d97757;     /* Coral Accent — text accents */
+  --error:        #b53333;
+  --focus:        #3898ec;     /* the only cool color, focus rings */
+
+  /* ── Borders ──────────────────────────────────────────────────────────── */
+  --border-cream: #f0eee6;     /* standard light border */
+  --border-warm:  #e8e6dc;     /* prominent borders, dividers */
+  --border-dark:  #30302e;     /* on dark */
+
+  /* ── Ring shadow colors ───────────────────────────────────────────────── */
+  --ring-warm:   #d1cfc5;
+  --ring-subtle: #dedcd1;
+  --ring-deep:   #c2c0b6;
+
+  /* ── Type ─────────────────────────────────────────────────────────────── */
+  --font-serif: "Anthropic Serif", "Iowan Old Style", "Apple Garamond", "Baskerville",
+                "Times New Roman", "Droid Serif", Times, "Source Han Serif", serif;
+  --font-sans:  "Anthropic Sans", -apple-system, BlinkMacSystemFont, "Inter",
+                "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+                "Helvetica Neue", Arial, sans-serif;
+  --font-mono:  "Anthropic Mono", "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+
+  /* ── Radii ────────────────────────────────────────────────────────────── */
+  --r-xs: 4px;
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+  --r-xl: 24px;
+  --r-2xl: 32px;
+  --r-pill: 999px;
+
+  /* ── Shadow primitives (warm-toned ring system) ───────────────────────── */
+  --ring-1:        0 0 0 1px var(--border-cream);
+  --ring-warm-1:   0 0 0 1px var(--ring-warm);
+  --ring-deep-1:   0 0 0 1px var(--ring-deep);
+  --whisper:       rgba(0, 0, 0, 0.05) 0 4px 24px;
+  --whisper-strong:rgba(0, 0, 0, 0.07) 0 8px 32px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--parchment);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Type ──────────────────────────────────────────────────────────────── */
+
+h1, h2, h3, h4 {
+  font-family: var(--font-serif);
+  font-weight: 500;            /* DESIGN.md: single weight 500, never bold */
+  color: var(--text-primary);
+  letter-spacing: normal;
+  margin: 0;
+}
+
+h1 { font-size: clamp(2.25rem, 5.5vw, 4rem);   line-height: 1.10; }  /* 64px hero */
+h2 { font-size: clamp(1.75rem, 4vw, 3.25rem);  line-height: 1.20; }  /* 52px section */
+h3 { font-size: clamp(1.3rem, 1.8vw, 1.6rem);  line-height: 1.20; }  /* ~25px sub */
+h4 { font-size: 1.06rem;                       line-height: 1.20; }
+
+p {
+  margin: 0 0 1em;
+  color: var(--text-secondary);
+  line-height: 1.60;
+}
+
+a {
+  color: var(--brand);
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+a:hover { color: var(--brand-coral); }
+
+img { max-width: 100%; height: auto; display: block; }
+
+/* ── Layout ────────────────────────────────────────────────────────────── */
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.section {
+  padding: 120px 0;            /* DESIGN.md: 80–120px between sections */
+}
+.section-tight { padding: 80px 0; }
+
+.section-header {
+  text-align: center;
+  max-width: 760px;
+  margin: 0 auto 80px;
+}
+.section-header h2 { margin-bottom: 20px; }
+.section-header p {
+  font-size: 1.25rem;
+  line-height: 1.60;
+  color: var(--text-secondary);
+}
+
+/* ── Dark section variant (chapter alternation) ───────────────────────── */
+.section-dark {
+  background: var(--deep-dark);
+  color: var(--text-on-dark);
+}
+.section-dark h1,
+.section-dark h2,
+.section-dark h3,
+.section-dark h4 { color: var(--text-ivory); }
+.section-dark p { color: var(--text-on-dark); }
+.section-dark .section-header p { color: var(--text-on-dark); }
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: var(--r-md);
+  font-family: var(--font-sans);
+  font-weight: 500;
+  font-size: 1rem;
+  line-height: 1.25;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: box-shadow 0.18s ease, transform 0.18s ease, background 0.18s ease, color 0.18s ease;
+  text-decoration: none;
+}
+
+/* Primary — Terracotta brand, the only chromatic button */
+.btn-primary {
+  background: var(--brand);
+  color: var(--text-ivory);
+  box-shadow: 0 0 0 0 var(--brand), 0 0 0 1px var(--brand);
+}
+.btn-primary:hover {
+  background: var(--brand-coral);
+  color: var(--text-ivory);
+  box-shadow: 0 0 0 0 var(--brand-coral), 0 0 0 1px var(--brand-coral),
+              rgba(201, 100, 66, 0.18) 0 8px 24px;
+}
+
+/* Secondary — Warm Sand workhorse */
+.btn-secondary {
+  background: var(--warm-sand);
+  color: var(--text-charcoal);
+  box-shadow: 0 0 0 0 var(--warm-sand), 0 0 0 1px var(--ring-warm);
+}
+.btn-secondary:hover {
+  background: var(--ivory);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 0 var(--ivory), 0 0 0 1px var(--ring-deep);
+}
+
+/* On-dark white surface button */
+.btn-white {
+  background: var(--white);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 0 var(--white), 0 0 0 1px var(--white);
+}
+.btn-white:hover {
+  background: var(--warm-sand);
+  color: var(--text-primary);
+}
+
+/* Dark inverted */
+.btn-dark {
+  background: var(--dark-surface);
+  color: var(--text-ivory);
+  box-shadow: 0 0 0 0 var(--dark-surface), 0 0 0 1px var(--dark-surface);
+}
+.btn-dark:hover {
+  background: var(--deep-dark);
+  color: var(--text-ivory);
+}
+
+.btn-sm {
+  padding: 7px 14px;
+  font-size: 0.94rem;
+}
+
+/* ── Cards ────────────────────────────────────────────────────────────── */
+
+.card {
+  background: var(--ivory);
+  border: 1px solid var(--border-cream);
+  border-radius: var(--r-lg);
+  padding: 32px;
+  box-shadow: var(--whisper);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+.card:hover {
+  border-color: var(--border-warm);
+  box-shadow: var(--whisper-strong), 0 0 0 1px var(--ring-warm);
+  transform: translateY(-2px);
+}
+
+/* Card on dark surface */
+.section-dark .card {
+  background: var(--dark-surface);
+  border-color: var(--border-dark);
+  box-shadow: 0 0 0 1px var(--border-dark);
+}
+.section-dark .card:hover {
+  border-color: var(--text-on-dark);
+  box-shadow: 0 0 0 1px var(--text-on-dark);
+}
+
+/* ── Grid utilities ───────────────────────────────────────────────────── */
+
+.grid { display: grid; gap: 24px; }
+.grid-3 { grid-template-columns: repeat(3, 1fr); }
+.grid-2 { grid-template-columns: repeat(2, 1fr); }
+
+/* ── Eyebrow / overline label ─────────────────────────────────────────── */
+
+.eyebrow {
+  display: inline-block;
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--brand);
+  margin-bottom: 24px;
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────── */
+
+@media (max-width: 991px) {
+  .grid-3 { grid-template-columns: repeat(2, 1fr); }
+  .section { padding: 96px 0; }
+}
+
+@media (max-width: 767px) {
+  .grid-3, .grid-2 { grid-template-columns: 1fr; }
+  .section { padding: 72px 0; }
+  .section-header { margin-bottom: 56px; }
+  .section-header p { font-size: 1.06rem; }
+  h1 { font-size: 2.25rem; }
+  h2 { font-size: 1.75rem; }
+}

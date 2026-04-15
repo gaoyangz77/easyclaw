@@ -1,0 +1,107 @@
+---
+import { t, type Lang } from "../i18n/strings.ts";
+interface Props { lang: Lang; }
+const { lang } = Astro.props;
+const c = t(lang).footer;
+---
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="brand">
+          <img src="/logo.png" alt="DlxAI" class="brand-logo" />
+          <span class="brand-name">DlxAI</span>
+        </div>
+        <p class="footer-tagline">{c.tagline}</p>
+      </div>
+      {c.sections.map((section) => (
+        <div class="footer-col">
+          <h4>{section.title}</h4>
+          <ul>
+            {section.links.map((link) => (
+              <li><a href={link.href}>{link.label}</a></li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+    <div class="footer-bottom">
+      <span>{c.copyright}</span>
+    </div>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    background: var(--parchment);
+    border-top: 1px solid var(--border-warm);
+    padding: 80px 0 40px;
+  }
+  .footer-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 56px;
+    margin-bottom: 56px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-primary);
+    font-family: var(--font-serif);
+    font-weight: 500;
+    font-size: 1.2rem;
+    margin-bottom: 16px;
+  }
+  .brand-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-sm);
+  }
+  .footer-tagline {
+    color: var(--text-tertiary);
+    font-size: 0.94rem;
+    max-width: 320px;
+    margin: 0;
+  }
+  .footer-col h4 {
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-tertiary);
+    margin-bottom: 16px;
+    font-weight: 500;
+  }
+  .footer-col ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .footer-col li {
+    padding: 6px 0;
+  }
+  .footer-col a {
+    color: var(--text-secondary);
+    font-size: 0.94rem;
+  }
+  .footer-col a:hover {
+    color: var(--text-primary);
+  }
+  .footer-bottom {
+    border-top: 1px solid var(--border-cream);
+    padding-top: 24px;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 0.88rem;
+  }
+  @media (max-width: 991px) {
+    .footer-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+    }
+  }
+  @media (max-width: 479px) {
+    .footer-grid { grid-template-columns: 1fr; }
+  }
+</style>

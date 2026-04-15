@@ -14,4 +14,4 @@ export const CREDITS_TOKEN_KEY = "credits_token" as const;
 export const CLOUD_API_URL_KEY = "cloud_api_url" as const;
 
 /** Default cloud-api URL — can be overridden via the settings key. */
-export const DEFAULT_CLOUD_API_URL = "https://api.rivonclaw.com" as const;
+export const DEFAULT_CLOUD_API_URL = "http://localhost:3100" as const;

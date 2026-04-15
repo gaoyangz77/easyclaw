@@ -22,20 +22,18 @@ export interface KeyModelSelectorProps {
   keys: KeyModelKey[];
   /** Full model catalog keyed by provider slug */
   catalog: Record<string, CatalogModel[]>;
-  /** Currently selected provider slug (empty string = global default) */
+  /** Currently selected provider slug */
   selectedProvider: string;
-  /** Currently selected model ID (empty string = global default) */
+  /** Currently selected model ID */
   selectedModel: string;
-  /** Callback when user selects a provider + model. Empty strings = follow global default. */
+  /** Callback when user selects a provider + model. */
   onChange: (provider: string, model: string) => void;
   /** Whether the selector is disabled */
   disabled?: boolean;
   /** Visual variant: "compact" for status bars (default), "form" for form layouts */
   variant?: "compact" | "form";
-  /** Show a "Follow global default" option at the top. */
-  allowDefault?: boolean;
-  /** Whether "Follow global default" is the active state (even if selectedProvider/Model have values for display). */
-  isFollowingDefault?: boolean;
+  /** When true, trigger shows "默认模型" when the selected provider is "openrouter". */
+  creditsMode?: boolean;
 }
 
 /**
@@ -50,8 +48,7 @@ export function KeyModelSelector({
   onChange,
   disabled,
   variant = "compact",
-  allowDefault,
-  isFollowingDefault,
+  creditsMode,
 }: KeyModelSelectorProps) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
@@ -170,19 +167,13 @@ export function KeyModelSelector({
   }, [open]);
 
   // Resolve display label for the trigger
-  // Whether the user has explicitly locked a model (vs following global default).
-  // Controls dropdown highlight only — trigger always shows the concrete model.
-  const hasExplicitSelection = isFollowingDefault === true ? false
-    : isFollowingDefault === false ? true
-    : !!(selectedProvider && selectedModel);
-
-  // Trigger always shows the concrete provider/model for clarity
-  const hasDisplayValues = !!(selectedProvider && selectedModel);
-  const providerLabel = hasDisplayValues
+  const hasSelection = !!(selectedProvider && selectedModel);
+  const isCreditsDefault = creditsMode && selectedProvider === "openrouter";
+  const providerLabel = hasSelection
     ? t(`providers.label_${selectedProvider}`, { defaultValue: selectedProvider })
     : "";
-  const modelEntry = hasDisplayValues ? catalog[selectedProvider]?.find((m) => m.id === selectedModel) : undefined;
-  const modelLabel = hasDisplayValues ? (modelEntry?.name ?? selectedModel) : t("chat.globalDefault", { defaultValue: "Global default" });
+  const modelEntry = hasSelection ? catalog[selectedProvider]?.find((m) => m.id === selectedModel) : undefined;
+  const modelLabel = hasSelection ? (modelEntry?.name ?? selectedModel) : "";
 
   function handleSelectModel(provider: string, modelId: string) {
     onChange(provider, modelId);
@@ -198,7 +189,6 @@ export function KeyModelSelector({
         onClick={() => {
           if (disabled) return;
           if (!open) {
-            // Compute position synchronously BEFORE opening to avoid two-phase render flash
             setDropdownStyle(computePosition());
             openedAtRef.current = Date.now();
           }
@@ -207,13 +197,15 @@ export function KeyModelSelector({
         disabled={disabled}
       >
         <span className="key-model-selector-label">
-          {hasDisplayValues ? (
+          {isCreditsDefault ? (
+            t("chat.creditsDefault", { defaultValue: "默认模型" })
+          ) : hasSelection ? (
             <>
               {providerLabel}
               <span className="key-model-selector-sep">/</span>
               {modelLabel}
             </>
-          ) : modelLabel}
+          ) : t("chat.creditsDefault", { defaultValue: "默认模型" })}
         </span>
         <span className="key-model-selector-chevron">{open ? "\u25B2" : "\u25BC"}</span>
       </button>
@@ -237,17 +229,6 @@ export function KeyModelSelector({
             />
           </div>
 
-          {/* "Follow global default" option — clears the override */}
-          {allowDefault && (
-            <button
-              type="button"
-              className={`key-model-selector-default-option${!hasExplicitSelection ? " key-model-selector-default-option-active" : ""}`}
-              onClick={() => { onChange("", ""); setOpen(false); }}
-            >
-              {t("chat.followGlobalDefault", { defaultValue: "Follow global default" })}
-            </button>
-          )}
-
           <div className="key-model-selector-columns">
             {/* Left column: provider keys */}
             <div className="key-model-selector-keys">
@@ -255,18 +236,13 @@ export function KeyModelSelector({
                 <button
                   type="button"
                   key={key.id}
-                  className={`key-model-selector-key${key.provider === activeProvider && (hoveredProvider !== null || hasExplicitSelection) ? " key-model-selector-key-active" : ""}`}
+                  className={`key-model-selector-key${key.provider === activeProvider && (hoveredProvider !== null || hasSelection) ? " key-model-selector-key-active" : ""}`}
                   onMouseEnter={() => setHoveredProvider(key.provider)}
                   onClick={() => setHoveredProvider(key.provider)}
                 >
                   <span className="key-model-selector-key-label">
                     {key.label || t(`providers.label_${key.provider}`, { defaultValue: key.provider })}
                   </span>
-                  {key.isDefault && (
-                    <span className="key-model-selector-key-badge">
-                      {t("chat.defaultBadge", { defaultValue: "default" })}
-                    </span>
-                  )}
                 </button>
               ))}
               {sortedKeys.length === 0 && (
@@ -282,7 +258,7 @@ export function KeyModelSelector({
                 <button
                   type="button"
                   key={m.id}
-                  className={`key-model-selector-model${hasExplicitSelection && m.id === selectedModel && activeProvider === selectedProvider ? " key-model-selector-model-active" : ""}`}
+                  className={`key-model-selector-model${m.id === selectedModel && activeProvider === selectedProvider ? " key-model-selector-model-active" : ""}`}
                   onClick={() => handleSelectModel(activeProvider, m.id)}
                 >
                   <span className="key-model-selector-model-name">{m.name}</span>

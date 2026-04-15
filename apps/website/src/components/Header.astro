@@ -1,0 +1,90 @@
+---
+import { t, localizedUrl, type Lang } from "../i18n/strings.ts";
+interface Props { lang: Lang; }
+const { lang } = Astro.props;
+const c = t(lang);
+const otherLang: Lang = lang === "zh" ? "en" : "zh";
+---
+<header class="site-header">
+  <div class="container header-inner">
+    <a href={localizedUrl(lang, "/")} class="brand">
+      <img src="/logo.png" alt="DlxAI" class="brand-logo" />
+      <span class="brand-name">DlxAI</span>
+    </a>
+    <nav class="site-nav">
+      <a href="#features">{c.nav.features}</a>
+      <a href="#use-cases">{c.nav.useCases}</a>
+      <a href="#pricing">{c.nav.pricing}</a>
+      <a href={localizedUrl(lang, "/docs/")}>{c.nav.docs}</a>
+      <a href="https://github.com/nicepkg/dlxai" target="_blank" rel="noopener">{c.nav.github}</a>
+    </nav>
+    <div class="header-actions">
+      <a href={localizedUrl(otherLang, "/")} class="lang-switch">{c.nav.langSwitch}</a>
+      <a href="#download" class="btn btn-primary btn-sm">{c.nav.download}</a>
+    </div>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: rgba(245, 244, 237, 0.85);
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+    border-bottom: 1px solid var(--border-cream);
+  }
+  .header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 72px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--text-primary);
+    font-family: var(--font-serif);
+    font-weight: 500;
+    font-size: 1.2rem;
+  }
+  .brand-logo {
+    width: 32px;
+    height: 32px;
+    border-radius: var(--r-sm);
+  }
+  .site-nav {
+    display: flex;
+    gap: 32px;
+    font-size: 1.06rem;
+  }
+  .site-nav a {
+    color: var(--text-dark-warm);
+    font-weight: 400;
+  }
+  .site-nav a:hover {
+    color: var(--text-primary);
+  }
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  .lang-switch {
+    color: var(--text-secondary);
+    font-weight: 500;
+    font-size: 0.88rem;
+    padding: 6px 14px;
+    border-radius: var(--r-pill);
+    box-shadow: 0 0 0 1px var(--ring-warm);
+  }
+  .lang-switch:hover {
+    color: var(--text-primary);
+    box-shadow: 0 0 0 1px var(--ring-deep);
+  }
+  @media (max-width: 991px) {
+    .site-nav { display: none; }
+  }
+</style>

@@ -17,6 +17,8 @@ export interface GatewayConfigHandlerDeps {
   buildFullProxyEnv: () => Record<string, string>;
   sttManager: { initialize: () => Promise<void> };
   syncAllAuthProfiles: (stateDir: string, storage: Storage, secretStore: SecretStore) => Promise<void>;
+  /** Re-sync the credits openrouter token after syncAllAuthProfiles overwrites the store. */
+  syncCreditsAuthProfile?: () => void;
   writeProxyRouterConfig: (storage: Storage, secretStore: SecretStore, lastSystemProxy: string | null) => Promise<void>;
   getLastSystemProxy: () => string | null;
 }
@@ -33,6 +35,7 @@ export function createGatewayConfigHandlers(deps: GatewayConfigHandlerDeps) {
     buildFullProxyEnv,
     sttManager,
     syncAllAuthProfiles,
+    syncCreditsAuthProfile,
     writeProxyRouterConfig,
     getLastSystemProxy,
   } = deps;
@@ -116,7 +119,11 @@ export function createGatewayConfigHandlers(deps: GatewayConfigHandlerDeps) {
 
     // Always sync auth profiles and proxy router config so OpenClaw has current state on disk
     await Promise.all([
-      syncAllAuthProfiles(stateDir, storage, secretStore),
+      syncAllAuthProfiles(stateDir, storage, secretStore).then(() => {
+        // Re-sync credits JWT — syncAllAuthProfiles overwrites the entire store
+        // and doesn't know about the credits openrouter token.
+        syncCreditsAuthProfile?.();
+      }),
       writeProxyRouterConfig(storage, secretStore, getLastSystemProxy()),
     ]);
 

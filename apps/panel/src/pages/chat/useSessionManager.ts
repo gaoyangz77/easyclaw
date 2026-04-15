@@ -22,9 +22,17 @@ const HIDDEN_SESSION_KEY_PATTERNS: string[] = [
   ":cs:",                      // Customer Service sessions (e.g. agent:main:cs:tiktok:{id})
 ];
 
+/** Channels whose sessions should not appear as chat tabs (removed from product). */
+const HIDDEN_SESSION_CHANNELS: Set<string> = new Set(["googlechat", "msteams"]);
+
 /** Returns true if the session key belongs to a hidden subsystem. */
 function isHiddenSession(key: string): boolean {
   return HIDDEN_SESSION_KEY_PATTERNS.some((pattern) => key.includes(pattern));
+}
+
+/** Returns true if the session belongs to a hidden channel. */
+function isHiddenChannelSession(channel: string | null | undefined): boolean {
+  return !!channel && HIDDEN_SESSION_CHANNELS.has(channel.toLowerCase());
 }
 
 /** Load custom tab order from localStorage. */
@@ -145,7 +153,11 @@ export function useSessionManager(opts: UseSessionManagerOptions): UseSessionMan
       // Filter out subagent sessions, archived sessions, and internal
       // API-created sessions (rule compilation, etc. via /v1/chat/completions).
       const filtered = result.sessions.filter(
-        (s) => !s.spawnedBy && !archived.has(s.key) && !isHiddenSession(s.key),
+        (s) =>
+          !s.spawnedBy &&
+          !archived.has(s.key) &&
+          !isHiddenSession(s.key) &&
+          !isHiddenChannelSession(s.channel ?? s.lastChannel),
       );
 
       const tabs: SessionTabInfo[] = filtered.map((s) => {

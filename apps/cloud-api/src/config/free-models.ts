@@ -4,14 +4,18 @@
  * Add/remove entries here to control free-tier access — no code changes elsewhere needed.
  */
 export const FREE_MODELS: readonly string[] = [
-  "google/gemini-flash-1.5",
-  "google/gemini-2.0-flash-exp:free",
-  "meta-llama/llama-3.1-8b-instruct:free",
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "mistralai/mistral-7b-instruct:free",
-  "microsoft/phi-3-mini-128k-instruct:free",
-  "deepseek/deepseek-r1:free",
-  "deepseek/deepseek-chat:free",
+  // OpenRouter "free" auto-router — picks any available free model behind the scenes
+  "openrouter/free",
+  // Currently live free models on OpenRouter (verify periodically — providers churn)
+  "qwen/qwen3-next-80b-a3b-instruct:free",
+  "nvidia/nemotron-3-super-120b-a12b:free",
+  "nvidia/nemotron-3-nano-30b-a3b:free",
+  "nvidia/nemotron-nano-9b-v2:free",
+  "minimax/minimax-m2.5:free",
+  "stepfun/step-3.5-flash:free",
+  "arcee-ai/trinity-large-preview:free",
+  "arcee-ai/trinity-mini:free",
+  "liquid/lfm-2.5-1.2b-instruct:free",
 ];
 
 /** Returns true if the given model ID is available on the free tier. */

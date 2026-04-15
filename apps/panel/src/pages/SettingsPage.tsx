@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { fetchTelemetrySetting, updateTelemetrySetting, trackEvent, fetchAgentSettings, updateAgentSettings, fetchChatShowAgentEvents, updateChatShowAgentEvents, fetchChatPreserveToolEvents, updateChatPreserveToolEvents, fetchChatCollapseMessages, updateChatCollapseMessages, fetchBrowserMode, updateBrowserMode, fetchAutoLaunchSetting, updateAutoLaunchSetting, fetchOpenClawStateDir, updateOpenClawStateDir, resetOpenClawStateDir, fetchPrivacyMode, updatePrivacyMode, fetchSessionStateCdpEnabled, updateSessionStateCdpEnabled, provisionDeps, openFileDialog } from "../api/index.js";
+import { trackEvent, fetchAgentSettings, updateAgentSettings, fetchChatShowAgentEvents, updateChatShowAgentEvents, fetchChatPreserveToolEvents, updateChatPreserveToolEvents, fetchChatCollapseMessages, updateChatCollapseMessages, fetchBrowserMode, updateBrowserMode, fetchAutoLaunchSetting, updateAutoLaunchSetting, fetchOpenClawStateDir, updateOpenClawStateDir, resetOpenClawStateDir, fetchPrivacyMode, updatePrivacyMode, fetchSessionStateCdpEnabled, updateSessionStateCdpEnabled, provisionDeps, openFileDialog } from "../api/index.js";
 import { DEFAULTS } from "@rivonclaw/core";
 import type { OpenClawStateDirInfo } from "../api/index.js";
 import { Select } from "../components/inputs/Select.js";
@@ -36,7 +36,6 @@ function ToggleSwitch({ checked, onChange, disabled }: { checked: boolean; onCha
 
 export function SettingsPage() {
   const { t } = useTranslation();
-  const [telemetryEnabled, setTelemetryEnabled] = useState(false);
   const [dmScope, setDmScope] = useState("main");
   const [showAgentEvents, setShowAgentEvents] = useState(DEFAULTS.settings.showAgentEvents);
   const [preserveToolEvents, setPreserveToolEvents] = useState(DEFAULTS.settings.preserveToolEvents);
@@ -133,8 +132,7 @@ export function SettingsPage() {
   async function loadSettings() {
     try {
       setLoading(true);
-      const [enabled, agentSettings, chatEvents, toolEvents, collapse, curBrowserMode, cdpSessionState, autoLaunch, dirInfo, privacy] = await Promise.all([
-        fetchTelemetrySetting(),
+      const [agentSettings, chatEvents, toolEvents, collapse, curBrowserMode, cdpSessionState, autoLaunch, dirInfo, privacy] = await Promise.all([
         fetchAgentSettings(),
         fetchChatShowAgentEvents(),
         fetchChatPreserveToolEvents(),
@@ -145,7 +143,6 @@ export function SettingsPage() {
         fetchOpenClawStateDir(),
         fetchPrivacyMode(),
       ]);
-      setTelemetryEnabled(enabled);
       setDmScope(agentSettings.dmScope);
       setShowAgentEvents(chatEvents);
       setPreserveToolEvents(toolEvents);
@@ -218,20 +215,6 @@ export function SettingsPage() {
     } catch (err) {
       showToast(t("settings.chat.failedToSave") + String(err), "error");
       setCollapseMessages(previous);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleToggleTelemetry(enabled: boolean) {
-    try {
-      setSaving(true);
-      await updateTelemetrySetting(enabled);
-      setTelemetryEnabled(enabled);
-      trackEvent("telemetry.toggled", { enabled });
-    } catch (err) {
-      showToast(t("settings.telemetry.failedToSave") + String(err), "error");
-      setTelemetryEnabled(!enabled);
     } finally {
       setSaving(false);
     }
@@ -611,41 +594,6 @@ export function SettingsPage() {
           )}
         </div>
       )}
-
-      {/* Telemetry & Privacy Section */}
-      <div className="section-card">
-        <h3>{t("settings.telemetry.title")}</h3>
-        <p className="text-secondary">
-          {t("settings.telemetry.description")}
-        </p>
-
-        <div className="settings-toggle-card">
-          <div className="settings-toggle-label">
-            <span>{t("settings.telemetry.toggle")}</span>
-            <ToggleSwitch checked={telemetryEnabled} onChange={handleToggleTelemetry} disabled={saving} />
-          </div>
-        </div>
-
-        <hr className="section-divider" />
-
-        <div className="telemetry-details">
-          <h4>{t("settings.telemetry.whatWeCollect")}</h4>
-          <ul className="settings-list">
-            <li>{t("settings.telemetry.collect.appLifecycle")}</li>
-            <li>{t("settings.telemetry.collect.featureUsage")}</li>
-            <li>{t("settings.telemetry.collect.errors")}</li>
-            <li>{t("settings.telemetry.collect.runtime")}</li>
-          </ul>
-
-          <h4>{t("settings.telemetry.whatWeDontCollect")}</h4>
-          <ul className="settings-list">
-            <li>{t("settings.telemetry.dontCollect.conversations")}</li>
-            <li>{t("settings.telemetry.dontCollect.apiKeys")}</li>
-            <li>{t("settings.telemetry.dontCollect.ruleText")}</li>
-            <li>{t("settings.telemetry.dontCollect.personalInfo")}</li>
-          </ul>
-        </div>
-      </div>
 
       {/* System Dependencies Section */}
       <div className="section-card">

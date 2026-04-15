@@ -5,6 +5,7 @@ import { authRoute } from "./routes/auth.js";
 import { creditsRoute } from "./routes/credits.js";
 import { proxyRoute } from "./routes/proxy.js";
 import { rechargeRoute } from "./routes/recharge.js";
+import { releasesRoute } from "./routes/releases.js";
 import { subscriptionRoute } from "./routes/subscription.js";
 
 const app = new Hono();
@@ -20,6 +21,7 @@ app.use("/api/subscription/*", authMiddleware);
 app.route("/api/credits", creditsRoute);
 app.route("/api/proxy", proxyRoute);
 app.route("/api/recharge", rechargeRoute);
+app.route("/api/releases", releasesRoute);
 app.route("/api/subscription", subscriptionRoute);
 
 app.get("/health", (c) => c.json({ ok: true }));

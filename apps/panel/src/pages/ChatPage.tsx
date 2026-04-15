@@ -45,6 +45,9 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
   } | null>(null);
   const [modelCatalog, setModelCatalog] = useState<Record<string, CatalogModelEntry[]>>({});
   const [hasProviderKeys, setHasProviderKeys] = useState(true);
+  // Track access mode so we can skip the "no provider key" pre-flight when the
+  // user is on credits mode — in that case the gateway routes via cloud-api.
+  const [accessMode, setAccessMode] = useState<string>("credits");
   const [thinkingLevel, setThinkingLevel] = useState("");
   const [allFetched, setAllFetched] = useState(false);
   const [renderTick, forceUpdate] = useReducer((x: number) => x + 1, 0);
@@ -68,10 +71,6 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
   const [showAgentEvents, setShowAgentEvents] = useState(true);
   const [preserveToolEvents, setPreserveToolEvents] = useState(false);
   const [collapseMessages, setCollapseMessages] = useState(true);
-  const [chatExamplesExpanded, setChatExamplesExpanded] = useState(() => localStorage.getItem("chat-examples-collapsed") !== "1");
-  const [customExamples, setCustomExamples] = useState<Record<string, string>>({});
-  const [editingExample, setEditingExample] = useState<string | null>(null);
-  const [editingExampleDraft, setEditingExampleDraft] = useState("");
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const clientRef = useRef<GatewayChatClient | null>(null);
   const bridgeRef = useRef<ChatEventBridge | null>(null);
@@ -703,7 +702,7 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
       if (!info) {
         setActiveModel(null);
         setModelCatalog({});
-        setHasProviderKeys(entityStore.providerKeys.length > 0);
+        setHasProviderKeys(entityStore.providerKeys.length > 0 || accessMode === "credits");
         return;
       }
       setHasProviderKeys(true);
@@ -762,13 +761,11 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
         setPreserveToolEvents(preserveEvents);
         setCollapseMessages(collapse);
 
-        // Load custom example prompts from settings
+        // Load custom example prompts from settings + access mode
         fetchSettings().then((s) => {
           if (cancelled) return;
-          try {
-            const raw = s["chat-example-prompts"];
-            if (raw) setCustomExamples(JSON.parse(raw));
-          } catch { /* ignore invalid JSON */ }
+          const mode = s["access_mode"];
+          if (mode) setAccessMode(mode);
         }).catch(() => {});
 
         const info = await fetchGatewayInfo();
@@ -980,8 +977,9 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
     const files = pendingImages;
     if ((!text && files.length === 0) || connectionState !== "connected" || !clientRef.current) return;
 
-    // Pre-flight: check if any provider key is configured (read from MST store)
-    if (entityStore.providerKeys.length === 0) {
+    // Pre-flight: check if any provider key is configured (read from MST store).
+    // Skip in credits mode — gateway routes via cloud-api proxy without a local key.
+    if (entityStore.providerKeys.length === 0 && accessMode !== "credits") {
       setMessages((prev) => [
         ...prev,
         { role: "user", text, timestamp: Date.now() },
@@ -1085,18 +1083,10 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
   }
 
   async function handleKeyModelChange(newProvider: string, newModel: string) {
-    if (!activeModel) return;
+    if (!activeModel || !newProvider || !newModel) return;
 
-    // "Follow global default" — reset session override, refresh to show global default
-    if (!newProvider && !newModel) {
-      setActiveModel((prev) => prev ? { ...prev, isOverridden: false } : null);
-      entityStore.llmManager.resetSessionModel(sessionKeyRef.current).catch(() => {});
-      refreshModel(sessionKeyRef.current);
-      return;
-    }
-
-    // Skip only if same model AND already explicitly locked (not just following default)
-    if (newProvider === activeModel.provider && newModel === activeModel.model && activeModel.isOverridden) return;
+    // Skip if already using this exact model
+    if (newProvider === activeModel.provider && newModel === activeModel.model) return;
 
     // Pre-flight: look up the new model's context window from catalog
     // Bug 1 fix: read currentTokens fresh from sessionManager.sessions to avoid
@@ -1376,68 +1366,38 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
         </button>
       )}
 
-      <div className="chat-examples">
-        <button
-          className="chat-examples-toggle"
-          onClick={() => {
-            const next = !chatExamplesExpanded;
-            setChatExamplesExpanded(next);
-            localStorage.setItem("chat-examples-collapsed", next ? "0" : "1");
-          }}
-        >
-          <svg className={`chat-examples-chevron ${chatExamplesExpanded ? "chat-examples-chevron-down" : ""}`} width="18" height="18" viewBox="0 0 16 16" fill="none"><path d="M4.5 10L8 6.5L11.5 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </button>
-        {chatExamplesExpanded && (
-          <>
-            <div className="chat-examples-title">{t("chat.examplesTitle")}</div>
-            <div className="chat-examples-grid">
-              {(["example1", "example2", "example3", "example4", "example5", "example6"] as const).map((key) => {
-                const text = customExamples[key] || t(`chat.${key}`);
-                return (
-                  <button
-                    key={key}
-                    className="chat-example-card"
-                    onClick={() => setDraft(text)}
-                  >
-                    {text}
-                    <span
-                      className="chat-example-edit"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingExample(key);
-                        setEditingExampleDraft(customExamples[key] || t(`chat.${key}`));
-                      }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
-                      </svg>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
-      </div>
 
       <div className="chat-status">
         <span className={`chat-status-dot chat-status-dot-${connectionState}`} />
-        <span>{agentName ? `${agentName} · ${t(statusKey)}` : t(statusKey)}</span>
+        <span>{t(statusKey)}</span>
         {connectionState === "connected" && activeModel && (
           <KeyModelSelector
-            keys={entityStore.providerKeys.map((k) => ({
-              id: k.id,
-              provider: k.provider,
-              label: k.label,
-              model: k.model,
-              isDefault: k.isDefault,
-            }))}
+            keys={(() => {
+              const userKeys = entityStore.providerKeys.map((k) => ({
+                id: k.id,
+                provider: k.provider,
+                label: k.label,
+                model: k.model,
+                isDefault: k.isDefault,
+              }));
+              // In credits mode, prepend the built-in openrouter provider so users
+              // can always switch back to the default free models.
+              if (accessMode === "credits" && !userKeys.some((k) => k.provider === "openrouter")) {
+                userKeys.unshift({
+                  id: "__credits_default__",
+                  provider: "openrouter",
+                  label: t("chat.creditsDefaultLabel", { defaultValue: "默认" }),
+                  model: "openrouter/free",
+                  isDefault: false,
+                });
+              }
+              return userKeys;
+            })()}
             catalog={modelCatalog}
             selectedProvider={activeModel.provider}
             selectedModel={activeModel.model}
             onChange={handleKeyModelChange}
-            allowDefault
-            isFollowingDefault={!activeModel.isOverridden}
+            creditsMode={accessMode === "credits"}
           />
         )}
         {connectionState === "connected" && (
@@ -1540,58 +1500,6 @@ export const ChatPage = observer(function ChatPage({ onAgentNameChange }: { onAg
                 onClick={() => setPendingModelSwitch(null)}
               >
                 {t("common.cancel")}
-              </button>
-            </div>
-          </>
-        )}
-      </Modal>
-      <Modal
-        isOpen={editingExample !== null}
-        onClose={() => setEditingExample(null)}
-        title={t("chat.editExample")}
-        maxWidth={480}
-      >
-        {editingExample && (
-          <>
-            <textarea
-              className="chat-example-edit-textarea"
-              value={editingExampleDraft}
-              onChange={(e) => setEditingExampleDraft(e.target.value)}
-              rows={3}
-              autoFocus
-            />
-            <div className="modal-actions">
-              {customExamples[editingExample] && (
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => {
-                    const next = { ...customExamples };
-                    delete next[editingExample!];
-                    setCustomExamples(next);
-                    const json = JSON.stringify(next);
-                    updateSettings({ "chat-example-prompts": Object.keys(next).length ? json : "" }).catch(() => {});
-                    setEditingExample(null);
-                  }}
-                >
-                  {t("chat.restoreDefault")}
-                </button>
-              )}
-              <button className="btn btn-secondary" onClick={() => setEditingExample(null)}>
-                {t("common.cancel")}
-              </button>
-              <button
-                className="btn btn-primary"
-                disabled={!editingExampleDraft.trim()}
-                onClick={() => {
-                  const trimmed = editingExampleDraft.trim();
-                  if (!trimmed) return;
-                  const next = { ...customExamples, [editingExample!]: trimmed };
-                  setCustomExamples(next);
-                  updateSettings({ "chat-example-prompts": JSON.stringify(next) }).catch(() => {});
-                  setEditingExample(null);
-                }}
-              >
-                {t("common.save")}
               </button>
             </div>
           </>

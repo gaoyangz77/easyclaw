@@ -1,0 +1,38 @@
+---
+import { t, type Lang } from "../i18n/strings.ts";
+interface Props { lang: Lang; }
+const { lang } = Astro.props;
+const c = t(lang).trust;
+---
+<section id="download" class="section section-dark">
+  <div class="container">
+    <div class="trust-inner">
+      <h2>{c.title}</h2>
+      <p>{c.body}</p>
+      <div class="trust-actions">
+        <a href={lang === "zh" ? "/docs/" : "/en/docs/"} class="btn btn-dark">{c.ctaDocs}</a>
+        <a href="https://github.com/nicepkg/dlxai" class="btn btn-primary" target="_blank" rel="noopener">{c.ctaGithub}</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .trust-inner {
+    text-align: center;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  .trust-inner p {
+    font-size: 1.25rem;
+    line-height: 1.60;
+    margin: 24px 0 0;
+  }
+  .trust-actions {
+    display: flex;
+    gap: 16px;
+    justify-content: center;
+    margin-top: 40px;
+    flex-wrap: wrap;
+  }
+</style>

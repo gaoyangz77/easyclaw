@@ -1,0 +1,47 @@
+---
+import { t, type Lang } from "../i18n/strings.ts";
+interface Props { lang: Lang; }
+const { lang } = Astro.props;
+const c = t(lang).how;
+---
+<section class="section section-dark">
+  <div class="container">
+    <div class="section-header">
+      <h2>{c.title}</h2>
+    </div>
+    <div class="grid grid-3 steps">
+      {c.steps.map((step) => (
+        <div class="step">
+          <div class="step-num">{step.n}</div>
+          <h3>{step.title}</h3>
+          <p>{step.body}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .step {
+    text-align: center;
+    padding: 8px;
+  }
+  .step-num {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 24px;
+    border-radius: 50%;
+    background: var(--brand);
+    color: var(--text-ivory);
+    font-family: var(--font-serif);
+    font-size: 1.6rem;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 0 1px var(--brand);
+  }
+  .step h3 {
+    margin-bottom: 12px;
+  }
+</style>

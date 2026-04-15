@@ -1,0 +1,100 @@
+---
+import { t, type Lang } from "../i18n/strings.ts";
+interface Props { lang: Lang; }
+const { lang } = Astro.props;
+const c = t(lang).pricing;
+---
+<section id="pricing" class="section pricing-section">
+  <div class="container">
+    <div class="section-header">
+      <h2>{c.title}</h2>
+      <p>{c.subtitle}</p>
+    </div>
+    <div class="grid grid-3">
+      {c.tiers.map((tier) => (
+        <div class={`tier${tier.highlight ? " tier-highlight" : ""}`}>
+          <h3>{tier.name}</h3>
+          <div class="tier-price">
+            <span class="price">{tier.price}</span>
+            <span class="period">{tier.period}</span>
+          </div>
+          <ul class="tier-features">
+            {tier.features.map((f) => <li>{f}</li>)}
+          </ul>
+          <a
+            href="#download"
+            class={`btn ${tier.highlight ? "btn-primary" : "btn-secondary"} tier-cta`}
+          >{tier.cta}</a>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .pricing-section {
+    background: var(--ivory);
+  }
+  .tier {
+    background: var(--white);
+    border-radius: var(--r-xl);
+    padding: 40px 32px;
+    box-shadow: 0 0 0 1px var(--border-cream);
+    display: flex;
+    flex-direction: column;
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+  }
+  .tier:hover {
+    box-shadow: 0 0 0 1px var(--ring-warm), var(--whisper);
+  }
+  .tier-highlight {
+    box-shadow: 0 0 0 1px var(--brand), rgba(201, 100, 66, 0.1) 0 12px 32px;
+    transform: translateY(-12px);
+  }
+  .tier-highlight:hover {
+    box-shadow: 0 0 0 1px var(--brand), rgba(201, 100, 66, 0.16) 0 16px 40px;
+  }
+  .tier h3 {
+    margin-bottom: 4px;
+  }
+  .tier-price {
+    margin: 16px 0 28px;
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+  .price {
+    font-family: var(--font-serif);
+    font-size: 3rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    line-height: 1.10;
+  }
+  .period {
+    color: var(--text-tertiary);
+    font-size: 0.94rem;
+  }
+  .tier-features {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 32px;
+    flex: 1;
+  }
+  .tier-features li {
+    padding: 10px 0;
+    border-top: 1px solid var(--border-cream);
+    color: var(--text-secondary);
+    font-size: 0.94rem;
+    line-height: 1.5;
+  }
+  .tier-features li:first-child { border-top: none; }
+
+  .tier-cta {
+    width: 100%;
+    justify-content: center;
+  }
+
+  @media (max-width: 991px) {
+    .tier-highlight { transform: none; }
+  }
+</style>

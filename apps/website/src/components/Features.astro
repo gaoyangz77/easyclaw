@@ -1,0 +1,53 @@
+---
+import { t, type Lang } from "../i18n/strings.ts";
+interface Props { lang: Lang; }
+const { lang } = Astro.props;
+const c = t(lang).features;
+---
+<section id="features" class="section features-section">
+  <div class="container">
+    <div class="section-header">
+      <h2>{c.title}</h2>
+      <p>{c.subtitle}</p>
+    </div>
+    <div class="grid grid-3">
+      {c.items.map((item) => (
+        <div class="feature-card">
+          <div class="feature-icon">{item.icon}</div>
+          <h3>{item.title}</h3>
+          <p>{item.body}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .features-section {
+    background: var(--ivory);
+  }
+  .feature-card {
+    background: var(--white);
+    border-radius: var(--r-lg);
+    padding: 32px;
+    box-shadow: 0 0 0 1px var(--border-cream);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+  }
+  .feature-card:hover {
+    box-shadow: 0 0 0 1px var(--ring-warm), var(--whisper);
+    transform: translateY(-2px);
+  }
+  .feature-card h3 {
+    margin-top: 4px;
+    margin-bottom: 12px;
+  }
+  .feature-card p {
+    color: var(--text-secondary);
+    margin: 0;
+  }
+  .feature-icon {
+    font-size: 1.8rem;
+    margin-bottom: 16px;
+    line-height: 1;
+  }
+</style>

@@ -144,7 +144,7 @@ export function CreditsPage() {
           <tbody>
             {entries.map((e) => (
               <tr key={e.id}>
-                <td>{new Date(e.created_at).toLocaleString("zh-CN")}</td>
+                <td>{new Date(e.created_at).toLocaleString()}</td>
                 <td className={e.delta < 0 ? "neg" : "pos"}>
                   {e.delta > 0 ? `+${e.delta}` : e.delta}
                 </td>

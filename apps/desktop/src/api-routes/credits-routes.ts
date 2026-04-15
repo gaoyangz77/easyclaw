@@ -169,6 +169,12 @@ export const handleCreditsRoutes: RouteHandler = async (req, res, url, pathname,
     return true;
   }
 
+  // POST /api/auth/logout — server-side noop; panel clears its localStorage token
+  if (pathname === "/api/auth/logout" && req.method === "POST") {
+    sendJson(res, 200, { ok: true });
+    return true;
+  }
+
   // GET /api/auth/me
   if (pathname === "/api/auth/me" && req.method === "GET") {
     const authHeader = req.headers["authorization"] as string | undefined;

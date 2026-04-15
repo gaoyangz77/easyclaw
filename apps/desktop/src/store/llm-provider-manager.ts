@@ -434,8 +434,12 @@ export const LLMProviderManagerModel = types
         const mstEntry: MstProviderKeySnapshot = yield toMstSnapshot(entry, secretStore);
         self.root.upsertProviderKey(mstEntry);
 
-        // Sync auth profiles and proxy config (provider already in config from startup)
-        yield syncAuthAndProxy();
+        // Custom providers need full config rewrite (baseUrl + models not in startup config)
+        if (isCustom) {
+          yield syncAuthProxyAndConfig();
+        } else {
+          yield syncAuthAndProxy();
+        }
 
         return { entry, shouldActivate };
       }),
@@ -501,8 +505,12 @@ export const LLMProviderManagerModel = types
           self.root.upsertProviderKey(mstEntry);
         }
 
-        // Sync auth profiles and proxy config for API key and proxy changes
-        if (fields.apiKey || proxyChanged) {
+        // Custom providers need full config rewrite when baseUrl/models change
+        const isCustomKey = existing.authType === "custom";
+        const customConfigChanged = isCustomKey && (fields.baseUrl !== undefined || fields.customModelsJson !== undefined);
+        if (customConfigChanged) {
+          yield syncAuthProxyAndConfig();
+        } else if (fields.apiKey || proxyChanged) {
           yield syncAuthAndProxy();
         }
 

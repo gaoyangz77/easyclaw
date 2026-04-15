@@ -19,7 +19,7 @@ const log = createLogger("panel-server");
  */
 
 export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname, ctx) => {
-  const { storage, secretStore, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onOAuthPoll, onTelemetryTrack, vendorDir, snapshotEngine } = ctx;
+  const { storage, secretStore, onProviderChange, onOAuthFlow, onOAuthAcquire, onOAuthSave, onOAuthManualComplete, onOAuthPoll, onTelemetryTrack, vendorDir, snapshotEngine } = ctx;
 
   // --- Provider Keys ---
   if (pathname === "/api/provider-keys" && req.method === "GET") {
@@ -124,6 +124,12 @@ export const handleProviderRoutes: RouteHandler = async (req, res, url, pathname
     });
 
     onTelemetryTrack?.("provider.key_added", { provider: body.provider, isFirst: shouldActivate });
+
+    // Custom providers need a full gateway restart so the new models.providers
+    // entry (baseUrl + api + models) is loaded into the running gateway process.
+    if (body.authType === "custom" || shouldActivate) {
+      onProviderChange?.();
+    }
 
     sendJson(res, 201, entry);
     return true;

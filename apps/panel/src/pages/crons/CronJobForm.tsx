@@ -250,9 +250,8 @@ export const CronJobForm = observer(function CronJobForm({ mode, initialData, on
     const options: { value: string; label: string }[] = [];
     for (const [channelId, accounts] of Object.entries(channelSnapshot.channelAccounts)) {
       const knownChannel = KNOWN_CHANNELS.find((c) => c.id === channelId);
-      const channelLabel = knownChannel
-        ? t(knownChannel.labelKey)
-        : channelSnapshot.channelLabels[channelId] || channelId;
+      if (!knownChannel) continue;
+      const channelLabel = t(knownChannel.labelKey);
       for (const account of accounts) {
         if (account.enabled === false) continue;
         const isSyntheticDefault =

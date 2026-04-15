@@ -7,13 +7,11 @@
  *  3. Stores the JWT in secretStore as `openrouter-api-key` so that OpenClaw
  *     uses it as the Authorization: Bearer header when calling the openrouter provider.
  *
- * HOW OPENROUTER PROXY ROUTING IS CONFIGURED (Option B — custom provider override):
+ * HOW OPENROUTER PROXY ROUTING IS CONFIGURED:
  *
- * The gateway config writer's `extraProviders` option writes to
- * `models.providers.<name>` in openclaw.json, which overrides any built-in
- * provider definition (including the native `openrouter` entry at
- * https://openrouter.ai/api/v1).  We inject an `openrouter` entry whose
- * `baseUrl` points at our cloud-api proxy:
+ * `gateway-config-builder.ts` calls `buildCreditsProviderOverride()` which —
+ * when access_mode === "credits" — injects an `openrouter` entry into
+ * `models.providers` whose baseUrl points at our cloud-api proxy:
  *
  *   baseUrl = "${CLOUD_API_URL}/api/proxy/openrouter"
  *
@@ -22,15 +20,11 @@
  *
  *   POST ${CLOUD_API_URL}/api/proxy/openrouter/chat/completions
  *
- * NOTE: The cloud-api proxy currently only handles `POST /api/proxy/openrouter`.
- * To make the override fully functional end-to-end, the cloud-api proxy should
- * also accept `POST /api/proxy/openrouter/chat/completions` (or a wildcard
- * under that path).  Until then, direct openrouter requests from OpenClaw will
- * reach the right server but hit a 404 for the sub-path.
+ * which matches the route registered in apps/cloud-api/src/routes/proxy.ts.
  *
- * The JWT is also written as `openrouter-api-key` in secretStore so that
- * OpenClaw forwards it as the Authorization header on every request, letting
- * cloud-api authenticate the user via its auth middleware.
+ * The JWT cached here as `openrouter-api-key` is forwarded by OpenClaw as the
+ * Authorization: Bearer header on every request, letting cloud-api authenticate
+ * the user via its auth middleware and deduct quota.
  */
 
 import { createLogger } from "@rivonclaw/logger";

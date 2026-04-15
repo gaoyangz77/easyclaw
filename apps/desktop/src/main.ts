@@ -10,6 +10,7 @@ import {
   buildGatewayEnv,
   readExistingConfig,
   syncAllAuthProfiles,
+  syncAuthProfile,
   syncBackOAuthCredentials,
   clearAllAuthProfiles,
   saveGeminiOAuthCredentials,
@@ -517,6 +518,12 @@ app.whenReady().then(async () => {
   // creditsToken is a live getter so routes always see the latest cached value
   const creditsTokenGetter = () => storage.settings.get("credits_token") ?? creditsInit.token ?? undefined;
 
+  // Sync credits JWT into auth-profiles.json so OpenClaw picks it up as the
+  // Authorization: Bearer header for the openrouter provider.
+  if (creditsInit.token) {
+    syncAuthProfile(stateDir, "openrouter", creditsInit.token);
+  }
+
   // Clean up any stale openclaw processes before starting.
   // With dynamic ports, orphaned processes won't block new instances,
   // so we skip TCP port probing entirely. Only do process-name-based cleanup
@@ -829,6 +836,26 @@ app.whenReady().then(async () => {
   });
   // Initial connect if already authenticated
   updateSubscription.connect(() => authSession.getAccessToken());
+
+  // Cloud-api SSE update stream — works alongside the GraphQL subscription
+  // as an additional channel. Uses the cloud-api URL from settings.
+  const { CloudUpdateClient } = await import("./cloud/cloud-update-client.js");
+  const cloudUpdateClient = new CloudUpdateClient(app.getVersion(), (payload) => {
+    log.info(`Cloud-api pushed update: v${payload.version}`);
+    updater.setServerPushInfo(payload);
+    pushChatSSE("update-available", {
+      updateAvailable: true,
+      currentVersion: app.getVersion(),
+      latestVersion: payload.version,
+      downloadUrl: payload.downloadUrl ?? null,
+    });
+    updater.check().catch((err: unknown) => {
+      log.warn("Update check after cloud-api push failed:", err);
+    });
+  }, () => {
+    return (storage.settings.get("cloud_api_url") ?? "http://localhost:3100").replace(/\/+$/, "");
+  });
+  cloudUpdateClient.start();
 
   // Create main panel window (hidden initially, loaded when gateway starts)
   const isDev = !!process.env.PANEL_DEV_URL;
@@ -1504,6 +1531,10 @@ app.whenReady().then(async () => {
     buildFullProxyEnv,
     sttManager,
     syncAllAuthProfiles,
+    syncCreditsAuthProfile: () => {
+      const token = creditsTokenGetter();
+      if (token) syncAuthProfile(stateDir, "openrouter", token);
+    },
     writeProxyRouterConfig,
     getLastSystemProxy: () => lastSystemProxy,
   });
@@ -1547,7 +1578,15 @@ app.whenReady().then(async () => {
   });
 
   Promise.all([
-    syncAllAuthProfiles(stateDir, storage, secretStore),
+    syncAllAuthProfiles(stateDir, storage, secretStore).then(() => {
+      // Re-sync credits JWT after syncAllAuthProfiles, which overwrites the
+      // entire auth-profiles.json.  Without this, the openrouter token written
+      // by initializeCredits() is lost because syncAllAuthProfiles only knows
+      // about provider keys in storage (and credits mode has none).
+      if (creditsInit.token) {
+        syncAuthProfile(stateDir, "openrouter", creditsInit.token);
+      }
+    }),
     buildGatewayEnv(secretStore, { ELECTRON_RUN_AS_NODE: "1" }, storage, workspacePath),
   ])
     .then(([, secretEnv]) => {
@@ -1612,6 +1651,7 @@ app.whenReady().then(async () => {
     clearInterval(proxyPollTimer);
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     updateSubscription.disconnect();
+    cloudUpdateClient.stop();
     clearInterval(singleInstanceHeartbeat);
     removeHeartbeat();
 
@@ -1654,6 +1694,7 @@ app.whenReady().then(async () => {
     clearInterval(proxyPollTimer);
     if (heartbeatTimer) clearInterval(heartbeatTimer);
     updateSubscription.disconnect();
+    cloudUpdateClient.stop();
     clearInterval(singleInstanceHeartbeat);
     removeHeartbeat();
 

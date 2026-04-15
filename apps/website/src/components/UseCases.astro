@@ -1,0 +1,53 @@
+---
+import { t, type Lang } from "../i18n/strings.ts";
+interface Props { lang: Lang; }
+const { lang } = Astro.props;
+const c = t(lang).useCases;
+---
+<section id="use-cases" class="section">
+  <div class="container">
+    <div class="section-header">
+      <h2>{c.title}</h2>
+    </div>
+    <div class="grid grid-2">
+      {c.items.map((item) => (
+        <div class="usecase-card">
+          <span class="usecase-tag">{item.tag}</span>
+          <h3>{item.title}</h3>
+          <p>{item.body}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>
+
+<style>
+  .usecase-card {
+    background: var(--ivory);
+    border-radius: var(--r-xl);
+    padding: 40px 36px;
+    box-shadow: 0 0 0 1px var(--border-cream);
+    transition: box-shadow 0.2s ease, transform 0.2s ease;
+  }
+  .usecase-card:hover {
+    box-shadow: 0 0 0 1px var(--ring-warm), var(--whisper);
+    transform: translateY(-2px);
+  }
+  .usecase-tag {
+    display: inline-block;
+    font-family: var(--font-sans);
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--brand);
+    margin-bottom: 16px;
+  }
+  .usecase-card h3 {
+    margin-bottom: 12px;
+  }
+  .usecase-card p {
+    color: var(--text-secondary);
+    margin: 0;
+  }
+</style>

@@ -19,7 +19,6 @@ import { TikTokShopsPage } from "./pages/TikTokShopsPage.js";
 import { EcommercePage } from "./pages/EcommercePage.js";
 import { CreditsPage } from "./pages/CreditsPage.js";
 import { WhatsNewModal } from "./components/modals/WhatsNewModal.js";
-import { TelemetryConsentModal } from "./components/modals/TelemetryConsentModal.js";
 import { TutorialProvider, TutorialBubble, TutorialOverlay } from "./tutorial/index.js";
 import { CreditsAuthProvider } from "./hooks/useCreditsAuth.js";
 import { fetchSettings, fetchChangelog, trackEvent } from "./api/index.js";
@@ -59,7 +58,6 @@ export function App() {
   const [currentPath, setCurrentPath] = useState(() => resolveRoute(window.location.pathname));
   const [showOnboarding, setShowOnboarding] = useState<boolean | null>(null);
   const [showWhatsNew, setShowWhatsNew] = useState(false);
-  const [showTelemetryConsent, setShowTelemetryConsent] = useState(false);
   const [changelogEntries, setChangelogEntries] = useState<ChangelogEntry[]>([]);
   const [currentVersion, setCurrentVersion] = useState("");
   const [agentName, setAgentName] = useState<string | null>(null);
@@ -132,14 +130,6 @@ export function App() {
       .catch(() => { });
   }, [showOnboarding]);
 
-  // Show telemetry consent dialog on first launch (after onboarding)
-  useEffect(() => {
-    if (showOnboarding !== false) return;
-    if (!localStorage.getItem("telemetry.consentShown")) {
-      setShowTelemetryConsent(true);
-    }
-  }, [showOnboarding]);
-
   // Track initial page view when main app mounts (not during onboarding)
   useEffect(() => {
     if (showOnboarding === false) {
@@ -189,10 +179,6 @@ export function App() {
             onClose={() => setShowWhatsNew(false)}
             entries={changelogEntries}
             currentVersion={currentVersion}
-          />
-          <TelemetryConsentModal
-            isOpen={showTelemetryConsent && !showWhatsNew}
-            onClose={() => setShowTelemetryConsent(false)}
           />
         </Layout>
         <TutorialOverlay />
