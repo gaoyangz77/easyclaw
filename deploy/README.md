@@ -4,17 +4,32 @@
 
 ## 服务器要求
 
-- Ubuntu 20.04+ / Debian 11+ / CentOS 8+
-- Node.js 20+
-- PostgreSQL 14+
-- Nginx
-- PM2（`npm i -g pm2`）
+两种部署方式，脚本自动检测：
+
+| 方式 | 要求 | 推荐场景 |
+|------|------|----------|
+| **Docker**（推荐） | Docker + Docker Compose | 干净服务器，一键搞定 |
+| **裸机** | Node 20+ / PostgreSQL / PM2 | 已有环境，不想装 Docker |
+
+两种方式都需要 **Nginx**（可选，但推荐用来反代 + HTTPS）。
 
 ---
 
 ## 一、服务器环境准备
 
-如果服务器已有 Node/PostgreSQL/Nginx 可跳过对应步骤。
+### Docker 方式（推荐）
+
+```bash
+# Docker
+curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+# 重新登录 SSH 使 docker 组生效
+
+# Nginx（可选但推荐）
+sudo apt install -y nginx
+```
+
+### 裸机方式
 
 ```bash
 # Node.js 20
@@ -79,18 +94,17 @@ scp -r deploy/ root@你的服务器IP:/tmp/dlxai-deploy/
 ```bash
 ssh root@你的服务器IP
 cd /tmp/dlxai-deploy
-vim deploy.sh
+cp .env.example .env
+vim .env
 ```
 
-修改顶部的配置变量：
+填写配置：
 
 ```bash
-DOMAIN="dlxai.app"                          # 改成你的域名
-CLOUD_API_PORT=3100                         # API 端口，一般不用改
-DB_URL="postgresql://postgres:密码@localhost:5432/dlxai_credits"  # 数据库连接
-OPENROUTER_KEY="sk-or-v1-xxx"              # 你的 OpenRouter API Key
-ADMIN_KEY="你的管理密钥"                     # 发版用的密钥，随便设一个长字符串
-DEPLOY_DIR="/opt/dlxai"                     # 部署目录，一般不用改
+DB_PASSWORD=dlxai2026                # 数据库密码
+OPENROUTER_KEY=sk-or-v1-xxx         # 你的 OpenRouter API Key
+ADMIN_KEY=你的管理密钥               # 发版用的密钥，随便设一个长字符串
+DOMAIN=dlxai.app                     # 你的域名
 ```
 
 ### 4.2 执行部署
@@ -99,13 +113,19 @@ DEPLOY_DIR="/opt/dlxai"                     # 部署目录，一般不用改
 bash deploy.sh
 ```
 
-脚本会自动完成：
+脚本会自动检测环境并执行：
+
+**Docker 模式：**
+1. 启动 PostgreSQL 容器（自动建表）
+2. 启动 cloud-api 容器
+3. 配置 Nginx 反代
+
+**裸机模式：**
 1. 复制文件到 `/opt/dlxai/`
-2. 生成 `.env` 配置
-3. 安装 npm 依赖
-4. 初始化数据库表
-5. 用 PM2 启动 cloud-api
-6. 配置 Nginx 反代
+2. 安装 npm 依赖
+3. 初始化数据库
+4. PM2 启动 cloud-api
+5. 配置 Nginx 反代
 
 ### 4.3 验证
 
@@ -155,18 +175,22 @@ pm2 restart dlxai-api
 在开发机上：
 ```bash
 bash deploy/pack.sh
-scp -r deploy/cloud-api/ root@服务器:/tmp/dlxai-update/
-scp -r deploy/website/ root@服务器:/tmp/dlxai-update-web/
+scp -r deploy/cloud-api/ deploy/website/ root@服务器:/tmp/dlxai-update/
 ```
 
-在服务器上：
+在服务器上（Docker）：
 ```bash
-cp -r /tmp/dlxai-update/* /opt/dlxai/cloud-api/
+cp -r /tmp/dlxai-update/cloud-api/* /opt/dlxai/cloud-api/
+cp -r /tmp/dlxai-update/website/* /opt/dlxai/website/
+cd /opt/dlxai && docker compose restart cloud-api
+```
+
+在服务器上（裸机）：
+```bash
+cp -r /tmp/dlxai-update/cloud-api/* /opt/dlxai/cloud-api/
+cp -r /tmp/dlxai-update/website/* /opt/dlxai/website/
 cd /opt/dlxai/cloud-api && npm install --omit=dev
 pm2 restart dlxai-api
-
-cp -r /tmp/dlxai-update-web/* /opt/dlxai/website/
-# 静态站无需重启
 ```
 
 ### 发布新版本（推送更新给客户端）
