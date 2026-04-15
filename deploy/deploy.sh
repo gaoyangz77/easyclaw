@@ -103,10 +103,11 @@ cp -r "$SCRIPT_DIR/website/"* "$DEPLOY_DIR/website/"
 
 # ─── 部署后端 ─────────────────────────────────────────────────────────
 if $USE_DOCKER; then
-  echo ">> Docker: 启动 PostgreSQL + cloud-api..."
+  echo ">> Docker: 启动 PostgreSQL + cloud-api + Nginx..."
 
-  # 复制 docker-compose 和 .env
+  # 复制 docker-compose、nginx.conf 和 .env
   cp "$SCRIPT_DIR/docker-compose.yml" "$DEPLOY_DIR/"
+  cp "$SCRIPT_DIR/nginx.conf" "$DEPLOY_DIR/"
   cp "$SCRIPT_DIR/.env" "$DEPLOY_DIR/"
 
   cd "$DEPLOY_DIR"
@@ -115,11 +116,11 @@ if $USE_DOCKER; then
 
   echo ">> 等待服务就绪..."
   for i in $(seq 1 30); do
-    if curl -sf http://127.0.0.1:$CLOUD_API_PORT/health &>/dev/null; then
-      echo "   cloud-api 就绪!"
+    if curl -sf http://127.0.0.1/health &>/dev/null; then
+      echo "   全部就绪! (Nginx :80 → cloud-api → PostgreSQL)"
       break
     fi
-    [ $i -eq 30 ] && echo "⚠️  超时，请检查: docker compose logs"
+    [ $i -eq 30 ] && echo "⚠️  超时，请检查: cd $DEPLOY_DIR && docker compose logs"
     sleep 2
   done
 
@@ -177,8 +178,10 @@ PMEOF
   pm2 save
 fi
 
-# ─── Nginx 配置 ───────────────────────────────────────────────────────
-if $HAS_NGINX; then
+# ─── Nginx 配置（仅裸机模式需要，Docker 自带 Nginx 容器）────────────
+if $USE_DOCKER; then
+  echo ">> Docker 模式已包含 Nginx 容器，跳过宿主机 Nginx 配置"
+elif $HAS_NGINX; then
   echo ">> 配置 Nginx..."
 
   if [ -d /etc/nginx/sites-available ]; then
