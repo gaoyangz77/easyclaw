@@ -1,5 +1,7 @@
 # 实际部署时的 .env（含密钥）
 .env
 
-# 允许 website 下所有文件（覆盖根 .gitignore 的 docs/ 规则）
+# 覆盖根 .gitignore 的 docs/ 和 dist/ 规则
+# deploy/ 下这些都是部署产物，需要提交
 !website/**
+!cloud-api/dist/**
