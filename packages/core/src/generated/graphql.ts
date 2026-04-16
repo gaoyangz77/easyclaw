@@ -1294,6 +1294,8 @@ export interface Query {
   browserProfileAuditLog: Array<BrowserProfileAuditEntry>;
   /** List browser profiles for the authenticated user */
   browserProfiles: PaginatedBrowserProfiles;
+  /** Check if a newer version is available (public, no auth required) */
+  checkUpdate?: Maybe<UpdatePayload>;
   /** Assemble the full CS system prompt for a shop. DEPRECATED: use the assembledPrompt field on CustomerServiceSettings instead. */
   csAssemblePrompt: AssembledPromptResult;
   /** Get all preset skills for CS. Returns a JSON object { key: markdownContent, ... } or null if none configured. */
@@ -1410,6 +1412,11 @@ export interface QueryBrowserProfileAuditLogArgs {
 export interface QueryBrowserProfilesArgs {
   filter?: InputMaybe<BrowserProfilesFilterInput>;
   pagination?: InputMaybe<BrowserProfilesPaginationInput>;
+}
+
+
+export interface QueryCheckUpdateArgs {
+  clientVersion: Scalars['String']['input'];
 }
 
 

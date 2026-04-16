@@ -42,6 +42,8 @@ import { createCdpManager } from "../browser-profiles/cdp-manager.js";
 import { CdpCookieAdapter } from "../browser-profiles/cdp-cookie-adapter.js";
 import { resolveProxyRouterConfigPath, detectSystemProxy, writeProxyRouterConfig, buildProxyEnv, writeProxySetupModule } from "../infra/proxy/proxy-manager.js";
 import { createAutoUpdater } from "../updater/auto-updater.js";
+import { queryCheckUpdate, type UpdatePayload } from "../cloud/backend-subscription-client.js";
+import { isNewerVersion } from "@rivonclaw/updater";
 import { resetDevicePairing, cleanupGatewayLock, applyAutoLaunch } from "../gateway/startup-utils.js";
 import { initTelemetry } from "../telemetry/telemetry-init.js";
 import { allKeysToMstSnapshots, toMstSnapshot } from "../providers/provider-key-utils.js";
@@ -526,10 +528,19 @@ app.whenReady().then(async () => {
         },
         onCheckForUpdates: async () => {
           try {
-            await updater.check();
+            const payload = await queryCheckUpdate(
+              locale, app.getVersion(),
+              (url, init) => proxyNetwork.fetch(url, init),
+            );
+            let accepted = false;
+            if (payload) {
+              accepted = await processUpdatePayload(payload);
+            } else {
+              clearUpdateBanner();
+            }
             const isZh = systemLocale === "zh";
-            const updateInfo = updater.getLatestInfo();
-            if (updateInfo) {
+            if (accepted) {
+              const updateInfo = updater.getLatestInfo()!;
               const { response } = await dialog.showMessageBox({
                 type: "info",
                 title: isZh ? "发现新版本" : "Update Available",
@@ -542,6 +553,16 @@ app.whenReady().then(async () => {
                 showMainWindow(mainWindow);
                 updater.download().catch((e: unknown) => log.error("Update download failed:", e));
               }
+            } else if (payload) {
+              // Backend returned a newer version but payload was invalid (e.g. missing downloadUrl)
+              dialog.showMessageBox({
+                type: "warning",
+                title: isZh ? "检查更新" : "Check for Updates",
+                message: isZh
+                  ? `发现新版本 v${payload.version}，但下载信息不完整，请稍后重试。`
+                  : `A new version v${payload.version} was found, but download info is incomplete. Please try again later.`,
+                buttons: isZh ? ["好"] : ["OK"],
+              });
             } else {
               dialog.showMessageBox({
                 type: "info",
@@ -608,45 +629,65 @@ app.whenReady().then(async () => {
 
   updateTray("stopped");
 
-  /** Run updater.check() and sync the panel banner with the result. */
-  function checkAndSyncBanner() {
-    updater.check().then(() => {
-      if (!updater.getLatestInfo()) {
-        pushChatSSE("update-available", {
-          updateAvailable: false,
-          currentVersion: app.getVersion(),
-          latestVersion: null,
-          downloadUrl: null,
-        });
-      }
-    }).catch((err: unknown) => {
-      log.warn("Update check failed:", err);
+  /**
+   * Unified handler: validate backend update payload, then write state + push SSE.
+   * Returns true if the update was accepted, false otherwise.
+   * The backend operator is responsible for ensuring CDN readiness before publishing.
+   */
+  async function processUpdatePayload(payload: UpdatePayload): Promise<boolean> {
+    if (!isNewerVersion(app.getVersion(), payload.version)) {
+      clearUpdateBanner();
+      return false;
+    }
+
+    // downloadUrl is required — an update without a downloadable file is not actionable
+    if (!payload.downloadUrl) {
+      log.warn(`Update v${payload.version} has no downloadUrl — treating as unavailable`);
+      clearUpdateBanner();
+      return false;
+    }
+
+    updater.setUpdateInfo(payload);
+    telemetryClient?.track("app.update_available", {
+      currentVersion: app.getVersion(),
+      latestVersion: payload.version,
     });
-  }
-
-  // Startup update check (fallback for non-authenticated users)
-  checkAndSyncBanner();
-
-  // Real-time update push via GraphQL subscription (replaces 4h polling)
-  backendSubscription.subscribeToUpdates(app.getVersion(), (payload) => {
-    log.info(`Server pushed update: v${payload.version}`);
-    updater.setServerPushInfo(payload);
     pushChatSSE("update-available", {
       updateAvailable: true,
       currentVersion: app.getVersion(),
       latestVersion: payload.version,
-      downloadUrl: payload.downloadUrl ?? null,
+      downloadUrl: payload.downloadUrl,
     });
-    checkAndSyncBanner();
-  }, () => {
-    log.info("Server dismissed update — clearing banner");
-    updater.clearServerPushInfo();
+    return true;
+  }
+
+  function clearUpdateBanner(): void {
+    updater.clearUpdateInfo();
     pushChatSSE("update-available", {
       updateAvailable: false,
       currentVersion: app.getVersion(),
       latestVersion: null,
       downloadUrl: null,
     });
+  }
+
+  // Startup update check — query backend (public, no auth needed)
+  queryCheckUpdate(locale, app.getVersion(), (url, init) => proxyNetwork.fetch(url, init))
+    .then((payload) => {
+      if (payload) return processUpdatePayload(payload);
+      clearUpdateBanner();
+    })
+    .catch((err: unknown) => {
+      log.warn("Startup update check failed:", err);
+    });
+
+  // Real-time update push via GraphQL subscription
+  backendSubscription.subscribeToUpdates(app.getVersion(), (payload) => {
+    log.info(`Server pushed update: v${payload.version}`);
+    processUpdatePayload(payload);
+  }, () => {
+    log.info("Server dismissed update — clearing banner");
+    clearUpdateBanner();
   });
 
   // Create main panel window (hidden initially, loaded when gateway starts)
@@ -929,6 +970,7 @@ app.whenReady().then(async () => {
         updateAvailable: info != null,
         currentVersion: app.getVersion(),
         latestVersion: info?.version,
+        downloadUrl: info?.downloadUrl ?? null,
       };
     },
     onUpdateDownload: () => updater.download(),

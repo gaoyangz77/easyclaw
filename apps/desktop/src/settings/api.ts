@@ -33,7 +33,7 @@ const appUpdate: EndpointHandler = async (_req, res, _url, _params, ctx: ApiCont
     updateAvailable: result?.updateAvailable ?? false,
     currentVersion: result?.currentVersion ?? null,
     latestVersion: result?.latestVersion ?? null,
-    downloadUrl: result?.download?.url ?? null,
+    downloadUrl: result?.downloadUrl ?? null,
   });
 };
 

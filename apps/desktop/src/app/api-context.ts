@@ -44,7 +44,7 @@ export interface ApiContext {
     updateAvailable: boolean;
     currentVersion: string;
     latestVersion?: string;
-    download?: { url: string; sha256: string; size: number };
+    downloadUrl?: string | null;
   } | null;
   getGatewayInfo?: () => { wsUrl: string; token?: string };
   snapshotEngine?: UsageSnapshotEngine;

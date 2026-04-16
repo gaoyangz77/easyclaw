@@ -1,5 +1,5 @@
 import { createClient, type Client } from "graphql-ws/client";
-import { getApiBaseUrl } from "@rivonclaw/core";
+import { getApiBaseUrl, type GQL } from "@rivonclaw/core";
 import { isNewerVersion } from "@rivonclaw/updater";
 import { createLogger } from "@rivonclaw/logger";
 import { proxyNetwork } from "../infra/proxy/proxy-aware-network.js";
@@ -61,9 +61,49 @@ const SHOP_UPDATED_SUBSCRIPTION = `
   }
 `;
 
-export interface UpdatePayload {
-  version: string;
-  downloadUrl?: string;
+export type UpdatePayload = GQL.UpdatePayload;
+
+const CHECK_UPDATE_QUERY = `
+  query CheckUpdate($clientVersion: String!) {
+    checkUpdate(clientVersion: $clientVersion) {
+      version
+      downloadUrl
+    }
+  }
+`;
+
+/**
+ * One-shot GraphQL query to check for updates (public endpoint, no auth needed).
+ * Used at startup before the WebSocket subscription is established.
+ *
+ * Returns `null` when the backend has no update for this version.
+ * Throws on network errors, non-2xx HTTP, or GraphQL-level errors.
+ */
+export async function queryCheckUpdate(
+  locale: string,
+  currentVersion: string,
+  fetchFn: (url: string | URL, init?: RequestInit) => Promise<Response> = fetch,
+): Promise<UpdatePayload | null> {
+  const baseUrl = getApiBaseUrl(locale);
+  const res = await fetchFn(`${baseUrl}/graphql`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: CHECK_UPDATE_QUERY,
+      variables: { clientVersion: currentVersion },
+    }),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`Update check query failed: HTTP ${res.status}`);
+  const body = (await res.json()) as {
+    data?: { checkUpdate?: UpdatePayload } | null;
+    errors?: Array<{ message?: string }>;
+  };
+  if (body.errors?.length) {
+    const messages = body.errors.map((e) => e.message ?? "(no message)").join("; ");
+    throw new Error(`Update check query returned GraphQL errors: ${messages}`);
+  }
+  return body.data?.checkUpdate ?? null;
 }
 
 export interface OAuthCompletePayload {

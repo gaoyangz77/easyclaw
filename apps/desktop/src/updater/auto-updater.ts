@@ -7,6 +7,7 @@ import { autoUpdater } from "electron-updater";
 import type { UpdateInfo, ProgressInfo } from "electron-updater";
 import type { UpdateDownloadState } from "@rivonclaw/updater";
 import { isNewerVersion } from "@rivonclaw/updater";
+import type { GQL } from "@rivonclaw/core";
 import { writeFileSync, readFileSync, unlinkSync, existsSync, mkdirSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
@@ -98,6 +99,7 @@ export interface AutoUpdaterDeps {
 
 export function createAutoUpdater(deps: AutoUpdaterDeps) {
   let latestUpdateInfo: UpdateInfo | null = null;
+  let backendUpdateInfo: GQL.UpdatePayload | null = null;
   let updateDownloadState: UpdateDownloadState = { status: "idle" };
   let runFullCleanup: (() => Promise<void>) | null = null;
 
@@ -115,37 +117,17 @@ export function createAutoUpdater(deps: AutoUpdaterDeps) {
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.logger = log;
 
-  // Wire electron-updater events into our state machine
+  // Wire electron-updater events — these only fire during the download() flow
+  // (when autoUpdater.checkForUpdates() is called as a prerequisite for download).
+  // Update discovery is handled by the backend query/subscription, not electron-updater.
   autoUpdater.on("update-available", (info: UpdateInfo) => {
     latestUpdateInfo = info;
-    log.info(`Update available: v${info.version}`);
-    deps.telemetryTrack?.("app.update_available", {
-      currentVersion: app.getVersion(),
-      latestVersion: info.version,
-    });
-    const isZh = deps.systemLocale === "zh";
-    const notification = new Notification({
-      title: isZh ? `${brandName("zh")} 有新版本` : `${brandName("en")} Update Available`,
-      body: isZh
-        ? `新版本 v${info.version} 已发布，点击查看详情。`
-        : `A new version v${info.version} is available. Click to download.`,
-    });
-    notification.on("click", () => {
-      deps.showMainWindow();
-    });
-    notification.show();
-    deps.updateTray();
+    log.info(`electron-updater confirmed update: v${info.version}`);
   });
 
   autoUpdater.on("update-not-available", () => {
-    log.info(`Already up to date (${app.getVersion()})`);
-    // Clear any stale update info (e.g. from a prior server push notification
-    // for a version that has since been installed). This ensures the update
-    // banner disappears after restart when the app is already up to date.
-    if (latestUpdateInfo) {
-      latestUpdateInfo = null;
-      deps.updateTray();
-    }
+    log.info(`electron-updater: already up to date (${app.getVersion()})`);
+    latestUpdateInfo = null;
   });
 
   autoUpdater.on("download-progress", (progress: ProgressInfo) => {
@@ -188,7 +170,7 @@ export function createAutoUpdater(deps: AutoUpdaterDeps) {
   }
 
   async function download(): Promise<void> {
-    if (!latestUpdateInfo) {
+    if (!backendUpdateInfo) {
       throw new Error("No update available");
     }
     if (
@@ -210,10 +192,9 @@ export function createAutoUpdater(deps: AutoUpdaterDeps) {
     // user can download the DMG manually.
     // TODO: remove this block once Apple developer certificate is approved.
     if (process.platform === "darwin") {
-      const file = latestUpdateInfo.files.find(f => f.url.endsWith(".dmg"));
       const arch = process.arch === "arm64" ? "arm64" : "x64";
-      const fileName = file?.url ?? `RivonClaw-${latestUpdateInfo.version}-${arch}.dmg`;
-      const downloadUrl = `${updateFeedUrl}/${fileName}`;
+      const downloadUrl = backendUpdateInfo.downloadUrl
+        ?? `${updateFeedUrl}/RivonClaw-${backendUpdateInfo.version}-${arch}.dmg`;
       log.info(`macOS: opening browser for update download: ${downloadUrl}`);
       shell.openExternal(downloadUrl);
       const isZh = deps.systemLocale === "zh";
@@ -239,6 +220,8 @@ export function createAutoUpdater(deps: AutoUpdaterDeps) {
     if (cacheDir) ensureBlockmapConsistency(cacheDir);
 
     try {
+      // electron-updater needs to "discover" the update before it can download
+      await autoUpdater.checkForUpdates();
       await autoUpdater.downloadUpdate();
     } catch (err) {
       // The error event handler will set the error state
@@ -255,7 +238,7 @@ export function createAutoUpdater(deps: AutoUpdaterDeps) {
     updateDownloadState = { status: "installing" };
 
     deps.telemetryTrack?.("app.update_installing", {
-      version: latestUpdateInfo?.version,
+      version: backendUpdateInfo?.version,
     });
 
     // Run ALL cleanup before launching the installer.
@@ -275,7 +258,7 @@ export function createAutoUpdater(deps: AutoUpdaterDeps) {
       try {
         const markerPath = resolveUpdateMarkerPath();
         mkdirSync(resolveRivonClawHome(), { recursive: true });
-        writeFileSync(markerPath, latestUpdateInfo?.version ?? "", { flag: "w" });
+        writeFileSync(markerPath, backendUpdateInfo?.version ?? "", { flag: "w" });
       } catch {}
     }
 
@@ -316,7 +299,7 @@ export function createAutoUpdater(deps: AutoUpdaterDeps) {
     check,
     download,
     install,
-    getLatestInfo: () => latestUpdateInfo,
+    getLatestInfo: () => backendUpdateInfo,
     getDownloadState: () => updateDownloadState,
     setDownloadState: (state: UpdateDownloadState) => {
       updateDownloadState = state;
@@ -324,20 +307,13 @@ export function createAutoUpdater(deps: AutoUpdaterDeps) {
     setRunFullCleanup: (fn: () => Promise<void>) => {
       runFullCleanup = fn;
     },
-    clearServerPushInfo: () => {
-      latestUpdateInfo = null;
+    setUpdateInfo: (info: GQL.UpdatePayload) => {
+      if (!isNewerVersion(app.getVersion(), info.version)) return;
+      backendUpdateInfo = info;
       deps.updateTray();
     },
-    setServerPushInfo: (info: { version: string }) => {
-      if (!isNewerVersion(app.getVersion(), info.version)) return;
-      latestUpdateInfo = {
-        version: info.version,
-        releaseNotes: null,
-        files: [],
-        path: "",
-        sha512: "",
-        releaseDate: new Date().toISOString(),
-      } as UpdateInfo;
+    clearUpdateInfo: () => {
+      backendUpdateInfo = null;
       deps.updateTray();
     },
   };
