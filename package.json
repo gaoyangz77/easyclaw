@@ -11,7 +11,7 @@
     "dev": "turbo run dev",
     "format": "oxfmt --check",
     "format:fix": "oxfmt --write",
-    "postinstall": "bash scripts/rebuild-native.sh",
+    "postinstall": "node scripts/run-bash.mjs scripts/rebuild-native.sh",
     "check:ext-deps": "node scripts/check-extension-deps.mjs",
     "check:ext-externals": "node scripts/check-extension-externals.mjs",
     "generate:vendor-artifacts": "node scripts/generate-vendor-artifacts.mjs",
