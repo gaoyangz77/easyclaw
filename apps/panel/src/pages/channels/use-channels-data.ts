@@ -1,11 +1,19 @@
 import { useState, useEffect } from "react";
+import { when } from "mobx";
 import { fetchChannelStatus, type ChannelsStatusSnapshot } from "../../api/index.js";
+import { runtimeStatusStore } from "../../store/runtime-status-store.js";
 
 /**
  * Two-phase channel status loading:
  * Phase 1 — fetch with probe=false for instant results (runtime state only).
  * Phase 2 — fire a background probe=true request to update connectivity status.
  * If the background probe fails, the non-probe data is silently kept.
+ *
+ * Polling is gated on `sidecarState === "ready"` — during gateway startup
+ * (especially on Windows), the gateway event loop is blocked by sidecar init
+ * for 10-30+ seconds. Polling during this window produces timeouts and
+ * spams ERROR logs. `sidecarState === "ready"` is a reliable signal that
+ * the event loop is unblocked and the gateway can serve RPC calls.
  */
 export function useChannelsData() {
   const [snapshot, setSnapshot] = useState<ChannelsStatusSnapshot | null>(null);
@@ -93,14 +101,28 @@ export function useChannelsData() {
         setLoading(false);
         setRefreshing(false);
         if (!snapshot) setError(String(err));
-        // Gateway not ready — retry in 2s
-        timer = setTimeout(poll, 2000);
+        // Gateway was ready but RPC call failed — retry in 10s.
+        // (Longer than before to avoid error-log spam if gateway becomes
+        // temporarily unresponsive.)
+        timer = setTimeout(poll, 10000);
       }
     }
 
-    poll();
+    // Gate the first poll on sidecar readiness. During gateway startup the
+    // event loop is blocked — polling now would produce 10s timeouts that
+    // waste a retry window and spam ERROR logs. `when()` resolves
+    // immediately if sidecar is already ready.
+    const ready = when(() => runtimeStatusStore.openClawConnector.sidecarState === "ready");
+    ready.then(() => {
+      if (cancelled) return;
+      poll();
+    });
 
-    return () => { cancelled = true; clearTimeout(timer); };
+    return () => {
+      cancelled = true;
+      ready.cancel();
+      clearTimeout(timer);
+    };
   }, []);
 
   function handleRefresh() {

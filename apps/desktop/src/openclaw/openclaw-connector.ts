@@ -45,7 +45,13 @@ export type RpcConnectedCallback = () => void | Promise<void>;
 
 const SIDECAR_PROBE_METHOD = "chat.history";
 const SIDECAR_PROBE_PARAMS = { sessionKey: "probe", limit: 1 };
-const SIDECAR_PROBE_MAX_ATTEMPTS = 10;
+// Per-attempt timeout. Deliberately short — when the gateway event loop
+// is blocked by sidecar init, we'd rather time out fast and retry than
+// sit on a single 30s request that blocks the probing loop.
+const SIDECAR_PROBE_REQUEST_TIMEOUT_MS = 5000;
+// Total budget: 20 attempts × (5s timeout + 500ms delay) ≈ 110s. Long
+// enough to outlast the worst observed Windows sidecar init (~34s).
+const SIDECAR_PROBE_MAX_ATTEMPTS = 20;
 const SIDECAR_PROBE_INTERVAL_MS = 500;
 
 // WebSocket readiness probe: the vendor's "listening on" stdout arrives before
@@ -373,20 +379,26 @@ export class OpenClawConnector {
 
     for (let attempt = 1; attempt <= SIDECAR_PROBE_MAX_ATTEMPTS; attempt++) {
       try {
-        await this.request(SIDECAR_PROBE_METHOD, SIDECAR_PROBE_PARAMS);
+        await this.request(SIDECAR_PROBE_METHOD, SIDECAR_PROBE_PARAMS, SIDECAR_PROBE_REQUEST_TIMEOUT_MS);
         runtimeStatusStore.setConnectorSidecarState("ready");
-        log.info("Sidecar ready");
+        log.info(`Sidecar ready (attempt ${attempt}/${SIDECAR_PROBE_MAX_ATTEMPTS})`);
         return;
       } catch (err) {
+        // Retry on: UNAVAILABLE/NOT_FOUND (sidecar not yet ready),
+        // and timeouts (gateway event loop blocked during sidecar init).
         const code = (err as { code?: string }).code;
-        if (code === "UNAVAILABLE" || code === "NOT_FOUND") {
-          log.debug(`Sidecar probe attempt ${attempt}/${SIDECAR_PROBE_MAX_ATTEMPTS} — not ready yet (${code})`);
-          if (attempt < SIDECAR_PROBE_MAX_ATTEMPTS) {
-            await new Promise((r) => setTimeout(r, SIDECAR_PROBE_INTERVAL_MS));
-            continue;
-          }
+        const message = (err as { message?: string }).message ?? "";
+        const isTimeout = message.includes("Request timed out");
+        const isRetryable = code === "UNAVAILABLE" || code === "NOT_FOUND" || isTimeout;
+
+        if (isRetryable && attempt < SIDECAR_PROBE_MAX_ATTEMPTS) {
+          const reason = isTimeout ? "timeout (event loop blocked)" : (code ?? "unknown");
+          log.debug(`Sidecar probe attempt ${attempt}/${SIDECAR_PROBE_MAX_ATTEMPTS} — not ready yet (${reason})`);
+          await new Promise((r) => setTimeout(r, SIDECAR_PROBE_INTERVAL_MS));
+          continue;
         }
-        // Non-retryable error or exhausted attempts
+
+        // Non-retryable error or exhausted attempts.
         runtimeStatusStore.setConnectorSidecarState("failed");
         log.error(`Sidecar probe failed after ${attempt} attempts:`, err);
         return;
@@ -410,10 +422,12 @@ export class OpenClawConnector {
   /**
    * Send an RPC request to the gateway.
    * Throws if the RPC client is not connected.
+   * @param timeoutMs - Optional request timeout (defaults to underlying
+   *   RPC client default, 30s). Useful for probes that need to retry fast.
    */
-  async request<T = unknown>(method: string, params?: unknown): Promise<T> {
+  async request<T = unknown>(method: string, params?: unknown, timeoutMs?: number): Promise<T> {
     const client = this.ensureRpcReady();
-    return client.request<T>(method, params);
+    return client.request<T>(method, params, timeoutMs);
   }
 
   // ── Config Mutation ────────────────────────────────────────────────────

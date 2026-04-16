@@ -523,9 +523,9 @@ describe("OpenClawConnector", () => {
 
       await connector.probeSidecarReady();
 
-      expect(mockRpcClientInstance.request).toHaveBeenCalledTimes(10);
+      expect(mockRpcClientInstance.request).toHaveBeenCalledTimes(20);
       expect(mockRuntimeStatusStore.setConnectorSidecarState).toHaveBeenCalledWith("failed");
-    });
+    }, 15000);
 
     it("sets sidecarState to 'failed' immediately on non-retryable error", async () => {
       connector.initDeps(deps);
@@ -537,6 +537,24 @@ describe("OpenClawConnector", () => {
 
       expect(mockRpcClientInstance.request).toHaveBeenCalledTimes(1);
       expect(mockRuntimeStatusStore.setConnectorSidecarState).toHaveBeenCalledWith("failed");
+    });
+
+    it("retries on timeout and succeeds on later attempt (event loop blocked case)", async () => {
+      connector.initDeps(deps);
+      await connector.connectRpc(rpcDeps);
+
+      // Timeouts have no `code` but match the "Request timed out" message pattern
+      // produced by GatewayRpcClient.request()'s timeout logic.
+      const timeoutError = new Error("Request timed out after 5000ms: chat.history");
+      mockRpcClientInstance.request
+        .mockRejectedValueOnce(timeoutError)
+        .mockRejectedValueOnce(timeoutError)
+        .mockResolvedValueOnce({ sessions: [] });
+
+      await connector.probeSidecarReady();
+
+      expect(mockRpcClientInstance.request).toHaveBeenCalledTimes(3);
+      expect(mockRuntimeStatusStore.setConnectorSidecarState).toHaveBeenCalledWith("ready");
     });
 
   });
@@ -574,7 +592,7 @@ describe("OpenClawConnector", () => {
 
       const result = await connector.request("channels.status", { limit: 10 });
 
-      expect(mockRpcClientInstance.request).toHaveBeenCalledWith("channels.status", { limit: 10 });
+      expect(mockRpcClientInstance.request).toHaveBeenCalledWith("channels.status", { limit: 10 }, undefined);
       expect(result).toEqual({ result: "ok" });
     });
 
