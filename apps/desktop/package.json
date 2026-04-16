@@ -10,7 +10,7 @@
   "scripts": {
     "prebuild": "node ../../scripts/generate-plugin-ids.mjs",
     "build": "tsdown",
-    "dev": "tsdown && PANEL_DEV_URL=http://localhost:5180 ELECTRON_RUN_AS_NODE= electron .",
+    "dev": "tsdown && cross-env PANEL_DEV_URL=http://localhost:5180 ELECTRON_RUN_AS_NODE= electron .",
     "lint": "oxlint",
     "test": "vitest run",
     "test:file": "vitest run",
@@ -64,6 +64,7 @@
     "@rivonclaw/rivonclaw-search-browser-fallback": "workspace:*",
     "@rivonclaw/rivonclaw-tools": "workspace:*",
     "@types/ws": "^8.18.1",
+    "cross-env": "^10.1.0",
     "dotenv": "^17.3.1",
     "electron": "^40.4.1",
     "electron-builder": "^26.0.12",
