@@ -1189,6 +1189,11 @@ export default {
     // Form
     createTitle: "Create Cron Job",
     editTitle: "Edit Cron Job",
+    sectionBasics: "Basics",
+    sectionPayload: "Task Content",
+    sectionSchedule: "Schedule",
+    sectionDelivery: "Delivery",
+    sectionExecution: "Execution",
     fieldName: "Name",
     fieldDescription: "Description",
     fieldScheduleType: "Schedule Type",

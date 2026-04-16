@@ -169,6 +169,62 @@
 
 /* ===== Cron Form — Dialog ===== */
 
+.crons-form-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.crons-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.crons-form-card {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px;
+  background: var(--color-bg-alt);
+  border: 1px solid var(--color-border-light);
+  border-radius: var(--radius-md);
+}
+
+.crons-form-card .form-group {
+  margin-bottom: 0;
+}
+
+.crons-form-card-span-2 {
+  grid-column: 1 / -1;
+}
+
+.crons-form-section-title {
+  margin: 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border-light);
+  color: var(--color-text);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.crons-form-two-col {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.crons-form-span-2 {
+  grid-column: 1 / -1;
+}
+
+.crons-prompt-textarea {
+  min-height: 168px;
+  line-height: 1.55;
+}
+
 /* Section divider between major form areas */
 .cron-form-divider {
   height: 1px;
@@ -254,14 +310,15 @@
 /* Visual cron builder — compact inline row */
 .crons-builder-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   margin-top: 12px;
   align-items: flex-end;
 }
 
 .crons-builder-row>div {
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 140px;
+  min-width: 140px;
 }
 
 .crons-builder-field-label {
@@ -375,11 +432,26 @@
 /* crons-advanced-toggle removed: unified into .advanced-toggle */
 
 .crons-advanced-content {
-  margin-top: 12px;
   padding: 14px;
   background: var(--color-bg-alt);
   border-radius: var(--radius-sm);
   border: 1px solid var(--color-border-light);
+}
+
+.crons-subsection-title {
+  margin: 0 0 12px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.crons-advanced-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+  align-items: start;
 }
 
 /* Options row (checkboxes) */
@@ -436,6 +508,40 @@
   width: max-content;
   box-shadow: var(--shadow-md);
   pointer-events: none;
+}
+
+@media (max-width: 960px) {
+  .crons-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .crons-form-card-span-2 {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  .crons-form-card {
+    padding: 16px;
+  }
+
+  .crons-form-two-col,
+  .crons-advanced-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .crons-form-row {
+    flex-direction: column;
+  }
+
+  .crons-form-span-2 {
+    grid-column: auto;
+  }
+
+  .crons-builder-row > div {
+    min-width: 0;
+    flex-basis: calc(50% - 3px);
+  }
 }
 
 /* ===== Dark Theme ===== */
@@ -501,6 +607,11 @@
 [data-theme="dark"] .crons-advanced-content {
   background: rgba(255, 255, 255, 0.03);
   border-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .crons-form-card {
+  background: rgba(255, 255, 255, 0.025);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 [data-theme="dark"] .crons-tip-trigger {

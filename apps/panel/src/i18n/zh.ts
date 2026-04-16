@@ -1177,6 +1177,11 @@ export default {
     // Form
     createTitle: "创建定时任务",
     editTitle: "编辑定时任务",
+    sectionBasics: "基本信息",
+    sectionPayload: "任务内容",
+    sectionSchedule: "调度设置",
+    sectionDelivery: "结果投递",
+    sectionExecution: "执行设置",
     fieldName: "名称",
     fieldDescription: "描述",
     fieldScheduleType: "调度类型",

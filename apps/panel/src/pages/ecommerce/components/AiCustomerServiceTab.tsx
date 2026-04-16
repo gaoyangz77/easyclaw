@@ -7,6 +7,8 @@ import { useEntityStore } from "../../../store/EntityStoreProvider.js";
 import { isBalanceExpiringSoon } from "../ecommerce-utils.js";
 import { BalanceBadge } from "./BalanceBadge.js";
 
+const BUSINESS_PROMPT_MAX_LENGTH = 10_000;
+
 interface AiCustomerServiceTabProps {
   shop: Shop;
   // Business prompt
@@ -271,10 +273,10 @@ export const AiCustomerServiceTab = observer(function AiCustomerServiceTab({
             value={editBusinessPrompt}
             onChange={(e) => onEditBusinessPrompt(e.target.value)}
             rows={15}
-            maxLength={2000}
+            maxLength={BUSINESS_PROMPT_MAX_LENGTH}
           />
           <span className="shop-prompt-charcount">
-            {editBusinessPrompt.length} / 2000
+            {editBusinessPrompt.length} / {BUSINESS_PROMPT_MAX_LENGTH}
           </span>
         </div>
         <div className="modal-actions">

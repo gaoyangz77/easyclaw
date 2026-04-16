@@ -24,7 +24,6 @@ export function useCronForm({ mode, initialData, onSubmit }: UseCronFormParams) 
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [showRawCron, setShowRawCron] = useState(false);
 
   // Channel status (fetched once on mount)
@@ -208,8 +207,6 @@ export function useCronForm({ mode, initialData, onSubmit }: UseCronFormParams) 
     errors,
     saving,
     submitError,
-    showAdvanced,
-    setShowAdvanced,
     showRawCron,
     setShowRawCron,
     channelOptions,
