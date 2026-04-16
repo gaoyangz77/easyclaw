@@ -1590,6 +1590,16 @@ app.whenReady().then(async () => {
     clearInterval(singleInstanceHeartbeat);
     removeHeartbeat();
 
+    // Flush telemetry BEFORE stopping proxyRouter — telemetry fetches go
+    // through the proxy-router for HTTP CONNECT. If we stop the router
+    // first, the flush fails 9× (3 outer × 3 inner retries) wasting ~7.5s.
+    if (telemetryClient) {
+      const runtimeMs = telemetryClient.getUptime();
+      telemetryClient.track("app.stopped", { runtimeMs });
+      await telemetryClient.shutdown();
+      log.info("Telemetry client shut down gracefully");
+    }
+
     await Promise.all([
       launcher.stop(),
       proxyRouter.stop(),
@@ -1602,13 +1612,6 @@ app.whenReady().then(async () => {
       await syncBackOAuthCredentials(stateDir, storage, secretStore);
     } catch (err) {
       log.error("Failed to sync back OAuth credentials:", err);
-    }
-
-    if (telemetryClient) {
-      const runtimeMs = telemetryClient.getUptime();
-      telemetryClient.track("app.stopped", { runtimeMs });
-      await telemetryClient.shutdown();
-      log.info("Telemetry client shut down gracefully");
     }
 
     storage.close();
@@ -1639,8 +1642,21 @@ app.whenReady().then(async () => {
       // Flush any remaining sessions (e.g., CDP compatibility sessions)
       await sessionStateStack.lifecycleManager.endAllSessions();
 
-      // Kill gateway and proxy router FIRST — these are critical.
-      // If later steps (telemetry, oauth sync) hang, at least the gateway is dead.
+      // Flush telemetry BEFORE stopping proxyRouter — telemetry fetches
+      // go through proxy-router for HTTP CONNECT. If the router is down
+      // first, the flush fails 9× (3 outer × 3 inner retries) wasting
+      // ~7.5s of shutdown time. The outer SHUTDOWN_TIMEOUT_MS still
+      // bounds total cleanup if the endpoint is unreachable.
+      if (telemetryClient) {
+        const runtimeMs = telemetryClient.getUptime();
+        telemetryClient.track("app.stopped", { runtimeMs });
+
+        // Graceful shutdown: flush pending telemetry events
+        await telemetryClient.shutdown();
+        log.info("Telemetry client shut down gracefully");
+      }
+
+      // Kill gateway and proxy router.
       await Promise.all([
         launcher.stop(),
         proxyRouter.stop(),
@@ -1654,16 +1670,6 @@ app.whenReady().then(async () => {
         await syncBackOAuthCredentials(stateDir, storage, secretStore);
       } catch (err) {
         log.error("Failed to sync back OAuth credentials:", err);
-      }
-
-      // Track app.stopped with runtime
-      if (telemetryClient) {
-        const runtimeMs = telemetryClient.getUptime();
-        telemetryClient.track("app.stopped", { runtimeMs });
-
-        // Graceful shutdown: flush pending telemetry events
-        await telemetryClient.shutdown();
-        log.info("Telemetry client shut down gracefully");
       }
 
       storage.close();
