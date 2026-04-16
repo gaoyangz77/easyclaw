@@ -35,12 +35,19 @@ services:
       PORT: "3100"
       NODE_ENV: production
     command: sh -c "npm install --omit=dev && node dist/index.js"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3100/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
 
   nginx:
     image: nginx:alpine
     restart: always
     depends_on:
-      - cloud-api
+      cloud-api:
+        condition: service_healthy
     ports:
       - "80:80"
       - "443:443"
