@@ -909,18 +909,46 @@ export function writeGatewayConfig(options: WriteGatewayConfigOptions): string {
         merged.allow = [...new Set(after)];
       }
 
-      // Clean up the denylist: remove permanently-removed IDs.
-      // If a denied plugin no longer exists, the gateway rejects the config
-      // with "plugin not found" (e.g. modelstudio after qwen merge).
-      if (Array.isArray(merged.deny)) {
-        const before = merged.deny as string[];
-        const after = before.filter((id) => !REMOVED_PLUGIN_IDS.has(id));
-        const removed = before.filter((id) => REMOVED_PLUGIN_IDS.has(id));
-        if (removed.length > 0) {
-          log.warn(`Removed stale plugin IDs from plugins.deny: ${removed.join(", ")}`);
-        }
-        merged.deny = after.length > 0 ? after : undefined;
+      // Seed plugins.deny with bundled provider plugins RivonClaw never uses.
+      //
+      // Vendor v2026.4.11 ships ~110 bundled plugins. On Windows, deeply
+      // activating all of them adds ~25s to gateway READY compared to just
+      // discovering their manifests. Denying the long-tail providers skips
+      // the activation step for those, bringing Windows startup from ~67s
+      // down to ~44s. See TS-008 for full analysis.
+      //
+      // The list below covers LLM providers RivonClaw does NOT route through
+      // (RivonClaw uses openai-completions / anthropic-messages via
+      // models.providers.X, not through vendor provider plugins). Denying
+      // them is safe because RivonClaw never activates them anyway —
+      // denying just short-circuits vendor's activation machinery.
+      //
+      // Do NOT expand this list further without measuring:
+      //   - 25 deny entries → 44s READY  (current)
+      //   - 88 deny entries → 43-45s READY  (no additional benefit)
+      // The bottleneck beyond this is manifest scanning (fixed cost).
+      //
+      // Upstream tracking:
+      //   https://github.com/openclaw/openclaw/issues/50370
+      //   https://github.com/openclaw/openclaw/issues/62051
+      //
+      // TODO: Remove this seed once vendor makes plugins.allow filter
+      //   discovery, or when bundled plugin scanning goes parallel/lazy.
+      const SEED_DENY_PLUGINS = [
+        "amazon-bedrock", "anthropic-vertex", "byteplus", "chutes",
+        "cloudflare-ai-gateway", "deepseek", "github-copilot", "huggingface",
+        "kilocode", "kimi", "litellm", "minimax", "mistral", "moonshot",
+        "nvidia", "qianfan", "sglang", "synthetic", "together", "venice",
+        "vercel-ai-gateway", "vllm", "volcengine", "xai", "xiaomi",
+      ];
+      const existingDeny = Array.isArray(merged.deny) ? (merged.deny as string[]) : [];
+      const denySet = new Set(existingDeny.filter((id) => !REMOVED_PLUGIN_IDS.has(id)));
+      const removedFromDeny = existingDeny.filter((id) => REMOVED_PLUGIN_IDS.has(id));
+      if (removedFromDeny.length > 0) {
+        log.warn(`Removed stale plugin IDs from plugins.deny: ${removedFromDeny.join(", ")}`);
       }
+      for (const id of SEED_DENY_PLUGINS) denySet.add(id);
+      merged.deny = [...denySet];
     }
 
 
