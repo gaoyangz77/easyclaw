@@ -373,7 +373,10 @@ export async function loadSessionCostSummary(params: {
     const msg = entry.message as Record<string, unknown> | undefined;
     if (!msg) continue;
     const role = msg.role as string | undefined;
-    if (role !== "user" && role !== "assistant") continue;
+    // Only assistant messages carry billable LLM `usage` fields. Counting
+    // user-role usage (theoretically possible if a provider attaches input
+    // accounting on the user echo) would double-count input tokens.
+    if (role !== "assistant") continue;
 
     const usage = msg.usage as Record<string, unknown> | undefined;
     if (!usage) continue;
@@ -529,7 +532,9 @@ export async function loadCostUsageSummary(params?: {
       const msg = entry.message as Record<string, unknown> | undefined;
       if (!msg) continue;
       const role = msg.role as string | undefined;
-      if (role !== "user" && role !== "assistant") continue;
+      // Only assistant messages carry billable LLM `usage` fields. See the
+      // matching guard in `loadSessionCostSummary` for rationale.
+      if (role !== "assistant") continue;
 
       const usage = msg.usage as Record<string, unknown> | undefined;
       if (!usage) continue;

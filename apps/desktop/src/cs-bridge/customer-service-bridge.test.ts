@@ -2623,3 +2623,302 @@ describe("terminal guarantee (error/timeout)", () => {
     expect(texts[0]).toBe("Stale answer");  // attempted but failed, no fallback
   });
 });
+
+// ─── 16. Seat resolution & per-run usage recording (P0-1) ────────────────────
+
+describe("seat resolution and csRecordUsage", () => {
+  /** Helper: dispatch a CS message so a `pendingRuns` entry exists. */
+  async function dispatchCsRun(
+    bridge: ReturnType<typeof createBridge>,
+    runId: string,
+  ): Promise<void> {
+    mockRpcRequest.mockResolvedValue({ runId });
+    await triggerMessage(bridge, createFrame({ messageId: `msg-${runId}` }));
+  }
+
+  /** Helper: fire a chat final event for a runId. */
+  function chatFinal(bridge: ReturnType<typeof createBridge>, runId: string): void {
+    bridge.onGatewayEvent({
+      event: "chat",
+      payload: { runId, state: "final" },
+    } as any);
+  }
+
+  /** Helper: fire a chat error event. */
+  function chatError(bridge: ReturnType<typeof createBridge>, runId: string): void {
+    bridge.onGatewayEvent({
+      event: "chat",
+      payload: { runId, state: "error" },
+    } as any);
+  }
+
+  /** Collect all csRecordUsage calls (variables) observed on mockGraphqlFetch. */
+  function getRecordUsageCalls(): Array<{ seatId: string; messageCount: number }> {
+    return mockGraphqlFetch.mock.calls
+      .filter((c: any[]) => typeof c[0] === "string" && c[0].includes("csRecordUsage"))
+      .map((c: any[]) => c[1] as { seatId: string; messageCount: number });
+  }
+
+  /** Install a default graphql mock that returns a seat for "test-gateway" and supports all flows. */
+  function installDefaultGraphqlMock(opts: { seatMatches?: boolean } = {}): void {
+    const seatMatches = opts.seatMatches ?? true;
+    mockGraphqlFetch.mockImplementation(async (query: string, _vars?: unknown) => {
+      if (query.includes("ecommerceGetConversationDetails")) {
+        return { ecommerceGetConversationDetails: { buyer: null } };
+      }
+      if (query.includes("csGetOrCreateSession")) {
+        return { csGetOrCreateSession: { sessionId: "sess-001", isNew: true, balance: 100 } };
+      }
+      if (query.includes("query Seats")) {
+        return {
+          seats: seatMatches
+            ? [{ id: "seat-abc", userId: "u-1", gatewayId: "test-gateway", status: "ACTIVE" }]
+            : [{ id: "seat-other", userId: "u-1", gatewayId: "some-other-gateway", status: "ACTIVE" }],
+        };
+      }
+      if (query.includes("csRecordUsage")) {
+        return { csRecordUsage: true };
+      }
+      if (query.includes("csIncrementMessageCount")) {
+        return { csIncrementMessageCount: true };
+      }
+      return { ecommerceSendMessage: { messageId: "msg-default" } };
+    });
+  }
+
+  it("resolves seatId on cs_ack and records messageCount=1 on final success (tokens are tracked separately via cs_send)", async () => {
+    installDefaultGraphqlMock();
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+
+    // Simulate cs_ack
+    (bridge as any).onFrame({ type: "cs_ack" });
+
+    // Give ensureSeatResolved a chance to finish
+    await new Promise((r) => setTimeout(r, 10));
+
+    await dispatchCsRun(bridge, "run-final-1");
+
+    chatFinal(bridge, "run-final-1");
+
+    // Let the fire-and-forget recordRunUsage settle
+    await new Promise((r) => setTimeout(r, 10));
+
+    const calls = getRecordUsageCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual({ seatId: "seat-abc", messageCount: 1 });
+  });
+
+  it("does NOT record usage when run ends in error", async () => {
+    installDefaultGraphqlMock();
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    (bridge as any).onFrame({ type: "cs_ack" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await dispatchCsRun(bridge, "run-err-1");
+    chatError(bridge, "run-err-1");
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(getRecordUsageCalls()).toHaveLength(0);
+  });
+
+  it("does NOT record usage when run was aborted (newer buyer message took over)", async () => {
+    installDefaultGraphqlMock();
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    (bridge as any).onFrame({ type: "cs_ack" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await dispatchCsRun(bridge, "run-abort-1");
+    // Second message → aborts run-abort-1 and dispatches a replacement.
+    mockRpcRequest.mockResolvedValue({ runId: "run-abort-2" });
+    await triggerMessage(bridge, createFrame({ messageId: "msg-replacement" }));
+
+    // Simulate aborted run finishing late (we still see a final event).
+    chatFinal(bridge, "run-abort-1");
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(getRecordUsageCalls()).toHaveLength(0);
+  });
+
+  it("skips recording when no seat matches gatewayId (no seat allocated)", async () => {
+    installDefaultGraphqlMock({ seatMatches: false });
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    (bridge as any).onFrame({ type: "cs_ack" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await dispatchCsRun(bridge, "run-no-seat");
+    chatFinal(bridge, "run-no-seat");
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(getRecordUsageCalls()).toHaveLength(0);
+  });
+
+  it("skips recording when cs_ack was never received (seatId never resolved)", async () => {
+    installDefaultGraphqlMock();
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    // NO cs_ack
+
+    await dispatchCsRun(bridge, "run-preack");
+    chatFinal(bridge, "run-preack");
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(getRecordUsageCalls()).toHaveLength(0);
+  });
+
+  it("failed csRecordUsage call does not throw (system-boundary swallow)", async () => {
+    mockGraphqlFetch.mockImplementation(async (query: string) => {
+      if (query.includes("ecommerceGetConversationDetails")) {
+        return { ecommerceGetConversationDetails: { buyer: null } };
+      }
+      if (query.includes("csGetOrCreateSession")) {
+        return { csGetOrCreateSession: { sessionId: "sess-001", isNew: true, balance: 100 } };
+      }
+      if (query.includes("query Seats")) {
+        return {
+          seats: [{ id: "seat-abc", userId: "u-1", gatewayId: "test-gateway", status: "ACTIVE" }],
+        };
+      }
+      if (query.includes("csRecordUsage")) {
+        throw new Error("backend temporarily unavailable");
+      }
+      return { ecommerceSendMessage: { messageId: "ok" } };
+    });
+
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    (bridge as any).onFrame({ type: "cs_ack" });
+    await new Promise((r) => setTimeout(r, 10));
+
+    await dispatchCsRun(bridge, "run-rec-fail");
+
+    // Should not throw — the record failure is logged as warn but swallowed
+    expect(() => chatFinal(bridge, "run-rec-fail")).not.toThrow();
+    await new Promise((r) => setTimeout(r, 10));
+
+    // The mutation was attempted
+    expect(
+      mockGraphqlFetch.mock.calls.some(
+        (c: any[]) => typeof c[0] === "string" && c[0].includes("csRecordUsage"),
+      ),
+    ).toBe(true);
+  });
+});
+
+// ─── 17. cs_sessions messageCount increment (P0-2) ───────────────────────────
+
+describe("csIncrementMessageCount wiring", () => {
+  /** Count csIncrementMessageCount calls with their variables. */
+  function getIncrementCalls(): Array<{ shopId: string; conversationId: string }> {
+    return mockGraphqlFetch.mock.calls
+      .filter((c: any[]) => typeof c[0] === "string" && c[0].includes("csIncrementMessageCount"))
+      .map((c: any[]) => c[1] as { shopId: string; conversationId: string });
+  }
+
+  function installGraphqlMock(opts: { incrementFails?: boolean } = {}): void {
+    mockGraphqlFetch.mockImplementation(async (query: string) => {
+      if (query.includes("ecommerceGetConversationDetails")) {
+        return { ecommerceGetConversationDetails: { buyer: null } };
+      }
+      if (query.includes("csGetOrCreateSession")) {
+        return { csGetOrCreateSession: { sessionId: "sess-001", isNew: true, balance: 100 } };
+      }
+      if (query.includes("query Seats")) {
+        return { seats: [] };
+      }
+      if (query.includes("csIncrementMessageCount")) {
+        if (opts.incrementFails) throw new Error("backend down");
+        return { csIncrementMessageCount: true };
+      }
+      if (query.includes("ecommerceSendMessage")) {
+        return { ecommerceSendMessage: { messageId: "msg-ok" } };
+      }
+      return {};
+    });
+  }
+
+  it("increments once after a successful buyer-message dispatch", async () => {
+    installGraphqlMock();
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    mockRpcRequest.mockResolvedValue({ runId: "run-inc-1" });
+
+    await triggerMessage(bridge, createFrame({
+      conversationId: "conv-inc-1",
+      messageId: "msg-inc-1",
+    }));
+
+    // Fire-and-forget; give it a tick
+    await new Promise((r) => setTimeout(r, 10));
+
+    const calls = getIncrementCalls();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toEqual({ shopId: "mongo-id-123", conversationId: "conv-inc-1" });
+  });
+
+  it("increments a SECOND time after the agent forwards text to the buyer", async () => {
+    installGraphqlMock();
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    mockRpcRequest.mockResolvedValue({ runId: "run-inc-2" });
+
+    await triggerMessage(bridge, createFrame({
+      conversationId: "conv-inc-2",
+      messageId: "msg-inc-2",
+    }));
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Agent text arrives and is forwarded → second increment
+    bridge.onGatewayEvent({
+      event: "agent",
+      payload: { runId: "run-inc-2", stream: "assistant", data: { text: "Hello buyer!" } },
+    } as any);
+    bridge.onGatewayEvent({
+      event: "agent",
+      payload: { runId: "run-inc-2", stream: "lifecycle", data: { phase: "end" } },
+    } as any);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const calls = getIncrementCalls();
+    // One increment for the inbound buyer message, one for the outbound agent reply.
+    expect(calls).toHaveLength(2);
+    expect(calls.every((c) => c.conversationId === "conv-inc-2")).toBe(true);
+  });
+
+  it("does NOT increment when dispatch did not produce a runId (dropped message)", async () => {
+    installGraphqlMock();
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    // Agent RPC returns no runId (e.g. gateway dropped).
+    mockRpcRequest.mockResolvedValue({ runId: undefined });
+
+    await triggerMessage(bridge, createFrame({
+      conversationId: "conv-drop",
+      messageId: "msg-drop",
+    }));
+    await new Promise((r) => setTimeout(r, 10));
+
+    expect(getIncrementCalls()).toHaveLength(0);
+  });
+
+  it("buyer-message flow is not blocked when csIncrementMessageCount fails (system boundary)", async () => {
+    installGraphqlMock({ incrementFails: true });
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+    mockRpcRequest.mockResolvedValue({ runId: "run-inc-fail" });
+
+    // Should not throw
+    await expect(
+      triggerMessage(bridge, createFrame({
+        conversationId: "conv-inc-fail",
+        messageId: "msg-inc-fail",
+      })),
+    ).resolves.not.toThrow();
+
+    // The agent RPC still happened (main flow not blocked)
+    expect(mockRpcRequest).toHaveBeenCalledWith("agent", expect.anything());
+  });
+});

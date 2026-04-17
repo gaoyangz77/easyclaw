@@ -17,20 +17,24 @@
  */
 
 import crypto from "node:crypto";
+import { join } from "node:path";
 import { createLogger } from "@rivonclaw/logger";
 import { ScopeType, GQL, type CSNewMessageFrame } from "@rivonclaw/core";
 import { isStagingDevMode } from "@rivonclaw/core/endpoints";
+import { resolveAgentSessionsDir } from "@rivonclaw/core/node";
 import { openClawConnector } from "../openclaw/index.js";
 import { getAuthSession } from "../auth/session-ref.js";
 import { getStorageRef } from "../app/storage-ref.js";
 import { rootStore } from "../app/store/desktop-store.js";
 import { proxyNetwork } from "../infra/proxy/proxy-aware-network.js";
 import { compressImageForAgent } from "./image-compressor.js";
+import { loadSessionCostSummary } from "../usage/session-usage.js";
 import {
   SEND_MESSAGE_MUTATION,
   GET_CONVERSATION_DETAILS_QUERY,
   GET_BUYER_ORDERS_QUERY,
   CS_GET_OR_CREATE_SESSION_MUTATION,
+  CS_INCREMENT_MESSAGE_COUNT_MUTATION,
 } from "../cloud/cs-queries.js";
 
 const log = createLogger("cs-session");
@@ -131,6 +135,13 @@ export class CustomerServiceSession {
       defaultRunProfileId?: string;
       /** Called after a successful agent dispatch, so the Bridge can track the run globally. */
       onRunDispatched?: (runId: string) => void;
+      /**
+       * Live getter for the bridge-level seat id. Returns null when no seat
+       * has been resolved yet (e.g. before `cs_ack`, or when the gateway is
+       * not allocated a seat on this user). When null, the session skips the
+       * cs_send usage piggyback — never blocks the send.
+       */
+      getSeatId?: () => string | null;
     },
   ) {
     this.platform = shop.platform ?? "tiktok";
@@ -302,12 +313,24 @@ export class CustomerServiceSession {
       message = `${notice}\n\n${message}`;
     }
 
-    return this.dispatch({
+    const result = await this.dispatch({
       message,
       idempotencyKey: `${this.platform}:${frame.messageId}`,
       attachments,
       placeholder,
     });
+
+    // Count the inbound buyer message on `cs_sessions.messageCount` once we've
+    // successfully dispatched (so we don't count frames we dropped). This counter
+    // tracks raw conversation volume, distinct from per-run billing usage which
+    // is recorded separately after the agent run reaches `final`.
+    if (result.runId) {
+      this.incrementSessionMessageCount().catch(() => {
+        /* already logged inside the helper */
+      });
+    }
+
+    return result;
   }
 
   /**
@@ -425,6 +448,17 @@ export class CustomerServiceSession {
   /**
    * Forward agent text output to the buyer via the backend GraphQL proxy.
    * Called by the Bridge when an agent run completes with text output.
+   *
+   * Piggybacks a cumulative LLM usage snapshot on the `cs_send` mutation so
+   * the backend can accumulate token totals onto `cs_usage_records`. Usage
+   * collection failures never block the send — the snapshot is simply
+   * omitted from the mutation variables.
+   *
+   * Note: we only await usage collection when we actually have a seat to
+   * charge. The seat check is synchronous; skipping the async collector
+   * entirely in the no-seat path avoids adding a microtask on the hot path
+   * (matters for legacy callers that don't await forwardTextToBuyer — see
+   * `CustomerServiceBridge.flushTurnText`).
    */
   async forwardTextToBuyer(text: string): Promise<void> {
     const authSession = getAuthSession();
@@ -432,14 +466,168 @@ export class CustomerServiceSession {
       log.warn("No auth session available, cannot forward text to buyer");
       return;
     }
+    const seatId = this.opts?.getSeatId?.() ?? null;
+    const usage = seatId ? await this.collectUsageSnapshot(seatId) : null;
     await authSession.graphqlFetch(SEND_MESSAGE_MUTATION, {
       shopId: this.csContext.shopId,
       conversationId: this.csContext.conversationId,
       type: GQL.EcomMessageType.Text,
       content: JSON.stringify({ content: text }),
+      // Typed as optional by the schema — only include when we were able to
+      // build a valid snapshot. Passing null/undefined either way is safe,
+      // but omitting the key keeps the payload smaller and the backend path
+      // cleaner.
+      ...(usage ? { usage } : {}),
     });
     this.undeliveredCount = 0;
-    log.info(`Auto-forwarded agent text to buyer (${text.length} chars)`);
+    log.info(
+      `Auto-forwarded agent text to buyer (${text.length} chars)` +
+      (usage
+        ? ` + usage { in:${usage.inputTokens} out:${usage.outputTokens} }`
+        : ""),
+    );
+
+    // Count the outbound agent message on `cs_sessions.messageCount`. This is
+    // the raw conversation message counter, not the billing-turn counter.
+    this.incrementSessionMessageCount().catch(() => {
+      /* already logged inside the helper */
+    });
+  }
+
+  /**
+   * Build the cumulative LLM usage snapshot to piggyback on `cs_send`.
+   *
+   * Semantics: both token fields are cumulative per-conversation totals since
+   * session creation (NOT deltas). The backend diffs each report against the
+   * session's previously-stored snapshot before incrementing
+   * `cs_usage_records`. See `server/backend/src/services/CSUsageService.ts`.
+   *
+   * Strategy: read the session's JSONL transcript via `loadSessionCostSummary`,
+   * which sums `usage` fields across all assistant messages. The gateway's
+   * `sessions.list` per-session `inputTokens` / `outputTokens` cannot be used
+   * because they are *per-run overwrites* (see vendor session-usage.ts —
+   * `patch.inputTokens = usage.input`, not `$inc`), which violates the
+   * "cumulative since session creation" contract and drops billing whenever
+   * a later run reports a smaller token count than an earlier one.
+   *
+   * scopeKey → sessionFile resolution: we still hit `sessions.list` (filtered
+   * by `agentId: "main"` so the scan stays narrow), find the row whose `key`
+   * matches our `scopeKey`, and join its `sessionId` with
+   * `resolveAgentSessionsDir()` to get the JSONL path. The RPC is used only
+   * for path resolution here — never for token data.
+   *
+   * provider / model: derived from the JSONL `modelUsage` aggregation, taking
+   * the entry with the highest `count` (ties resolve to the first entry,
+   * which matches the order of first-seen in the transcript).
+   *
+   * Any failure along the way yields `null` — the caller omits the usage
+   * field and the core send proceeds unaffected. This matches the system
+   * boundary rule: billing-statistics must never block core business.
+   */
+  private async collectUsageSnapshot(seatId: string): Promise<GQL.CsSendUsageInput | null> {
+    try {
+      // 1) scopeKey → sessionId via sessions.list (path resolution only;
+      //    NOT a token data source). Filtering by agentId="main" keeps the
+      //    scan narrow without depending on a hard cap.
+      const rpcResult = await openClawConnector.request<{
+        sessions?: Array<{ key?: string; sessionId?: string }>;
+      }>("sessions.list", { agentId: "main" });
+      const rows = rpcResult?.sessions ?? [];
+      const row = rows.find((s) => s.key === this.scopeKey);
+      const sessionId = row?.sessionId;
+      if (!sessionId) {
+        // No registered session for this scopeKey yet (normal pre-first-run
+        // state). Skip the piggyback quietly.
+        return null;
+      }
+
+      // 2) Read the JSONL transcript and sum assistant `usage` fields. No
+      //    time window — we want session-lifetime cumulative totals.
+      const sessionFile = join(resolveAgentSessionsDir(), `${sessionId}.jsonl`);
+      const summary = await loadSessionCostSummary({ sessionFile });
+      if (!summary) {
+        // File missing or no usage entries yet — skip piggyback.
+        return null;
+      }
+
+      const inputTokens = Math.max(
+        0,
+        Math.floor(Number.isFinite(summary.input) ? summary.input : 0),
+      );
+      const outputTokens = Math.max(
+        0,
+        Math.floor(Number.isFinite(summary.output) ? summary.output : 0),
+      );
+
+      // 3) Provider / model: take the most-used model in this session (tie
+      //    breaker: first-seen, which is the natural Map iteration order).
+      let dominantProvider: string | undefined;
+      let dominantModel: string | undefined;
+      const modelUsage = summary.modelUsage ?? [];
+      let bestCount = -1;
+      for (const mu of modelUsage) {
+        if (mu.count > bestCount) {
+          bestCount = mu.count;
+          dominantProvider = mu.provider;
+          dominantModel = mu.model;
+        }
+      }
+
+      return {
+        inputTokens,
+        outputTokens,
+        // Leave provider/model undefined rather than "" so the backend $set
+        // path does not overwrite a previously-recorded value with empty.
+        provider:
+          typeof dominantProvider === "string" && dominantProvider.length > 0
+            ? dominantProvider
+            : undefined,
+        model:
+          typeof dominantModel === "string" && dominantModel.length > 0
+            ? dominantModel
+            : undefined,
+        seatId,
+      };
+    } catch (err) {
+      // System boundary: never throw upstream. The send MUST succeed even if
+      // usage collection fails for any reason (RPC down, file read error, etc.).
+      log.warn(
+        `Failed to collect usage snapshot for ${this.scopeKey} ` +
+        `(non-fatal, usage field will be omitted): ` +
+        (err instanceof Error ? err.message : String(err)),
+      );
+      return null;
+    }
+  }
+
+  /**
+   * Fire-and-forget increment of cs_sessions.messageCount.
+   *
+   * Semantics: this counts *each* message that crosses the wire — one call per
+   * inbound buyer message, one per outbound agent reply. It is NOT a
+   * billing-turn counter (billing turns = 1 per successful agent run; those
+   * are recorded via csRecordUsage on the seat).
+   *
+   * Failures are logged but not rethrown — this is at a system boundary with
+   * the cloud backend, and the buyer message flow must not be blocked by
+   * telemetry/billing-stat calls.
+   */
+  private async incrementSessionMessageCount(): Promise<void> {
+    const authSession = getAuthSession();
+    if (!authSession) {
+      log.warn("No auth session available, skipping cs session messageCount increment");
+      return;
+    }
+    try {
+      await authSession.graphqlFetch(CS_INCREMENT_MESSAGE_COUNT_MUTATION, {
+        shopId: this.csContext.shopId,
+        conversationId: this.csContext.conversationId,
+      });
+    } catch (err) {
+      log.warn(
+        `csIncrementMessageCount failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   /** Dispatch an agent run to catch up on a missed conversation. Ensures backend session first. */

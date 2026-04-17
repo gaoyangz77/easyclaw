@@ -21,6 +21,7 @@ export type { CSShopContext } from "./customer-service-session.js";
 import { rootStore } from "../app/store/desktop-store.js";
 import { runtimeStatusStore } from "../app/store/runtime-status-store.js";
 import { normalizePlatform } from "../utils/platform.js";
+import { CS_RECORD_USAGE_MUTATION, SEATS_QUERY } from "../cloud/cs-queries.js";
 
 const log = createLogger("cs-bridge");
 
@@ -100,6 +101,23 @@ export class CustomerServiceBridge {
 
   /** Entity cache subscription unsubscribe function. */
   private cacheUnsubscribe: (() => void) | null = null;
+
+  /**
+   * CSSeat ID for this gateway, cached after cs_ack. null = not yet resolved.
+   * When set, per-run usage is recorded against this seat via csRecordUsage.
+   * When it cannot be resolved (e.g. seat not allocated yet), we skip usage
+   * recording with a warn log — agent flow is never blocked by billing stats.
+   */
+  private seatId: string | null = null;
+
+  /**
+   * True after at least one resolution attempt has been made.
+   *
+   * Once resolved successfully we cache the seatId for the lifetime of this
+   * bridge. A failed resolution (e.g. seat not yet allocated) is retried on
+   * each subsequent cs_ack so the gateway can self-heal once seats appear.
+   */
+  private seatResolveAttempted = false;
 
   constructor(private readonly opts: CustomerServiceBridgeOptions) {}
 
@@ -270,6 +288,12 @@ export class CustomerServiceBridge {
         } else {
           log.warn(`Agent run ${payload.runId} ended with error (text was previously forwarded)`);
         }
+      } else if (payload.state === "final") {
+        // Successful run → record one billing turn on the seat. Aborted/errored
+        // runs must not be charged; see recordRunUsage() for full semantics.
+        this.recordRunUsage(payload.runId).catch(() => {
+          /* already logged inside recordRunUsage */
+        });
       }
 
       // Safety-net cleanup of turn buffer (normally already flushed by agent events)
@@ -630,6 +654,11 @@ export class CustomerServiceBridge {
         this.startPingInterval();
         // Bind all CS-enabled shops after relay confirms connection
         this.sendShopBindings();
+        // Resolve seatId once per connection so csRecordUsage has a target.
+        // Fire-and-forget — main buyer-message flow is independent of this.
+        this.ensureSeatResolved().catch((err) => {
+          log.warn(`Seat resolution failed: ${err instanceof Error ? err.message : String(err)}`);
+        });
         break;
       case "cs_bind_shops_result": {
         const result = frame as CSBindShopsResultFrame;
@@ -667,6 +696,87 @@ export class CustomerServiceBridge {
         break;
       default:
         break;
+    }
+  }
+
+  // -- Seat resolution & usage recording -------------------------------------
+
+  /**
+   * Fetch the current user's seats from the backend and cache the one whose
+   * `gatewayId` matches this Desktop's gateway identifier. Called once per
+   * connection (on cs_ack). If no seat matches, leaves seatId=null — a warn
+   * is logged and per-run usage recording is skipped until the next
+   * connection attempt. This is an intentional soft-fail: seats may not yet
+   * be allocated for brand-new gateways, and we must not block CS traffic.
+   */
+  private async ensureSeatResolved(): Promise<void> {
+    if (this.seatResolveAttempted && this.seatId) return;
+    this.seatResolveAttempted = true;
+
+    const authSession = getAuthSession();
+    if (!authSession) {
+      log.warn("No auth session available, skipping seat resolution");
+      return;
+    }
+
+    const result = await authSession.graphqlFetch<{
+      seats: Array<{ id: string; gatewayId: string; status: string }>;
+    }>(SEATS_QUERY, {});
+
+    const match = result.seats?.find((s) => s.gatewayId === this.opts.gatewayId);
+    if (!match) {
+      log.warn(
+        `No seat allocated for gatewayId=${this.opts.gatewayId} ` +
+        `(got ${result.seats?.length ?? 0} seat(s)). Per-run usage recording disabled until next reconnect.`,
+      );
+      return;
+    }
+
+    this.seatId = match.id;
+    log.info(`Seat resolved: seatId=${match.id} status=${match.status}`);
+  }
+
+  /**
+   * Record billing-turn usage for a completed agent run.
+   *
+   * Semantics: called exactly once per successful run (state=final). Each
+   * successful run represents ONE billing-turn (one buyer message + one agent
+   * reply), so messageCount=1. This is intentionally distinct from
+   * `cs_sessions.messageCount`, which counts each message that crosses the
+   * wire (inbound OR outbound). The two counters answer different questions
+   * and must not be conflated.
+   *
+   * Token usage: the same `cs_usage_records` row also tracks LLM token totals
+   * (inputTokens / outputTokens). Those fields are written on a separate
+   * path — every successful `ecommerceSendMessage` (cs_send) piggybacks a
+   * cumulative usage snapshot and the backend diffs it against the session's
+   * last-reported snapshot. See `CustomerServiceSession.forwardTextToBuyer`
+   * for the collection side.
+   *
+   * Errors are caught and logged — this is a system boundary; a failed
+   * usage-record call must not affect the buyer-message flow.
+   */
+  private async recordRunUsage(runId: string): Promise<void> {
+    if (!this.seatId) {
+      // Seat not allocated (or resolution failed) — skip silently; cs_ack
+      // already logged a warn explaining why usage recording is off.
+      return;
+    }
+    const authSession = getAuthSession();
+    if (!authSession) {
+      log.warn(`No auth session available, skipping csRecordUsage for run=${runId}`);
+      return;
+    }
+    try {
+      await authSession.graphqlFetch(CS_RECORD_USAGE_MUTATION, {
+        seatId: this.seatId,
+        messageCount: 1,
+      });
+      log.info(`Recorded usage: run=${runId} seat=${this.seatId} messages=1`);
+    } catch (err) {
+      log.warn(
+        `csRecordUsage failed for run=${runId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
@@ -803,6 +913,12 @@ export class CustomerServiceBridge {
       onRunDispatched: (runId) => {
         this.pendingRuns.set(runId, { shopObjectId, conversationId: params.conversationId });
       },
+      // Expose the bridge's resolved seatId to the session lazily — `seatId`
+      // is populated asynchronously on cs_ack and may be null when a session
+      // is created during that window. Returning a live getter means the
+      // session always sees the latest value without us having to re-push
+      // it on resolution.
+      getSeatId: () => this.seatId,
     });
 
     // Resolve platform buyer ID and recent orders before session is usable

@@ -188,7 +188,8 @@ export const SEAT_USAGE_QUERY = gql`
       seatId
       period
       messageCount
-      tokenUsage
+      inputTokens
+      outputTokens
     }
   }
 `;

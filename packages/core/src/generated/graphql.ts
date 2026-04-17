@@ -161,10 +161,11 @@ export interface CsSessionStats {
 /** Per-seat usage record for a billing period */
 export interface CsUsageRecord {
   createdAt: Scalars['DateTimeISO']['output'];
+  inputTokens: Scalars['Int']['output'];
   messageCount: Scalars['Int']['output'];
+  outputTokens: Scalars['Int']['output'];
   period: Scalars['String']['output'];
   seatId: Scalars['String']['output'];
-  tokenUsage: Scalars['Int']['output'];
   updatedAt: Scalars['DateTimeISO']['output'];
   userId: Scalars['String']['output'];
 }
@@ -188,6 +189,20 @@ export interface CreateSurfaceInput {
   allowedToolIds: Array<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   name: Scalars['String']['input'];
+}
+
+/** Cumulative per-conversation LLM usage snapshot. Both token fields are totals since session creation (NOT deltas). Backend computes the delta against the last reported snapshot before incrementing cs_usage_records. */
+export interface CsSendUsageInput {
+  /** Cumulative LLM input tokens for this conversation (>= 0). */
+  inputTokens: Scalars['Int']['input'];
+  /** Most recent turn's model id (display-only). */
+  model?: InputMaybe<Scalars['String']['input']>;
+  /** Cumulative LLM output tokens for this conversation (>= 0). */
+  outputTokens: Scalars['Int']['input'];
+  /** Most recent turn's provider name (display-only). */
+  provider?: InputMaybe<Scalars['String']['input']>;
+  /** Seat id to charge. Must be allocated to the calling user. Backend asserts ownership — a mismatch fails the billing write but does not fail the send. */
+  seatId: Scalars['ID']['input'];
 }
 
 /** Result of getting or creating a CS session */
@@ -927,6 +942,10 @@ export interface Mutation {
   csEndSession: Scalars['Boolean']['output'];
   /** Get an existing active session or create a new one for a conversation */
   csGetOrCreateSession: CsSessionResult;
+  /** Increment messageCount on the active CS session for a conversation. Throws if no active session exists (fail-fast so Desktop can detect drift). */
+  csIncrementMessageCount: Scalars['Boolean']['output'];
+  /** Record per-seat billing-turn usage (messageCount) for the current billing period. Called by Desktop after each successful agent run. Token usage fields (inputTokens / outputTokens) are written on the same cs_usage_records document by a separate path: ecommerceSendMessage accepts an optional cumulative `usage` snapshot and a service turns the snapshot into a delta. */
+  csRecordUsage: Scalars['Boolean']['output'];
   /** Deallocate a seat by ID */
   deallocateSeat: Scalars['Boolean']['output'];
   /** Delete a run profile */
@@ -1019,6 +1038,18 @@ export interface MutationCsGetOrCreateSessionArgs {
 }
 
 
+export interface MutationCsIncrementMessageCountArgs {
+  conversationId: Scalars['String']['input'];
+  shopId: Scalars['ID']['input'];
+}
+
+
+export interface MutationCsRecordUsageArgs {
+  messageCount: Scalars['Int']['input'];
+  seatId: Scalars['ID']['input'];
+}
+
+
 export interface MutationDeallocateSeatArgs {
   seatId: Scalars['String']['input'];
 }
@@ -1087,6 +1118,7 @@ export interface MutationEcommerceSendMessageArgs {
   conversationId: Scalars['String']['input'];
   shopId: Scalars['String']['input'];
   type: EcomMessageType;
+  usage?: InputMaybe<CsSendUsageInput>;
 }
 
 

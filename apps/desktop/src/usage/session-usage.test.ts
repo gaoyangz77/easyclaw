@@ -127,14 +127,13 @@ describe("discoverAllSessions", () => {
 
 describe("loadSessionCostSummary", () => {
   it("parses JSONL and aggregates modelUsage with correct totals", async () => {
+    // Two assistant turns from the same model — only assistant entries carry
+    // billable `usage`, so a user-role entry with usage would be ignored
+    // (and indeed shouldn't appear in real transcripts).
     const filePath = await writeSession("test-session", [
       makeEntry({
         role: "user",
         content: "Hello",
-        provider: "anthropic",
-        model: "claude-sonnet-4-20250514",
-        input_tokens: 100,
-        output_tokens: 0,
       }),
       makeEntry({
         role: "assistant",
@@ -144,6 +143,14 @@ describe("loadSessionCostSummary", () => {
         input_tokens: 100,
         output_tokens: 50,
         cost: { total: 0.001, input: 0.0005, output: 0.0003, cacheRead: 0.0001, cacheWrite: 0.0001 },
+      }),
+      makeEntry({
+        role: "assistant",
+        content: "Anything else?",
+        provider: "anthropic",
+        model: "claude-sonnet-4-20250514",
+        input_tokens: 100,
+        output_tokens: 0,
       }),
     ]);
 
@@ -157,6 +164,38 @@ describe("loadSessionCostSummary", () => {
     expect(result!.modelUsage![0].totals.input).toBe(200);
     expect(result!.modelUsage![0].totals.output).toBe(50);
     expect(result!.totalCost).toBeCloseTo(0.001);
+  });
+
+  it("ignores `usage` on user-role entries (only assistant turns are billable)", async () => {
+    // Defensive coverage for the role-filter strictness fix: even if a
+    // provider attaches a `usage` block to a user-role echo, that input
+    // accounting must not double-count against the assistant's own usage.
+    const filePath = await writeSession("user-usage-ignored", [
+      makeEntry({
+        role: "user",
+        content: "Hello",
+        provider: "anthropic",
+        model: "claude-sonnet-4-20250514",
+        // If user-role usage were counted, total input would be 700, not 500.
+        input_tokens: 200,
+        output_tokens: 0,
+      }),
+      makeEntry({
+        role: "assistant",
+        content: "Hi",
+        provider: "anthropic",
+        model: "claude-sonnet-4-20250514",
+        input_tokens: 500,
+        output_tokens: 100,
+      }),
+    ]);
+
+    const result = await loadSessionCostSummary({ sessionFile: filePath });
+    expect(result).not.toBeNull();
+    expect(result!.input).toBe(500);
+    expect(result!.output).toBe(100);
+    expect(result!.modelUsage).toHaveLength(1);
+    expect(result!.modelUsage![0].count).toBe(1);
   });
 
   it("handles API-reported costs", async () => {
