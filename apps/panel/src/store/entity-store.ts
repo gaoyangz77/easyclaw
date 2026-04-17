@@ -309,6 +309,19 @@ const PanelRootStoreModel = RootStoreModel.props({
       yield client().query({ query: TOOL_SPECS_SYNC_QUERY, fetchPolicy: "network-only" });
     }),
 
+    /**
+     * Re-fetch subscription + LLM quota from backend via Desktop proxy.
+     * Quota changes whenever the user makes LLM calls, so Panel surfaces
+     * that display it (e.g. Account page) should call this on mount and on
+     * window visibility changes to keep the user-visible numbers fresh.
+     */
+    refreshBilling: flow(function* () {
+      yield Promise.all([
+        client().query({ query: SUBSCRIPTION_STATUS_QUERY, fetchPolicy: "network-only" }),
+        client().query({ query: LLM_QUOTA_STATUS_QUERY, fetchPolicy: "network-only" }),
+      ]);
+    }),
+
     // ── Surface mutations ──
 
     createSurface: flow(function* (input: {

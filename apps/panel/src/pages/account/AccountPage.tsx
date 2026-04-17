@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { observer } from "mobx-react-lite";
 import { getUserInitial } from "../../lib/user-manager.js";
@@ -35,6 +35,22 @@ export const AccountPage = observer(function AccountPage({ onNavigate }: { onNav
 
   const subscription = entityStore.subscriptionStatus;
   const llmQuota = entityStore.llmQuotaStatus;
+
+  // Refresh billing (subscription + LLM quota) on mount and whenever the
+  // window becomes visible again. Quota changes as the user consumes LLM
+  // calls elsewhere, and without a refetch the page would show stale
+  // numbers from initSession time. No polling — visibility is enough
+  // coverage for "I came back to check".
+  useEffect(() => {
+    entityStore.refreshBilling().catch(() => {});
+    function onVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        entityStore.refreshBilling().catch(() => {});
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
+  }, [entityStore]);
 
   // Read surfaces and run-profiles from MST store (auto-synced via SSE)
   const surfaces = entityStore.allSurfaces;
