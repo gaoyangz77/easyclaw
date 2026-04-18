@@ -22,8 +22,6 @@ export { PlatformAppModel } from "./PlatformApp.js";
 export type { PlatformApp } from "./PlatformApp.js";
 export { ServiceCreditModel } from "./ServiceCredit.js";
 export type { ServiceCredit } from "./ServiceCredit.js";
-export { SessionStatsModel } from "./SessionStats.js";
-export type { SessionStats } from "./SessionStats.js";
 export { RootStoreModel } from "./RootStore.js";
 export type { RootStore } from "./RootStore.js";
 export { RuntimeStatusStoreModel, CsBridgeStatusModel, AppSettingsModel } from "./RuntimeStatus.js";

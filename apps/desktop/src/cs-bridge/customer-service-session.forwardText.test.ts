@@ -42,6 +42,11 @@ vi.mock("../usage/session-usage.js", () => ({
   loadSessionCostSummary: (...args: unknown[]) => mockLoadSessionCostSummary(...args),
 }));
 
+const mockEmitCsTelemetry = vi.fn();
+vi.mock("../telemetry/cs-telemetry-ref.js", () => ({
+  emitCsTelemetry: (...args: unknown[]) => mockEmitCsTelemetry(...args),
+}));
+
 // ─── Import after mocks ─────────────────────────────────────────────────────
 
 import { CustomerServiceSession, type CSShopContext, type CSContext } from "./customer-service-session.js";
@@ -77,24 +82,10 @@ beforeEach(() => {
     getAccessToken: () => "test-token",
     graphqlFetch: mockGraphqlFetch,
   });
-  // forwardTextToBuyer makes two GraphQL calls: the cs_send mutation and a
-  // fire-and-forget cs_sessions.messageCount increment. Both return a value.
-  mockGraphqlFetch.mockImplementation(async (query: string) => {
-    if (query.includes("csIncrementMessageCount")) {
-      return { csIncrementMessageCount: true };
-    }
-    return { ecommerceSendMessage: { messageId: "m-1" } };
-  });
+  // The simplified SEND_MESSAGE_MUTATION no longer carries a usage payload —
+  // the only GraphQL call is the send itself.
+  mockGraphqlFetch.mockResolvedValue({ ecommerceSendMessage: { messageId: "m-1" } });
 });
-
-/** Helper: find the ecommerceSendMessage call out of the two GraphQL calls. */
-function findSendCall(): { variables: Record<string, unknown> } {
-  const call = mockGraphqlFetch.mock.calls.find((c) =>
-    typeof c[0] === "string" && (c[0] as string).includes("ecommerceSendMessage"),
-  );
-  if (!call) throw new Error("ecommerceSendMessage call not found");
-  return { variables: call[1] as Record<string, unknown> };
-}
 
 /**
  * Helper: prime the scopeKey → sessionId resolution path. Returns the
@@ -110,12 +101,60 @@ function primeScopeResolution(sessionId = "session-conv-xyz"): string {
   return `/tmp/agents/main/sessions/${sessionId}.jsonl`;
 }
 
+/**
+ * Flush microtasks so fire-and-forget `void collectAndEmitTokenSnapshot()`
+ * can complete before the test inspects its emits.
+ */
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
-describe("CustomerServiceSession.forwardTextToBuyer — usage piggyback", () => {
-  it("reads cumulative token totals from the JSONL transcript and piggybacks them verbatim", async () => {
+describe("CustomerServiceSession.forwardTextToBuyer — sends message and emits CS telemetry", () => {
+  it("sends the GraphQL mutation with no usage piggyback (BI moved to telemetry stream)", async () => {
     const session = makeSession();
-    const sessionFile = primeScopeResolution();
+    primeScopeResolution();
+    mockLoadSessionCostSummary.mockResolvedValue(null);
+
+    await session.forwardTextToBuyer("hello");
+
+    expect(mockGraphqlFetch).toHaveBeenCalledTimes(1);
+    const [_query, variables] = mockGraphqlFetch.mock.calls[0];
+    expect(variables).not.toHaveProperty("usage");
+    expect(variables).toMatchObject({
+      shopId: "shop-obj-1",
+      conversationId: "conv-xyz",
+      content: JSON.stringify({ content: "hello" }),
+    });
+  });
+
+  it("emits an outbound cs.message event with contentLength after the send", async () => {
+    const session = makeSession();
+    primeScopeResolution();
+    mockLoadSessionCostSummary.mockResolvedValue(null);
+
+    await session.forwardTextToBuyer("hello world");
+    await flushMicrotasks();
+
+    const messageEvent = mockEmitCsTelemetry.mock.calls.find(
+      ([type]) => type === "cs.message",
+    );
+    expect(messageEvent).toBeDefined();
+    expect(messageEvent![1]).toMatchObject({
+      shopId: "shop-obj-1",
+      platformShopId: "tiktok-shop-1",
+      conversationId: "conv-xyz",
+      direction: "outbound",
+      contentLength: "hello world".length,
+    });
+  });
+
+  it("emits a cs.token_snapshot event carrying cumulative JSONL totals", async () => {
+    const session = makeSession();
+    primeScopeResolution();
     mockLoadSessionCostSummary.mockResolvedValueOnce({
       input: 1234,
       output: 567,
@@ -138,58 +177,63 @@ describe("CustomerServiceSession.forwardTextToBuyer — usage piggyback", () => 
       ],
     });
 
-    await session.forwardTextToBuyer("hello");
+    await session.forwardTextToBuyer("hi");
+    await flushMicrotasks();
 
-    const { variables } = findSendCall();
-    expect(variables.usage).toEqual({
+    const snapshot = mockEmitCsTelemetry.mock.calls.find(
+      ([type]) => type === "cs.token_snapshot",
+    );
+    expect(snapshot).toBeDefined();
+    expect(snapshot![1]).toMatchObject({
+      shopId: "shop-obj-1",
+      conversationId: "conv-xyz",
       inputTokens: 1234,
       outputTokens: 567,
       provider: "anthropic",
       model: "claude-sonnet-4.6",
     });
-    // Path-resolution RPC was hit; JSONL summary was read with no time window.
-    expect(mockRpcRequest).toHaveBeenCalledWith("sessions.list", { agentId: "main" });
-    expect(mockLoadSessionCostSummary).toHaveBeenCalledWith({ sessionFile });
   });
 
-  it("omits usage when scopeKey resolution finds no matching session row", async () => {
+  it("skips cs.token_snapshot when scopeKey resolution finds no matching session row (but still sends)", async () => {
     const session = makeSession();
     mockRpcRequest.mockResolvedValueOnce({
       sessions: [{ key: "agent:main:cs:tiktok:other", sessionId: "session-other" }],
     });
 
-    await session.forwardTextToBuyer("hello");
+    await session.forwardTextToBuyer("hi");
+    await flushMicrotasks();
 
-    const { variables } = findSendCall();
-    expect(variables.usage).toBeUndefined();
+    // cs.message still emitted, but no token_snapshot.
+    expect(mockEmitCsTelemetry.mock.calls.some(([t]) => t === "cs.message")).toBe(true);
+    expect(mockEmitCsTelemetry.mock.calls.some(([t]) => t === "cs.token_snapshot")).toBe(false);
     // Path resolution failed → never read JSONL.
     expect(mockLoadSessionCostSummary).not.toHaveBeenCalled();
+    // Core send still happens.
+    expect(mockGraphqlFetch).toHaveBeenCalledTimes(1);
   });
 
-  it("omits usage when loadSessionCostSummary returns null (file missing / no entries)", async () => {
-    // Legitimate pre-first-LLM-call state: session is registered but no
-    // assistant message has produced usage yet. We omit the snapshot rather
-    // than fabricating zeros — backend $max will simply not get a report
-    // this turn.
+  it("skips cs.token_snapshot when loadSessionCostSummary returns null (file missing / no usage yet)", async () => {
     const session = makeSession();
     primeScopeResolution();
     mockLoadSessionCostSummary.mockResolvedValueOnce(null);
 
     await session.forwardTextToBuyer("hi");
+    await flushMicrotasks();
 
-    const { variables } = findSendCall();
-    expect(variables.usage).toBeUndefined();
+    expect(mockEmitCsTelemetry.mock.calls.some(([t]) => t === "cs.token_snapshot")).toBe(false);
+    expect(mockEmitCsTelemetry.mock.calls.some(([t]) => t === "cs.message")).toBe(true);
   });
 
-  it("does not block the send when sessions.list RPC throws", async () => {
+  it("does not block the send when sessions.list RPC throws (telemetry failure is system-boundary)", async () => {
     const session = makeSession();
     mockRpcRequest.mockRejectedValueOnce(new Error("RPC down"));
 
-    await session.forwardTextToBuyer("hello");
+    await expect(session.forwardTextToBuyer("hello")).resolves.toBeUndefined();
+    await flushMicrotasks();
 
-    // Core send still happens, without a usage field.
-    const { variables } = findSendCall();
-    expect(variables.usage).toBeUndefined();
+    // Send completed fine; no token_snapshot emitted.
+    expect(mockGraphqlFetch).toHaveBeenCalledTimes(1);
+    expect(mockEmitCsTelemetry.mock.calls.some(([t]) => t === "cs.token_snapshot")).toBe(false);
   });
 
   it("does not block the send when loadSessionCostSummary throws", async () => {
@@ -197,13 +241,14 @@ describe("CustomerServiceSession.forwardTextToBuyer — usage piggyback", () => 
     primeScopeResolution();
     mockLoadSessionCostSummary.mockRejectedValueOnce(new Error("disk gone"));
 
-    await session.forwardTextToBuyer("hello");
+    await expect(session.forwardTextToBuyer("hello")).resolves.toBeUndefined();
+    await flushMicrotasks();
 
-    const { variables } = findSendCall();
-    expect(variables.usage).toBeUndefined();
+    expect(mockGraphqlFetch).toHaveBeenCalledTimes(1);
+    expect(mockEmitCsTelemetry.mock.calls.some(([t]) => t === "cs.token_snapshot")).toBe(false);
   });
 
-  it("floors fractional token values and clamps negatives to 0 (defense-in-depth)", async () => {
+  it("floors fractional token values and clamps negatives to 0 in the snapshot event", async () => {
     const session = makeSession();
     primeScopeResolution();
     mockLoadSessionCostSummary.mockResolvedValueOnce({
@@ -213,57 +258,10 @@ describe("CustomerServiceSession.forwardTextToBuyer — usage piggyback", () => 
     });
 
     await session.forwardTextToBuyer("hi");
+    await flushMicrotasks();
 
-    const { variables } = findSendCall();
-    expect(variables.usage).toMatchObject({
-      inputTokens: 100,
-      outputTokens: 0,
-      provider: "p",
-      model: "m",
-    });
-  });
-
-  it("leaves provider/model undefined when modelUsage is empty (does not stomp backend state)", async () => {
-    // No modelUsage entries means we cannot identify a dominant model. Omit
-    // the fields rather than sending empty strings — passing "" would make
-    // the backend $set path overwrite a previously-recorded provider/model.
-    const session = makeSession();
-    primeScopeResolution();
-    mockLoadSessionCostSummary.mockResolvedValueOnce({
-      input: 10,
-      output: 5,
-      modelUsage: [],
-    });
-
-    await session.forwardTextToBuyer("hi");
-
-    const { variables } = findSendCall();
-    expect(variables.usage).toMatchObject({
-      inputTokens: 10,
-      outputTokens: 5,
-      provider: undefined,
-      model: undefined,
-    });
-  });
-
-  it("leaves provider/model undefined when the dominant modelUsage entry has empty strings", async () => {
-    const session = makeSession();
-    primeScopeResolution();
-    mockLoadSessionCostSummary.mockResolvedValueOnce({
-      input: 10,
-      output: 5,
-      modelUsage: [{ provider: "", model: "", count: 1, totals: {} as never }],
-    });
-
-    await session.forwardTextToBuyer("hi");
-
-    const { variables } = findSendCall();
-    expect(variables.usage).toMatchObject({
-      inputTokens: 10,
-      outputTokens: 5,
-      provider: undefined,
-      model: undefined,
-    });
+    const snapshot = mockEmitCsTelemetry.mock.calls.find(([t]) => t === "cs.token_snapshot");
+    expect(snapshot![1]).toMatchObject({ inputTokens: 100, outputTokens: 0 });
   });
 
   it("picks the most-used model from modelUsage; ties resolve to first-seen", async () => {
@@ -273,19 +271,17 @@ describe("CustomerServiceSession.forwardTextToBuyer — usage piggyback", () => 
       input: 100,
       output: 50,
       modelUsage: [
-        // First entry — count 2.
         { provider: "anthropic", model: "claude-sonnet-4.6", count: 2, totals: {} as never },
-        // Second entry — count 5 (the most used; should win).
         { provider: "openai", model: "gpt-5.4", count: 5, totals: {} as never },
-        // Third entry — count 5 (tie; should NOT displace the openai entry).
         { provider: "google", model: "gemini-2.5", count: 5, totals: {} as never },
       ],
     });
 
     await session.forwardTextToBuyer("hi");
+    await flushMicrotasks();
 
-    const { variables } = findSendCall();
-    expect(variables.usage).toMatchObject({
+    const snapshot = mockEmitCsTelemetry.mock.calls.find(([t]) => t === "cs.token_snapshot");
+    expect(snapshot![1]).toMatchObject({
       provider: "openai",
       model: "gpt-5.4",
     });

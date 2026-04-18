@@ -9,14 +9,12 @@ interface UseTikTokShopDetailParams {
   handleError: (err: unknown, fallbackKey: string) => void;
   setUpgradePrompt: (v: boolean) => void;
   fetchCredits: () => Promise<void>;
-  fetchSessionStats: (shopId: string) => Promise<void>;
 }
 
 export function useTikTokShopDetail({
   handleError,
   setUpgradePrompt,
   fetchCredits,
-  fetchSessionStats,
 }: UseTikTokShopDetailParams) {
   const { t } = useTranslation();
   const entityStore = useEntityStore();
@@ -37,7 +35,6 @@ export function useTikTokShopDetail({
   useEffect(() => {
     if (selectedShopId) {
       fetchCredits();
-      fetchSessionStats(selectedShopId);
     }
   }, [selectedShopId]);
 
@@ -108,8 +105,7 @@ export function useTikTokShopDetail({
       if (!creditInstance) throw new Error(`Credit ${credit.id} not found`);
       await creditInstance.redeem(selectedShopId);
       showToast(t("tiktokShops.modal.billing.redeemSuccess"), "success");
-      // Refresh session stats
-      fetchSessionStats(selectedShopId);
+      // Shop balance auto-refreshes via MST patch from the redeem mutation response.
     } catch (err) {
       handleError(err, "tiktokShops.updateFailed");
     } finally {

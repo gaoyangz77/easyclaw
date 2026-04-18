@@ -48,6 +48,7 @@ import { queryCheckUpdate, type UpdatePayload } from "../cloud/backend-subscript
 import { isNewerVersion } from "@rivonclaw/updater";
 import { resetDevicePairing, cleanupGatewayLock, applyAutoLaunch } from "../gateway/startup-utils.js";
 import { initTelemetry } from "../telemetry/telemetry-init.js";
+import { setCsTelemetryClient } from "../telemetry/cs-telemetry-ref.js";
 import { allKeysToMstSnapshots, toMstSnapshot } from "../providers/provider-key-utils.js";
 import { syncActiveKey } from "../providers/provider-validator.js";
 import { reaction } from "mobx";
@@ -210,21 +211,32 @@ app.whenReady().then(async () => {
 
   // Initialize telemetry client and heartbeat timer
   const locale = app.getLocale().startsWith("zh") ? "zh" : "en";
-  const { client: telemetryClient, heartbeatTimer } = initTelemetry(
+  const { client: telemetryClient, csClient: csTelemetryClient, heartbeatTimer } = initTelemetry(
     storage, deviceId, locale, (url, init) => proxyNetwork.fetch(url, init),
   );
 
-  // Bridge MST user identity → telemetry client
-  if (telemetryClient) {
+  // Bridge MST user identity → telemetry clients. The CS stream attributes
+  // every row by userId; identity changes must propagate to BOTH clients.
+  if (telemetryClient || csTelemetryClient) {
     reaction(
       () => rootStore.currentUser?.userId,
       (userId) => {
-        if (userId) telemetryClient.identify(userId);
-        else telemetryClient.reset();
+        if (userId) {
+          telemetryClient?.identify(userId);
+          csTelemetryClient?.identify(userId);
+        } else {
+          telemetryClient?.reset();
+          csTelemetryClient?.reset();
+        }
       },
       { fireImmediately: true },
     );
   }
+
+  // Expose the CS telemetry emitter for the CS bridge + panel-server routes.
+  // Keeping it on a module-level ref (rather than threading through every
+  // function) mirrors `getStorageRef` / `getAuthSession` in this codebase.
+  setCsTelemetryClient(csTelemetryClient);
 
   // Initialize auth session manager and backend subscription client
   const { authSession, backendSubscription } = await setupAuth({
@@ -1447,6 +1459,9 @@ app.whenReady().then(async () => {
     onTelemetryTrack: (eventType, metadata) => {
       telemetryClient?.track(eventType, metadata);
     },
+    onCsTelemetryTrack: (eventType, metadata) => {
+      csTelemetryClient?.track(eventType, metadata);
+    },
     authSession,
     proxyFetch: (url, init) => proxyNetwork.fetch(url, init),
     channelManager: rootStore.channelManager,
@@ -1716,6 +1731,10 @@ app.whenReady().then(async () => {
       await telemetryClient.shutdown();
       log.info("Telemetry client shut down gracefully");
     }
+    if (csTelemetryClient) {
+      await csTelemetryClient.shutdown();
+      log.info("CS telemetry client shut down gracefully");
+    }
 
     await Promise.all([
       launcher.stop(),
@@ -1771,6 +1790,10 @@ app.whenReady().then(async () => {
         // Graceful shutdown: flush pending telemetry events
         await telemetryClient.shutdown();
         log.info("Telemetry client shut down gracefully");
+      }
+      if (csTelemetryClient) {
+        await csTelemetryClient.shutdown();
+        log.info("CS telemetry client shut down gracefully");
       }
 
       // Kill gateway and proxy router.

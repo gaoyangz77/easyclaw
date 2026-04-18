@@ -256,6 +256,32 @@ const telemetryTrack: EndpointHandler = async (req, res, _url, _params, ctx: Api
   res.end();
 };
 
+// ── POST /api/telemetry/cs-track ──
+//
+// Relays CS business-event emits from the gateway-side merchant plugins to
+// Desktop's CS telemetry client (which then ships to the CS BI ClickHouse
+// stream). Plugins run out-of-process — they cannot hold a reference to
+// the Desktop `RemoteTelemetryClient` directly, so they POST here through
+// the existing extension→panel-server HTTP path.
+//
+// The route applies a small, deliberate allowlist: only the three BI event
+// types we ingest into dedicated CH tables (`cs.message`, `cs.token_snapshot`,
+// `cs.tool_call`) are accepted. Anything else is a silent 204 drop. This
+// prevents a misconfigured plugin from flooding the CS stream with noise.
+const CS_EVENT_ALLOWLIST = new Set(["cs.message", "cs.token_snapshot", "cs.tool_call"]);
+
+const telemetryCsTrack: EndpointHandler = async (req, res, _url, _params, ctx: ApiContext) => {
+  const body = (await parseBody(req)) as { eventType?: string; metadata?: Record<string, unknown> };
+  if (!body.eventType || !CS_EVENT_ALLOWLIST.has(body.eventType)) {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+  ctx.onCsTelemetryTrack?.(body.eventType, body.metadata);
+  res.writeHead(204);
+  res.end();
+};
+
 // ── GET /api/agent-settings ──
 
 const getAgentSettings: EndpointHandler = async (_req, res, _url, _params, _ctx) => {
@@ -586,6 +612,7 @@ export function registerSettingsHandlers(registry: RouteRegistry): void {
 
   // Telemetry tracking
   registry.register(API["telemetry.track"], telemetryTrack);
+  registry.register(API["telemetry.cs.track"], telemetryCsTrack);
 
   // Agent settings
   registry.register(API["agentSettings.get"], getAgentSettings);

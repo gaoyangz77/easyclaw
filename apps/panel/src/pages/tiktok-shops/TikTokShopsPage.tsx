@@ -17,12 +17,10 @@ export const TikTokShopsPage = observer(function TikTokShopsPage() {
   const shops = entityStore.shops;
   const platformApps = entityStore.platformApps;
   const credits = entityStore.credits;
-  const sessionStats = entityStore.sessionStats;
 
   const [upgradePrompt, setUpgradePrompt] = useState(false);
 
-  const { creditsLoading, sessionStatsLoading, fetchCredits, fetchSessionStats } =
-    useTikTokShopData();
+  const { creditsLoading, fetchCredits } = useTikTokShopData();
 
   const {
     oauthLoading,
@@ -54,7 +52,7 @@ export const TikTokShopsPage = observer(function TikTokShopsPage() {
     handleToggleCustomerService,
     handleRedeemCredit,
     handleDeleteShop,
-  } = useTikTokShopDetail({ handleError, setUpgradePrompt, fetchCredits, fetchSessionStats });
+  } = useTikTokShopDetail({ handleError, setUpgradePrompt, fetchCredits });
 
   const csCredits = credits.filter((c) => c.service === "CUSTOMER_SERVICE" && c.status === "AVAILABLE");
 
@@ -131,8 +129,6 @@ export const TikTokShopsPage = observer(function TikTokShopsPage() {
         creditsLoading={creditsLoading}
         redeemingCreditId={redeemingCreditId}
         onRedeemCredit={handleRedeemCredit}
-        sessionStatsLoading={sessionStatsLoading}
-        sessionStats={sessionStats}
       />
 
       <ConfirmDialog

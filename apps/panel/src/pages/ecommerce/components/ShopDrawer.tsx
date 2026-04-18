@@ -45,8 +45,6 @@ interface ShopDrawerProps {
   creditsLoading: boolean;
   redeemingCreditId: string | null;
   onRedeemCredit: (credit: ServiceCredit) => void;
-  sessionStatsLoading: boolean;
-  sessionStats: { activeSessions: number; totalSessions: number } | null;
 }
 
 export const ShopDrawer = observer(function ShopDrawer({
@@ -86,8 +84,6 @@ export const ShopDrawer = observer(function ShopDrawer({
   creditsLoading,
   redeemingCreditId,
   onRedeemCredit,
-  sessionStatsLoading,
-  sessionStats,
 }: ShopDrawerProps) {
   const { t } = useTranslation();
 
@@ -257,8 +253,6 @@ export const ShopDrawer = observer(function ShopDrawer({
                 creditsLoading={creditsLoading}
                 redeemingCreditId={redeemingCreditId}
                 onRedeemCredit={onRedeemCredit}
-                sessionStatsLoading={sessionStatsLoading}
-                sessionStats={sessionStats}
               />
             )}
           </div>

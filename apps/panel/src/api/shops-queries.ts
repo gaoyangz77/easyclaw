@@ -112,17 +112,6 @@ export const MY_CREDITS_QUERY = gql`
   }
 `;
 
-export const CS_SESSION_STATS_QUERY = gql`
-  query CSSessionStats($shopId: ID!) {
-    csSessionStats(shopId: $shopId) {
-      activeSessions
-      totalSessions
-      balance
-      balanceExpiresAt
-    }
-  }
-`;
-
 export const REDEEM_CREDIT_MUTATION = gql`
   ${SHOP_FIELDS_FRAGMENT}
   mutation RedeemCredit($creditId: ID!, $shopId: ID!) {

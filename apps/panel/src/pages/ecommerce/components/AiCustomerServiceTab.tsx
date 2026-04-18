@@ -45,9 +45,6 @@ interface AiCustomerServiceTabProps {
   creditsLoading: boolean;
   redeemingCreditId: string | null;
   onRedeemCredit: (credit: ServiceCredit) => void;
-  // Session stats
-  sessionStatsLoading: boolean;
-  sessionStats: { activeSessions: number; totalSessions: number } | null;
 }
 
 export const AiCustomerServiceTab = observer(function AiCustomerServiceTab({
@@ -80,8 +77,6 @@ export const AiCustomerServiceTab = observer(function AiCustomerServiceTab({
   creditsLoading,
   redeemingCreditId,
   onRedeemCredit,
-  sessionStatsLoading,
-  sessionStats,
 }: AiCustomerServiceTabProps) {
   const { t } = useTranslation();
   const entityStore = useEntityStore();
@@ -329,24 +324,14 @@ export const AiCustomerServiceTab = observer(function AiCustomerServiceTab({
         </div>
       )}
 
-      {/* Session Stats */}
-      <div className="drawer-section-label">{t("ecommerce.shopDrawer.aiCS.sessions")}</div>
-      {sessionStatsLoading ? (
-        <div className="empty-cell">{t("common.loading")}</div>
-      ) : sessionStats ? (
-        <div className="session-stats-grid session-stats-grid-2col">
-          <div className="session-stat-card">
-            <span className="session-stat-label">{t("ecommerce.shopDrawer.sessions.active")}</span>
-            <span className="session-stat-value">{sessionStats.activeSessions}</span>
-          </div>
-          <div className="session-stat-card">
-            <span className="session-stat-label">{t("ecommerce.shopDrawer.sessions.total")}</span>
-            <span className="session-stat-value">{sessionStats.totalSessions}</span>
-          </div>
-        </div>
-      ) : (
-        <div className="empty-cell">{t("ecommerce.shopDrawer.sessions.noData")}</div>
-      )}
+      {/*
+        Session-volume stats (active / total) used to render here, sourced
+        from the `csSessionStats` GraphQL query. They moved to the ClickHouse
+        BI stream (see `cs.message` / `cs.token_snapshot` events) and are now
+        observed in Grafana, not in-app. The remaining CS balance is shown in
+        the "credits" block above — sourced directly from
+        `shop.services.customerServiceBilling`.
+      */}
     </div>
   );
 });

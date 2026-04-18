@@ -11,7 +11,6 @@ import { ToolCapabilityModel } from "./ToolCapability.js";
 import { UserModel } from "./User.js";
 import { PlatformAppModel } from "./PlatformApp.js";
 import { ServiceCreditModel } from "./ServiceCredit.js";
-import { SessionStatsModel } from "./SessionStats.js";
 
 export const RootStoreModel = types
   .model("RootStore", {
@@ -33,7 +32,6 @@ export const RootStoreModel = types
     currentUser: types.maybeNull(UserModel),
     platformApps: types.optional(types.array(PlatformAppModel), []),
     credits: types.optional(types.array(ServiceCreditModel), []),
-    sessionStats: types.maybeNull(SessionStatsModel),
   })
   .views((self) => ({
     get authenticated() {

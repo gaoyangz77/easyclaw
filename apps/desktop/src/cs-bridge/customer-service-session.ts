@@ -9,8 +9,10 @@
  * - Session key construction (scopeKey / dispatchKey)
  * - System prompt assembly (with optional admin directive guidance)
  * - Gateway session registration (cs_register_session + RunProfile + model override)
- * - Backend session creation (balance check)
+ * - Backend session creation (balance check / idempotency record)
  * - Agent run dispatch (buyer message, admin directive, catch-up)
+ * - CS business-telemetry emission (BI events to ClickHouse via the
+ *   always-on `cs` telemetry client — see `cs-telemetry-ref.ts`)
  * - Escalation message sending
  *
  * Does NOT own any global state (pendingRuns, activeConversations, relay connection).
@@ -29,12 +31,12 @@ import { rootStore } from "../app/store/desktop-store.js";
 import { proxyNetwork } from "../infra/proxy/proxy-aware-network.js";
 import { compressImageForAgent } from "./image-compressor.js";
 import { loadSessionCostSummary } from "../usage/session-usage.js";
+import { emitCsTelemetry } from "../telemetry/cs-telemetry-ref.js";
 import {
   SEND_MESSAGE_MUTATION,
   GET_CONVERSATION_DETAILS_QUERY,
   GET_BUYER_ORDERS_QUERY,
   CS_GET_OR_CREATE_SESSION_MUTATION,
-  CS_INCREMENT_MESSAGE_COUNT_MUTATION,
 } from "../cloud/cs-queries.js";
 
 const log = createLogger("cs-session");
@@ -313,13 +315,19 @@ export class CustomerServiceSession {
       placeholder,
     });
 
-    // Count the inbound buyer message on `cs_sessions.messageCount` once we've
-    // successfully dispatched (so we don't count frames we dropped). This counter
-    // tracks raw conversation volume, distinct from per-run billing usage which
-    // is recorded separately after the agent run reaches `final`.
+    // Emit the inbound `cs.message` BI event — one row per message crossing
+    // the wire. Only fire after a successful dispatch so we don't count frames
+    // we dropped. Fire-and-forget: telemetry failure must never block the
+    // buyer-facing path.
     if (result.runId) {
-      this.incrementSessionMessageCount().catch(() => {
-        /* already logged inside the helper */
+      emitCsTelemetry("cs.message", {
+        shopId: this.csContext.shopId,
+        platformShopId: this.shop.platformShopId,
+        conversationId: this.csContext.conversationId,
+        buyerUserId: this.csContext.buyerUserId,
+        direction: "inbound",
+        messageId: frame.messageId,
+        contentLength: typeof content === "string" ? content.length : 0,
       });
     }
 
@@ -442,10 +450,14 @@ export class CustomerServiceSession {
    * Forward agent text output to the buyer via the backend GraphQL proxy.
    * Called by the Bridge when an agent run completes with text output.
    *
-   * Piggybacks a cumulative LLM usage snapshot on the `cs_send` mutation so
-   * the backend can advance `cs_sessions.inputTokens` / `outputTokens` via
-   * `$max`. Usage collection failures never block the send — the snapshot
-   * is simply omitted from the mutation variables.
+   * Emits two BI events after a successful send:
+   *   - `cs.token_snapshot` — cumulative per-conversation LLM token totals
+   *     (from the gateway session JSONL transcript). Append-only stream;
+   *     the warehouse derives deltas via window functions on (conversationId,
+   *     ts).
+   *   - `cs.message` — one row per outbound message crossing the wire.
+   *
+   * Telemetry emits are fire-and-forget and NEVER block the send.
    */
   async forwardTextToBuyer(text: string): Promise<void> {
     const authSession = getAuthSession();
@@ -453,88 +465,67 @@ export class CustomerServiceSession {
       log.warn("No auth session available, cannot forward text to buyer");
       return;
     }
-    const usage = await this.collectUsageSnapshot();
     await authSession.graphqlFetch(SEND_MESSAGE_MUTATION, {
       shopId: this.csContext.shopId,
       conversationId: this.csContext.conversationId,
       type: GQL.EcomMessageType.Text,
       content: JSON.stringify({ content: text }),
-      // Typed as optional by the schema — only include when we were able to
-      // build a valid snapshot. Passing null/undefined either way is safe,
-      // but omitting the key keeps the payload smaller and the backend path
-      // cleaner.
-      ...(usage ? { usage } : {}),
     });
     this.undeliveredCount = 0;
-    log.info(
-      `Auto-forwarded agent text to buyer (${text.length} chars)` +
-      (usage
-        ? ` + usage { in:${usage.inputTokens} out:${usage.outputTokens} }`
-        : ""),
-    );
+    log.info(`Auto-forwarded agent text to buyer (${text.length} chars)`);
 
-    // Count the outbound agent message on `cs_sessions.messageCount`. This is
-    // the raw conversation message counter, not the billing-turn counter.
-    this.incrementSessionMessageCount().catch(() => {
-      /* already logged inside the helper */
+    // BI emits (fire-and-forget). Collect the cumulative token snapshot from
+    // the JSONL transcript first; if it's unavailable (RPC down, file miss)
+    // we simply skip the token event — the `cs.message` event is still emitted.
+    void this.collectAndEmitTokenSnapshot();
+    emitCsTelemetry("cs.message", {
+      shopId: this.csContext.shopId,
+      platformShopId: this.shop.platformShopId,
+      conversationId: this.csContext.conversationId,
+      buyerUserId: this.csContext.buyerUserId,
+      direction: "outbound",
+      contentLength: text.length,
     });
   }
 
   /**
-   * Build the cumulative LLM usage snapshot to piggyback on `cs_send`.
-   *
-   * Semantics: both token fields are cumulative per-conversation totals since
-   * session creation (NOT deltas). The backend advances
-   * `cs_sessions.inputTokens` / `outputTokens` via `$max` and returns the
-   * per-call delta to the caller. See `CSUsageService.ts` on the server.
+   * Collect the cumulative LLM token snapshot for this conversation from the
+   * gateway session JSONL and emit it as a `cs.token_snapshot` BI event.
    *
    * Strategy: read the session's JSONL transcript via `loadSessionCostSummary`,
    * which sums `usage` fields across all assistant messages. The gateway's
    * `sessions.list` per-session `inputTokens` / `outputTokens` cannot be used
    * because they are *per-run overwrites* (see vendor session-usage.ts —
    * `patch.inputTokens = usage.input`, not `$inc`), which violates the
-   * "cumulative since session creation" contract and drops billing whenever
-   * a later run reports a smaller token count than an earlier one.
+   * "cumulative since session creation" contract.
    *
-   * scopeKey → sessionFile resolution: we still hit `sessions.list` (filtered
-   * by `agentId: "main"` so the scan stays narrow), find the row whose `key`
+   * scopeKey → sessionFile resolution: we hit `sessions.list` (filtered by
+   * `agentId: "main"` so the scan stays narrow), find the row whose `key`
    * matches our `scopeKey`, and join its `sessionId` with
    * `resolveAgentSessionsDir()` to get the JSONL path. The RPC is used only
-   * for path resolution here — never for token data.
+   * for path resolution — never for token data.
    *
    * provider / model: derived from the JSONL `modelUsage` aggregation, taking
-   * the entry with the highest `count` (ties resolve to the first entry,
-   * which matches the order of first-seen in the transcript).
+   * the entry with the highest `count` (ties resolve to first-seen).
    *
-   * Any failure along the way yields `null` — the caller omits the usage
-   * field and the core send proceeds unaffected. This matches the system
-   * boundary rule: billing-statistics must never block core business.
+   * Any failure yields a silent no-op. This path is at a system boundary with
+   * a best-effort analytics emitter; the rule is "never let BI collection
+   * block business logic".
    */
-  private async collectUsageSnapshot(): Promise<GQL.CsSendUsageInput | null> {
+  private async collectAndEmitTokenSnapshot(): Promise<void> {
     try {
-      // 1) scopeKey → sessionId via sessions.list (path resolution only;
-      //    NOT a token data source). Filtering by agentId="main" keeps the
-      //    scan narrow without depending on a hard cap.
+      // scopeKey → sessionId via sessions.list (path resolution only).
       const rpcResult = await openClawConnector.request<{
         sessions?: Array<{ key?: string; sessionId?: string }>;
       }>("sessions.list", { agentId: "main" });
       const rows = rpcResult?.sessions ?? [];
       const row = rows.find((s) => s.key === this.scopeKey);
       const sessionId = row?.sessionId;
-      if (!sessionId) {
-        // No registered session for this scopeKey yet (normal pre-first-run
-        // state). Skip the piggyback quietly.
-        return null;
-      }
+      if (!sessionId) return;
 
-      // 2) Read the JSONL transcript and sum assistant `usage` fields. No
-      //    time window — we want session-lifetime cumulative totals.
       const sessionFile = join(resolveAgentSessionsDir(), `${sessionId}.jsonl`);
       const summary = await loadSessionCostSummary({ sessionFile });
-      if (!summary) {
-        // File missing or no usage entries yet — skip piggyback.
-        return null;
-      }
+      if (!summary) return;
 
       const inputTokens = Math.max(
         0,
@@ -545,8 +536,7 @@ export class CustomerServiceSession {
         Math.floor(Number.isFinite(summary.output) ? summary.output : 0),
       );
 
-      // 3) Provider / model: take the most-used model in this session (tie
-      //    breaker: first-seen, which is the natural Map iteration order).
+      // Dominant-model tiebreaker: first-seen when counts tie.
       let dominantProvider: string | undefined;
       let dominantModel: string | undefined;
       const modelUsage = summary.modelUsage ?? [];
@@ -559,56 +549,20 @@ export class CustomerServiceSession {
         }
       }
 
-      return {
-        inputTokens,
-        outputTokens,
-        // Leave provider/model undefined rather than "" so the backend $set
-        // path does not overwrite a previously-recorded value with empty.
-        provider:
-          typeof dominantProvider === "string" && dominantProvider.length > 0
-            ? dominantProvider
-            : undefined,
-        model:
-          typeof dominantModel === "string" && dominantModel.length > 0
-            ? dominantModel
-            : undefined,
-      };
-    } catch (err) {
-      // System boundary: never throw upstream. The send MUST succeed even if
-      // usage collection fails for any reason (RPC down, file read error, etc.).
-      log.warn(
-        `Failed to collect usage snapshot for ${this.scopeKey} ` +
-        `(non-fatal, usage field will be omitted): ` +
-        (err instanceof Error ? err.message : String(err)),
-      );
-      return null;
-    }
-  }
-
-  /**
-   * Fire-and-forget increment of cs_sessions.messageCount.
-   *
-   * Semantics: this counts *each* message that crosses the wire — one call per
-   * inbound buyer message, one per outbound agent reply.
-   *
-   * Failures are logged but not rethrown — this is at a system boundary with
-   * the cloud backend, and the buyer message flow must not be blocked by
-   * telemetry/billing-stat calls.
-   */
-  private async incrementSessionMessageCount(): Promise<void> {
-    const authSession = getAuthSession();
-    if (!authSession) {
-      log.warn("No auth session available, skipping cs session messageCount increment");
-      return;
-    }
-    try {
-      await authSession.graphqlFetch(CS_INCREMENT_MESSAGE_COUNT_MUTATION, {
+      emitCsTelemetry("cs.token_snapshot", {
         shopId: this.csContext.shopId,
         conversationId: this.csContext.conversationId,
+        inputTokens,
+        outputTokens,
+        provider: dominantProvider ?? "",
+        model: dominantModel ?? "",
       });
     } catch (err) {
+      // System boundary: swallow. BI collection never blocks CS traffic.
       log.warn(
-        `csIncrementMessageCount failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`,
+        `Failed to collect cs.token_snapshot for ${this.scopeKey} ` +
+        `(non-fatal): ` +
+        (err instanceof Error ? err.message : String(err)),
       );
     }
   }

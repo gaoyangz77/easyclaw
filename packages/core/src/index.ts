@@ -151,7 +151,7 @@ export { formatError, IMAGE_EXT_TO_MIME, IMAGE_MIME_TO_EXT } from "./utils/error
 export { decodeJwtPayload } from "./utils/jwt-utils.js";
 
 export {
-  getApiBaseUrl, getGraphqlUrl, getTelemetryUrl, setApiBaseUrlOverride,
+  getApiBaseUrl, getGraphqlUrl, getTelemetryUrl, getCsTelemetryUrl, setApiBaseUrlOverride,
   getReleaseFeedUrl,
   getTelegramSendUrl, getFeishuHost, getFeishuTokenUrl, getFeishuMessageUrl, getLinePushUrl,
   CHANNEL_NO_PROXY_DOMAINS,

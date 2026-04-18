@@ -80,6 +80,7 @@ export const API = {
 
   // ── Telemetry ──
   "telemetry.track":         { method: "POST",   path: "/api/telemetry/track",            desc: "Track analytics event" },
+  "telemetry.cs.track":      { method: "POST",   path: "/api/telemetry/cs-track",         desc: "Track CS business event (bypasses user opt-in)" },
 
   // ── Permissions ──
   "permissions.get":         { method: "GET",    path: "/api/permissions",                desc: "Get file access permissions" },

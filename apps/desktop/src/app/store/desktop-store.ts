@@ -115,10 +115,6 @@ const DesktopRootStoreModel = RootStoreModel.actions((self) => ({
         get: () => self.llmQuotaStatus,
         set: (v) => { self.llmQuotaStatus = v; },
       },
-      CSSessionStats: {
-        get: () => self.sessionStats,
-        set: (v) => { self.sessionStats = v; },
-      },
       MeResponse: {
         get: () => self.currentUser,
         set: (v) => { self.currentUser = v; },

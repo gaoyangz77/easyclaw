@@ -3,7 +3,6 @@ import { ShopModel as ShopModelBase } from "@rivonclaw/core/models";
 import {
   UPDATE_SHOP_MUTATION,
   DELETE_SHOP_MUTATION,
-  CS_SESSION_STATS_QUERY,
 } from "../../api/shops-queries.js";
 import type { PanelStoreEnv } from "../types.js";
 
@@ -41,14 +40,6 @@ export const ShopModel = ShopModelBase.actions((self) => {
         variables: { id: self.id },
       });
       // Desktop proxy removes entity from Desktop MST → SSE patch → Panel auto-updates
-    }),
-
-    fetchSessionStats: flow(function* () {
-      yield client().query({
-        query: CS_SESSION_STATS_QUERY,
-        variables: { shopId: self.id },
-        fetchPolicy: "network-only",
-      });
     }),
   };
 });

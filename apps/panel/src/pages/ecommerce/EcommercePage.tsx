@@ -23,14 +23,12 @@ export const EcommercePage = observer(function EcommercePage() {
   const runProfiles = entityStore.allRunProfiles;
   const platformApps = entityStore.platformApps;
   const credits = entityStore.credits;
-  const sessionStats = entityStore.sessionStats;
 
   const { showToast } = useToast();
 
   // Loading flags
   const [_platformAppsLoading, setPlatformAppsLoading] = useState(false);
   const [creditsLoading, setCreditsLoading] = useState(false);
-  const [sessionStatsLoading, setSessionStatsLoading] = useState(false);
 
   // Top-level UI state
   const [selectedShopId, setSelectedShopId] = useState<string | null>(null);
@@ -73,13 +71,6 @@ export const EcommercePage = observer(function EcommercePage() {
     setCreditsLoading(true);
     try { await entityStore.fetchCredits(); } catch { /* ignore */ } finally { setCreditsLoading(false); }
   }
-  async function handleFetchSessionStats(shopId: string) {
-    setSessionStatsLoading(true);
-    try {
-      const shop = shops.find((s) => s.id === shopId);
-      if (shop) await shop.fetchSessionStats();
-    } catch { /* ignore */ } finally { setSessionStatsLoading(false); }
-  }
 
   // ── Effects ──
 
@@ -104,13 +95,6 @@ export const EcommercePage = observer(function EcommercePage() {
       handleFetchCredits();
     }
   }, [user]);
-
-  // Load session stats when a shop is selected
-  useEffect(() => {
-    if (selectedShopId) {
-      handleFetchSessionStats(selectedShopId);
-    }
-  }, [selectedShopId]);
 
   // Sync business prompt from shop data (re-runs when shop changes or after mutations refresh the shop)
   useEffect(() => {
@@ -429,8 +413,6 @@ export const EcommercePage = observer(function EcommercePage() {
         creditsLoading={creditsLoading}
         redeemingCreditId={redeemingCreditId}
         onRedeemCredit={handleRedeemCredit}
-        sessionStatsLoading={sessionStatsLoading}
-        sessionStats={sessionStats}
       />
 
       {/* Delete Shop Confirm */}

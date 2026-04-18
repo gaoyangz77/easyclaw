@@ -134,14 +134,6 @@ export interface BrowserProfilesPaginationInput {
   offset?: InputMaybe<Scalars['Int']['input']>;
 }
 
-/** Session statistics for a shop */
-export interface CsSessionStats {
-  activeSessions: Scalars['Int']['output'];
-  balance: Scalars['Int']['output'];
-  balanceExpiresAt?: Maybe<Scalars['DateTimeISO']['output']>;
-  totalSessions: Scalars['Int']['output'];
-}
-
 /** Captcha challenge response */
 export interface CaptchaResponse {
   svg: Scalars['String']['output'];
@@ -160,18 +152,6 @@ export interface CreateSurfaceInput {
   allowedToolIds: Array<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   name: Scalars['String']['input'];
-}
-
-/** Cumulative per-conversation LLM usage snapshot. Both token fields are totals since session creation (NOT deltas). Backend advances the session token counters via $max before computing the per-call delta. */
-export interface CsSendUsageInput {
-  /** Cumulative LLM input tokens for this conversation (>= 0). */
-  inputTokens: Scalars['Int']['input'];
-  /** Most recent turn's model id (display-only). */
-  model?: InputMaybe<Scalars['String']['input']>;
-  /** Cumulative LLM output tokens for this conversation (>= 0). */
-  outputTokens: Scalars['Int']['input'];
-  /** Most recent turn's provider name (display-only). */
-  provider?: InputMaybe<Scalars['String']['input']>;
 }
 
 /** Result of getting or creating a CS session */
@@ -965,10 +945,8 @@ export interface Mutation {
   createRunProfile: RunProfile;
   /** Create a new surface */
   createSurface: Surface;
-  /** Get an existing active session or create a new one for a conversation */
+  /** Get an existing CS session or create a new one for a conversation */
   csGetOrCreateSession: CsSessionResult;
-  /** Increment messageCount on the active CS session for a conversation. Throws if no active session exists (fail-fast so Desktop can detect drift). */
-  csIncrementMessageCount: Scalars['Boolean']['output'];
   /** Delete a run profile */
   deleteRunProfile: Scalars['Boolean']['output'];
   /** Delete the session state backup for a profile */
@@ -1048,12 +1026,6 @@ export interface MutationCsGetOrCreateSessionArgs {
 }
 
 
-export interface MutationCsIncrementMessageCountArgs {
-  conversationId: Scalars['String']['input'];
-  shopId: Scalars['ID']['input'];
-}
-
-
 export interface MutationDeleteRunProfileArgs {
   id: Scalars['ID']['input'];
 }
@@ -1117,7 +1089,6 @@ export interface MutationEcommerceSendMessageArgs {
   conversationId: Scalars['String']['input'];
   shopId: Scalars['String']['input'];
   type: EcomMessageType;
-  usage?: InputMaybe<CsSendUsageInput>;
 }
 
 
@@ -1328,8 +1299,6 @@ export interface Query {
   checkUpdate?: Maybe<UpdatePayload>;
   /** Get all preset skills for CS. Returns a JSON object { key: markdownContent, ... } or null if none configured. */
   csGetPresetSkills?: Maybe<Scalars['String']['output']>;
-  /** Get CS session stats for a shop */
-  csSessionStats: CsSessionStats;
   /** Get aftersale eligibility for an order */
   ecommerceGetAftersaleEligibility: EcomAftersaleEligibility;
   /** Get customer service performance metrics */
@@ -1439,11 +1408,6 @@ export interface QueryBrowserProfilesArgs {
 
 export interface QueryCheckUpdateArgs {
   clientVersion: Scalars['String']['input'];
-}
-
-
-export interface QueryCsSessionStatsArgs {
-  shopId: Scalars['ID']['input'];
 }
 
 

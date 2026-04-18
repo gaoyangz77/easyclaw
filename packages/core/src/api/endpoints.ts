@@ -52,6 +52,16 @@ export function getTelemetryUrl(locale: string): string {
 	return `https://${DEFAULTS.domains.telemetry}/`;
 }
 
+/**
+ * Return the CS business-telemetry endpoint URL. Separate path from the
+ * opt-in user telemetry stream — accepts `cs.message` / `cs.token_snapshot`
+ * / `cs.tool_call` events that commercial tenants authorize via contract.
+ */
+export function getCsTelemetryUrl(locale: string): string {
+	void locale;
+	return `https://${DEFAULTS.domains.telemetry}/v1/cs-events`;
+}
+
 // ---------------------------------------------------------------------------
 // Customer-service relay URLs
 // ---------------------------------------------------------------------------

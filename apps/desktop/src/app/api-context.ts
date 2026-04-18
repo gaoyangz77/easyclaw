@@ -49,6 +49,14 @@ export interface ApiContext {
   onOAuthManualComplete?: (provider: string, callbackUrl: string) => Promise<{ email?: string; tokenPreview: string }>;
   onOAuthPoll?: (flowId: string) => { status: "pending" | "completed" | "failed"; tokenPreview?: string; email?: string; error?: string };
   onTelemetryTrack?: (eventType: string, metadata?: Record<string, unknown>) => void;
+  /**
+   * Emit a Customer Service business-telemetry event. Routed through a
+   * separate always-on `RemoteTelemetryClient` that ships to the CS BI
+   * ClickHouse stream — bypasses the `telemetry_enabled` user opt-in.
+   * No-op if the CS telemetry client is not initialized (dev without
+   * `DEV_TELEMETRY=1`, init failure).
+   */
+  onCsTelemetryTrack?: (eventType: string, metadata?: Record<string, unknown>) => void;
   vendorDir: string;
   /** Node.js binary path — Electron's process.execPath with ELECTRON_RUN_AS_NODE=1 */
   nodeBin: string;

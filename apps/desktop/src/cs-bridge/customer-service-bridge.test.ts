@@ -2675,114 +2675,12 @@ describe("terminal guarantee (error/timeout)", () => {
   });
 });
 
-// ─── 17. cs_sessions messageCount increment (P0-2) ───────────────────────────
-
-describe("csIncrementMessageCount wiring", () => {
-  /** Count csIncrementMessageCount calls with their variables. */
-  function getIncrementCalls(): Array<{ shopId: string; conversationId: string }> {
-    return mockGraphqlFetch.mock.calls
-      .filter((c: any[]) => typeof c[0] === "string" && c[0].includes("csIncrementMessageCount"))
-      .map((c: any[]) => c[1] as { shopId: string; conversationId: string });
-  }
-
-  function installGraphqlMock(opts: { incrementFails?: boolean } = {}): void {
-    mockGraphqlFetch.mockImplementation(async (query: string) => {
-      if (query.includes("ecommerceGetConversationDetails")) {
-        return { ecommerceGetConversationDetails: { buyer: null } };
-      }
-      if (query.includes("csGetOrCreateSession")) {
-        return { csGetOrCreateSession: { sessionId: "sess-001", isNew: true, balance: 100 } };
-      }
-      if (query.includes("csIncrementMessageCount")) {
-        if (opts.incrementFails) throw new Error("backend down");
-        return { csIncrementMessageCount: true };
-      }
-      if (query.includes("ecommerceSendMessage")) {
-        return { ecommerceSendMessage: { messageId: "msg-ok" } };
-      }
-      return {};
-    });
-  }
-
-  it("increments once after a successful buyer-message dispatch", async () => {
-    installGraphqlMock();
-    const bridge = createBridge();
-    bridge.setShopContext(defaultShop);
-    mockRpcRequest.mockResolvedValue({ runId: "run-inc-1" });
-
-    await triggerMessage(bridge, createFrame({
-      conversationId: "conv-inc-1",
-      messageId: "msg-inc-1",
-    }));
-
-    // Fire-and-forget; give it a tick
-    await new Promise((r) => setTimeout(r, 10));
-
-    const calls = getIncrementCalls();
-    expect(calls).toHaveLength(1);
-    expect(calls[0]).toEqual({ shopId: "mongo-id-123", conversationId: "conv-inc-1" });
-  });
-
-  it("increments a SECOND time after the agent forwards text to the buyer", async () => {
-    installGraphqlMock();
-    const bridge = createBridge();
-    bridge.setShopContext(defaultShop);
-    mockRpcRequest.mockResolvedValue({ runId: "run-inc-2" });
-
-    await triggerMessage(bridge, createFrame({
-      conversationId: "conv-inc-2",
-      messageId: "msg-inc-2",
-    }));
-    await new Promise((r) => setTimeout(r, 10));
-
-    // Agent text arrives and is forwarded → second increment
-    bridge.onGatewayEvent({
-      event: "agent",
-      payload: { runId: "run-inc-2", stream: "assistant", data: { text: "Hello buyer!" } },
-    } as any);
-    bridge.onGatewayEvent({
-      event: "agent",
-      payload: { runId: "run-inc-2", stream: "lifecycle", data: { phase: "end" } },
-    } as any);
-    await new Promise((r) => setTimeout(r, 10));
-
-    const calls = getIncrementCalls();
-    // One increment for the inbound buyer message, one for the outbound agent reply.
-    expect(calls).toHaveLength(2);
-    expect(calls.every((c) => c.conversationId === "conv-inc-2")).toBe(true);
-  });
-
-  it("does NOT increment when dispatch did not produce a runId (dropped message)", async () => {
-    installGraphqlMock();
-    const bridge = createBridge();
-    bridge.setShopContext(defaultShop);
-    // Agent RPC returns no runId (e.g. gateway dropped).
-    mockRpcRequest.mockResolvedValue({ runId: undefined });
-
-    await triggerMessage(bridge, createFrame({
-      conversationId: "conv-drop",
-      messageId: "msg-drop",
-    }));
-    await new Promise((r) => setTimeout(r, 10));
-
-    expect(getIncrementCalls()).toHaveLength(0);
-  });
-
-  it("buyer-message flow is not blocked when csIncrementMessageCount fails (system boundary)", async () => {
-    installGraphqlMock({ incrementFails: true });
-    const bridge = createBridge();
-    bridge.setShopContext(defaultShop);
-    mockRpcRequest.mockResolvedValue({ runId: "run-inc-fail" });
-
-    // Should not throw
-    await expect(
-      triggerMessage(bridge, createFrame({
-        conversationId: "conv-inc-fail",
-        messageId: "msg-inc-fail",
-      })),
-    ).resolves.not.toThrow();
-
-    // The agent RPC still happened (main flow not blocked)
-    expect(mockRpcRequest).toHaveBeenCalledWith("agent", expect.anything());
-  });
-});
+// ─── 17. CS BI events now flow through `emitCsTelemetry`, not GraphQL ────────
+//
+// The earlier `csIncrementMessageCount wiring` suite covered a GraphQL mutation
+// that advanced `cs_sessions.messageCount` on every message. That write was
+// deleted when CS analytics moved to the ClickHouse event stream — the new
+// `cs.message` emits happen inside `CustomerServiceSession` via
+// `emitCsTelemetry(...)` and are covered directly in
+// `customer-service-session.forwardText.test.ts`. Bridge-level wiring tests for
+// the old mutation are no longer applicable.

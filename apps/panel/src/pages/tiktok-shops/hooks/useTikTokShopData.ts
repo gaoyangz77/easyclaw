@@ -4,7 +4,6 @@ import { useEntityStore } from "../../../store/EntityStoreProvider.js";
 export function useTikTokShopData() {
   const entityStore = useEntityStore();
   const [creditsLoading, setCreditsLoading] = useState(false);
-  const [sessionStatsLoading, setSessionStatsLoading] = useState(false);
 
   async function fetchPlatformApps() {
     try { await entityStore.fetchPlatformApps(); } catch { /* ignore */ }
@@ -13,14 +12,6 @@ export function useTikTokShopData() {
   async function fetchCredits() {
     setCreditsLoading(true);
     try { await entityStore.fetchCredits(); } catch { /* ignore */ } finally { setCreditsLoading(false); }
-  }
-
-  async function fetchSessionStats(shopId: string) {
-    setSessionStatsLoading(true);
-    try {
-      const shop = entityStore.shops.find((s) => s.id === shopId);
-      if (shop) await shop.fetchSessionStats();
-    } catch { /* ignore */ } finally { setSessionStatsLoading(false); }
   }
 
   // Fetch platform apps on mount when user exists
@@ -33,9 +24,7 @@ export function useTikTokShopData() {
 
   return {
     creditsLoading,
-    sessionStatsLoading,
     fetchPlatformApps,
     fetchCredits,
-    fetchSessionStats,
   };
 }

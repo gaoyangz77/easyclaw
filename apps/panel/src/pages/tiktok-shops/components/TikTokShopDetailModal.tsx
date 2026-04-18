@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Modal } from "../../../components/modals/Modal.js";
-import type { Shop, ServiceCredit, SessionStats } from "@rivonclaw/core/models";
+import type { Shop, ServiceCredit } from "@rivonclaw/core/models";
 import type { ModalTab } from "../tiktok-shops-types.js";
 import { TikTokShopOverviewTab } from "./TikTokShopOverviewTab.js";
 import { TikTokShopBillingTab } from "./TikTokShopBillingTab.js";
@@ -24,9 +24,6 @@ interface TikTokShopDetailModalProps {
   creditsLoading: boolean;
   redeemingCreditId: string | null;
   onRedeemCredit: (credit: ServiceCredit) => void;
-  // Sessions tab props
-  sessionStatsLoading: boolean;
-  sessionStats: SessionStats | null;
 }
 
 export function TikTokShopDetailModal({
@@ -45,8 +42,6 @@ export function TikTokShopDetailModal({
   creditsLoading,
   redeemingCreditId,
   onRedeemCredit,
-  sessionStatsLoading,
-  sessionStats,
 }: TikTokShopDetailModalProps) {
   const { t } = useTranslation();
 
@@ -110,10 +105,7 @@ export function TikTokShopDetailModal({
           )}
 
           {activeTab === "sessions" && (
-            <TikTokShopSessionsTab
-              sessionStatsLoading={sessionStatsLoading}
-              sessionStats={sessionStats}
-            />
+            <TikTokShopSessionsTab shop={shop} />
           )}
         </div>
       )}

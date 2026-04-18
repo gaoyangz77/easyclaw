@@ -1,27 +1,22 @@
 /**
- * Sends one CS message. The optional `usage` argument piggybacks the
- * conversation's cumulative LLM token totals for billing accounting — backend
- * advances `cs_sessions.inputTokens` / `outputTokens` via `$max` and refreshes
- * `lastProvider` / `lastModel` without any seat indirection.
- *
- * Usage is intentionally optional: a missing or malformed payload must never
- * block message delivery, so Desktop omits the argument when it cannot build a
- * valid snapshot.
+ * Sends one CS message. The mutation is purposely minimal — no BI counters
+ * piggyback. All per-conversation analytics (message count, token totals,
+ * tool-call argsJson) now flow through the CS business telemetry stream
+ * (`cs.message`, `cs.token_snapshot`, `cs.tool_call` events in ClickHouse),
+ * not through MongoDB. See `packages/telemetry` + `CustomerServiceSession`.
  */
 export const SEND_MESSAGE_MUTATION = `
   mutation(
     $shopId: String!,
     $conversationId: String!,
     $type: EcomMessageType!,
-    $content: String!,
-    $usage: CsSendUsageInput
+    $content: String!
   ) {
     ecommerceSendMessage(
       shopId: $shopId,
       conversationId: $conversationId,
       type: $type,
-      content: $content,
-      usage: $usage
+      content: $content
     ) {
       messageId
     }
@@ -51,16 +46,5 @@ export const CS_GET_OR_CREATE_SESSION_MUTATION = `
       isNew
       balance
     }
-  }
-`;
-
-/**
- * Increments CS session messageCount. Counts BOTH inbound buyer messages and
- * outbound agent replies — one call per message (not per "turn"). This is the
- * raw conversation message counter.
- */
-export const CS_INCREMENT_MESSAGE_COUNT_MUTATION = `
-  mutation CsIncrementMessageCount($shopId: ID!, $conversationId: String!) {
-    csIncrementMessageCount(shopId: $shopId, conversationId: $conversationId)
   }
 `;
