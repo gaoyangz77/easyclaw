@@ -52,14 +52,12 @@ export function useSurfaceForm() {
           name: surfaceName.trim(),
           description: surfaceDescription.trim() || undefined,
           allowedToolIds: Array.from(surfaceToolIds),
-          allowedCategories: [],
         });
       } else {
         await entityStore.createSurface({
           name: surfaceName.trim(),
           description: surfaceDescription.trim() || undefined,
           allowedToolIds: Array.from(surfaceToolIds),
-          allowedCategories: [],
         });
       }
       closeSurfaceModal();

@@ -328,7 +328,6 @@ const PanelRootStoreModel = RootStoreModel.props({
       name: string;
       description?: string;
       allowedToolIds: string[];
-      allowedCategories: string[];
     }) {
       const result = yield client().mutate({
         mutation: CREATE_SURFACE_MUTATION,

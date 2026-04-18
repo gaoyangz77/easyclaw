@@ -106,7 +106,7 @@ test.describe("Capability Context — Auth-Gated Queries", () => {
   }) => {
     const res = await cloudGraphql(
       apiBase,
-      `query { surfaces { id name allowedToolIds allowedCategories description } }`,
+      `query { surfaces { id name allowedToolIds description } }`,
     );
     expect(res.status).toBe(200);
     const body = await res.json();

@@ -8,9 +8,6 @@ export const SURFACES_QUERY = gql`
       name
       description
       allowedToolIds
-      allowedCategories
-      moduleId
-      presetId
       createdAt
       updatedAt
     }
@@ -25,9 +22,6 @@ export const CREATE_SURFACE_MUTATION = gql`
       name
       description
       allowedToolIds
-      allowedCategories
-      moduleId
-      presetId
       createdAt
       updatedAt
     }
@@ -42,9 +36,6 @@ export const UPDATE_SURFACE_MUTATION = gql`
       name
       description
       allowedToolIds
-      allowedCategories
-      moduleId
-      presetId
       createdAt
       updatedAt
     }

@@ -163,7 +163,6 @@ export interface CreateRunProfileInput {
 
 /** Input for creating a new Surface */
 export interface CreateSurfaceInput {
-  allowedCategories: Array<Scalars['String']['input']>;
   allowedToolIds: Array<Scalars['String']['input']>;
   description?: InputMaybe<Scalars['String']['input']>;
   name: Scalars['String']['input'];
@@ -1403,8 +1402,6 @@ export interface Query {
   surfaces: Array<Surface>;
   /** Get system preset run profiles (userId=null), optionally filtered by moduleId */
   systemRunProfiles: Array<RunProfile>;
-  /** Get system preset surfaces (userId=null), optionally filtered by moduleId */
-  systemSurfaces: Array<Surface>;
   /** Get tool specifications for dynamic client-side registration (filtered by user entitlements) */
   toolSpecs: Array<ToolSpec>;
   /** Batch-verify relay access tokens */
@@ -1674,11 +1671,6 @@ export interface QuerySystemRunProfilesArgs {
 }
 
 
-export interface QuerySystemSurfacesArgs {
-  moduleId?: InputMaybe<Scalars['String']['input']>;
-}
-
-
 export interface QueryVerifyRelayTokensArgs {
   tokens: Array<Scalars['String']['input']>;
 }
@@ -1915,15 +1907,11 @@ export const SubscriptionStatus = {
 export type SubscriptionStatus = typeof SubscriptionStatus[keyof typeof SubscriptionStatus];
 /** Surface entity — defines tool exposure boundary for a usage scenario. userId=null for system presets. */
 export interface Surface {
-  allowedCategories: Array<Scalars['String']['output']>;
   allowedToolIds: Array<Scalars['String']['output']>;
   createdAt: Scalars['DateTimeISO']['output'];
   description?: Maybe<Scalars['String']['output']>;
   id: Scalars['ID']['output'];
-  /** Module this system preset belongs to. Null for user-created surfaces. */
-  moduleId?: Maybe<Scalars['String']['output']>;
   name: Scalars['String']['output'];
-  presetId?: Maybe<Scalars['String']['output']>;
   updatedAt: Scalars['DateTimeISO']['output'];
   userId?: Maybe<Scalars['String']['output']>;
 }
@@ -2076,7 +2064,6 @@ export interface UpdateShopInput {
 
 /** Input for updating an existing Surface */
 export interface UpdateSurfaceInput {
-  allowedCategories?: InputMaybe<Array<Scalars['String']['input']>>;
   allowedToolIds?: InputMaybe<Array<Scalars['String']['input']>>;
   description?: InputMaybe<Scalars['String']['input']>;
   name?: InputMaybe<Scalars['String']['input']>;

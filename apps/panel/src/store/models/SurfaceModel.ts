@@ -14,7 +14,6 @@ export const SurfaceModel = SurfaceModelBase.actions((self) => {
       name?: string;
       description?: string;
       allowedToolIds?: string[];
-      allowedCategories?: string[];
     }) {
       const result = yield client().mutate({
         mutation: UPDATE_SURFACE_MUTATION,
