@@ -146,6 +146,10 @@ beforeEach(() => {
     toolSpecs: [],
     shops: [],
   });
+  // Platform CS prompt is now embedded per-shop as
+  // `services.customerService.platformSystemPrompt`. Individual tests supply
+  // the fixture value on each shop they seed (or omit it / set it to null to
+  // exercise the "prompt not ready yet" path).
 });
 
 // ─── 1. Shop context management ─────────────────────────────────────────────
@@ -855,9 +859,10 @@ describe("reactive entity cache sync", () => {
             customerService: {
               enabled: true,
               csDeviceId: "test-gateway",
-              assembledPrompt: "You are a CS agent.",
+              businessPrompt: "You are a CS agent.",
               csModelOverride: null,
               runProfileId: "rp-1",
+              platformSystemPrompt: "PLATFORM CS PROMPT",
             },
           },
         },
@@ -892,7 +897,7 @@ describe("reactive entity cache sync", () => {
             customerService: {
               enabled: true,
               csDeviceId: "other-device",
-              assembledPrompt: "prompt",
+              businessPrompt: "prompt",
             },
           },
         },
@@ -921,7 +926,7 @@ describe("reactive entity cache sync", () => {
             customerService: {
               enabled: false,
               csDeviceId: "test-gateway",
-              assembledPrompt: "prompt",
+              businessPrompt: "prompt",
             },
           },
         },
@@ -935,9 +940,13 @@ describe("reactive entity cache sync", () => {
     });
   });
 
-  it("syncFromCache skips shops without assembledPrompt", () => {
+  it("syncFromCache skips shops when platform prompt has not been fetched yet", () => {
     const bridge = createBridge();
 
+    // Platform prompt is embedded per-shop on `platformSystemPrompt`. When
+    // it is null (e.g. the shop payload arrived before the backend's
+    // service-prompt cache was populated), the computed `assembledPrompt`
+    // view returns null and the bridge should skip the shop.
     rootStore.ingestGraphQLResponse({
       shops: [
         {
@@ -949,7 +958,8 @@ describe("reactive entity cache sync", () => {
             customerService: {
               enabled: true,
               csDeviceId: "test-gateway",
-              assembledPrompt: null,
+              businessPrompt: "",
+              platformSystemPrompt: null,
             },
           },
         },
@@ -1000,9 +1010,10 @@ describe("reactive entity cache sync", () => {
             customerService: {
               enabled: true,
               csDeviceId: "test-gateway",
-              assembledPrompt: "Old prompt",
+              businessPrompt: "Old prompt",
               runProfileId: null,
               csModelOverride: null,
+              platformSystemPrompt: "PLATFORM CS PROMPT",
             },
           },
         },
@@ -1022,9 +1033,10 @@ describe("reactive entity cache sync", () => {
             customerService: {
               enabled: true,
               csDeviceId: "test-gateway",
-              assembledPrompt: "Updated prompt",
+              businessPrompt: "Updated prompt",
               runProfileId: null,
               csModelOverride: null,
+              platformSystemPrompt: "PLATFORM CS PROMPT",
             },
           },
         },
@@ -1053,7 +1065,8 @@ describe("reactive entity cache sync", () => {
             customerService: {
               enabled: true,
               csDeviceId: "test-gateway",
-              assembledPrompt: "prompt",
+              businessPrompt: "prompt",
+              platformSystemPrompt: "PLATFORM CS PROMPT",
             },
           },
         },
@@ -1078,19 +1091,19 @@ describe("reactive entity cache sync", () => {
       shops: [
         {
           id: "shop-1", platform: "TIKTOK_SHOP", platformShopId: "ps-1", shopName: "Eligible",
-          services: { customerService: { enabled: true, csDeviceId: "test-gateway", assembledPrompt: "prompt-1" } },
+          services: { customerService: { enabled: true, csDeviceId: "test-gateway", businessPrompt: "prompt-1", platformSystemPrompt: "PLATFORM CS PROMPT" } },
         },
         {
           id: "shop-2", platform: "TIKTOK_SHOP", platformShopId: "ps-2", shopName: "Disabled",
-          services: { customerService: { enabled: false, csDeviceId: "test-gateway", assembledPrompt: "prompt-2" } },
+          services: { customerService: { enabled: false, csDeviceId: "test-gateway", businessPrompt: "prompt-2", platformSystemPrompt: "PLATFORM CS PROMPT" } },
         },
         {
           id: "shop-3", platform: "SHOPEE_STORE", platformShopId: "ps-3", shopName: "Other Device",
-          services: { customerService: { enabled: true, csDeviceId: "other-device", assembledPrompt: "prompt-3" } },
+          services: { customerService: { enabled: true, csDeviceId: "other-device", businessPrompt: "prompt-3", platformSystemPrompt: "PLATFORM CS PROMPT" } },
         },
         {
           id: "shop-4", platform: "TIKTOK_SHOP", platformShopId: "ps-4", shopName: "Also Eligible",
-          services: { customerService: { enabled: true, csDeviceId: "test-gateway", assembledPrompt: "prompt-4" } },
+          services: { customerService: { enabled: true, csDeviceId: "test-gateway", businessPrompt: "prompt-4", platformSystemPrompt: "PLATFORM CS PROMPT" } },
         },
       ],
     });
@@ -1423,7 +1436,7 @@ describe("multi-provider model override", () => {
           customerService: {
             enabled: true,
             csDeviceId: "test-gateway",
-            assembledPrompt: "You are a CS assistant.",
+            businessPrompt: "You are a CS assistant.",
             csProviderOverride: overrides?.csProviderOverride ?? null,
             csModelOverride: overrides?.csModelOverride ?? null,
             runProfileId: "CUSTOMER_SERVICE",
@@ -1554,7 +1567,6 @@ function seedShopWithEscalation(overrides?: {
               ? overrides.escalationRecipientId
               : "987654321",
             runProfileId: null,
-            assembledPrompt: null,
           },
           customerServiceBilling: null,
         },

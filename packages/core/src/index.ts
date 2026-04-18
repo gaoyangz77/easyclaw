@@ -186,3 +186,6 @@ export { stripReasoningTagsFromText } from "./generated/reasoning-tags.js";
 export type { ReasoningTagMode, ReasoningTagTrim } from "./generated/reasoning-tags.js";
 
 export type { ClientToolDef } from "./client-tools.js";
+
+export { assembleCsPrompt } from "./cs-prompt.js";
+export type { AssembleCsPromptInput } from "./cs-prompt.js";

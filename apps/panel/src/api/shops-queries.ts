@@ -21,7 +21,7 @@ export const SHOP_FIELDS_FRAGMENT = gql`
         csModelOverride
         escalationChannelId
         escalationRecipientId
-        assembledPrompt
+        platformSystemPrompt
       }
       customerServiceBilling {
         tier

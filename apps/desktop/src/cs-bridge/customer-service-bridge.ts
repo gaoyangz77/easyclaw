@@ -189,7 +189,13 @@ export class CustomerServiceBridge {
       const cs = shop.services?.customerService;
       if (!cs?.enabled) continue;
       if (cs.csDeviceId !== deviceId) continue;
-      if (!cs.assembledPrompt) {
+      // The shop MST composes the final prompt locally from its own
+      // `platformSystemPrompt` (embedded by the backend on each shop
+      // response) and the user-owned `businessPrompt`. A null result means
+      // CS is disabled or the shop payload has not arrived yet — skip
+      // until it's ready.
+      const assembledPrompt = cs.assembledPrompt;
+      if (!assembledPrompt) {
         log.info(`Shop ${shop.shopName} (${shop.id}) has no assembledPrompt yet, skipping`);
         continue;
       }
@@ -204,7 +210,7 @@ export class CustomerServiceBridge {
         platformShopId,
         shopName: shop.shopName ?? platformShopId,
         platform: normalizePlatform(shop.platform),
-        systemPrompt: cs.assembledPrompt,
+        systemPrompt: assembledPrompt,
         csProviderOverride: cs.csProviderOverride ?? undefined,
         csModelOverride: cs.csModelOverride ?? undefined,
         runProfileId: cs.runProfileId ?? undefined,

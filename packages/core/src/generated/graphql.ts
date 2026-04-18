@@ -34,12 +34,6 @@ export interface AgentCsSettingsInput {
   runProfileId?: InputMaybe<Scalars['String']['input']>;
 }
 
-/** Assembled CS system prompt with version */
-export interface AssembledPromptResult {
-  systemPrompt: Scalars['String']['output'];
-  version: Scalars['String']['output'];
-}
-
 /** Authentication response with JWT tokens */
 export interface AuthPayload {
   accessToken: Scalars['String']['output'];
@@ -243,9 +237,19 @@ export interface CustomerServiceConversationParticipant {
 
 /** A customer service conversation, trimmed for agent-facing tool output. */
 export interface CustomerServiceConversationSummary {
+  /** Display nickname of the buyer (extracted from participants[]) */
+  buyerNickname?: Maybe<Scalars['String']['output']>;
+  /** Platform user ID of the buyer participant (extracted from participants[]) */
+  buyerUserId?: Maybe<Scalars['String']['output']>;
   conversationId: Scalars['String']['output'];
+  /** Human-readable preview of the latest message (TEXT unwrapped from JSON wire format) */
+  latestMessagePreview?: Maybe<Scalars['String']['output']>;
   /** Unix seconds of last update */
   latestMessageTime?: Maybe<Scalars['Int']['output']>;
+  /** Role of the latest message's sender (BUYER / SHOP / CUSTOMER_SERVICE / SYSTEM / ROBOT) */
+  latestSenderRole?: Maybe<Scalars['String']['output']>;
+  /** Associated order ID if the conversation is anchored to an order */
+  orderId?: Maybe<Scalars['String']['output']>;
   unreadCount?: Maybe<Scalars['Int']['output']>;
 }
 
@@ -290,7 +294,7 @@ export interface CustomerServiceMessageSummary {
   /** Unix seconds */
   createTime?: Maybe<Scalars['Int']['output']>;
   sender?: Maybe<CustomerServiceMessageSender>;
-  /** Human-readable rendering. For TEXT this is the message body; for rich cards this is the platform-provided plaintext summary if available, otherwise the raw JSON content string. */
+  /** Human-readable message body. For TEXT messages the JSON wire content (`{"content":"..."}`) is unwrapped to the inner string. For rich cards (PRODUCT_CARD / ORDER_CARD / LOGISTICS_CARD) this is the platform-provided plaintext summary when available, otherwise the raw content string. */
   text?: Maybe<Scalars['String']['output']>;
   /** Message type (TEXT, IMAGE, PRODUCT_CARD, ORDER_CARD, LOGISTICS_CARD, etc.) */
   type?: Maybe<Scalars['String']['output']>;
@@ -358,8 +362,6 @@ export interface CustomerServiceSessionPage {
 
 /** Customer service settings per shop (user-configurable) */
 export interface CustomerServiceSettings {
-  /** Assembled CS system prompt (platform prompt + business prompt). Computed at query time, not stored. */
-  assembledPrompt?: Maybe<Scalars['String']['output']>;
   businessPrompt?: Maybe<Scalars['String']['output']>;
   csDeviceId?: Maybe<Scalars['String']['output']>;
   /** LLM model override for CS sessions (e.g. 'glm-5'). Null = use default model. */
@@ -371,6 +373,8 @@ export interface CustomerServiceSettings {
   escalationChannelId?: Maybe<Scalars['String']['output']>;
   /** Recipient ID for escalation messages. Null = not configured. */
   escalationRecipientId?: Maybe<Scalars['String']['output']>;
+  /** Platform-managed CS system prompt (same for all shops on this backend version; versioned by EasyClaw operators). Returns null when no platform prompt is configured. Clients compose this with `businessPrompt` locally via the shared `assembleCsPrompt` helper. */
+  platformSystemPrompt?: Maybe<Scalars['String']['output']>;
   /** RunProfile ID for CS agent sessions */
   runProfileId?: Maybe<Scalars['String']['output']>;
 }
@@ -559,7 +563,8 @@ export interface EcomOrderLineItem {
   currency?: Maybe<Scalars['String']['output']>;
   /** Per-line item status */
   displayStatus?: Maybe<Scalars['String']['output']>;
-  id?: Maybe<Scalars['String']['output']>;
+  /** Unique ID of this order line item */
+  orderLineItemId?: Maybe<Scalars['String']['output']>;
   originalPrice?: Maybe<Scalars['String']['output']>;
   productId?: Maybe<Scalars['String']['output']>;
   productName?: Maybe<Scalars['String']['output']>;
@@ -627,7 +632,7 @@ export interface EcomPackage {
   packageId: Scalars['String']['output'];
   /** Raw platform package status */
   packageStatus?: Maybe<Scalars['String']['output']>;
-  shippingProviderName?: Maybe<Scalars['String']['output']>;
+  shippingProvider?: Maybe<Scalars['String']['output']>;
   trackingNumber?: Maybe<Scalars['String']['output']>;
   /** Unix seconds */
   updateTime?: Maybe<Scalars['Int']['output']>;
@@ -645,7 +650,8 @@ export interface EcomPackageDetail {
 
 /** Order contained in a package */
 export interface EcomPackageOrder {
-  id: Scalars['String']['output'];
+  /** Unique ID of this order */
+  orderId: Scalars['String']['output'];
   skus?: Maybe<Array<EcomPackageSku>>;
 }
 
@@ -658,9 +664,10 @@ export interface EcomPackagePage {
 
 /** SKU contained in a package */
 export interface EcomPackageSku {
-  id?: Maybe<Scalars['String']['output']>;
   name?: Maybe<Scalars['String']['output']>;
   quantity?: Maybe<Scalars['Int']['output']>;
+  /** Unique ID of this SKU */
+  skuId?: Maybe<Scalars['String']['output']>;
 }
 
 /** Package status filter. Use ALL to return all statuses. */
@@ -690,9 +697,10 @@ export interface EcomProduct {
 /** Product SKU */
 export interface EcomProductSku {
   currency?: Maybe<Scalars['String']['output']>;
-  id: Scalars['String']['output'];
   price?: Maybe<Scalars['String']['output']>;
   sellerSku?: Maybe<Scalars['String']['output']>;
+  /** Unique ID of this SKU */
+  skuId: Scalars['String']['output'];
   stockQuantity?: Maybe<Scalars['Int']['output']>;
 }
 
@@ -1316,8 +1324,6 @@ export interface Query {
   browserProfiles: PaginatedBrowserProfiles;
   /** Check if a newer version is available (public, no auth required) */
   checkUpdate?: Maybe<UpdatePayload>;
-  /** Assemble the full CS system prompt for a shop. DEPRECATED: use the assembledPrompt field on CustomerServiceSettings instead. */
-  csAssemblePrompt: AssembledPromptResult;
   /** Get all preset skills for CS. Returns a JSON object { key: markdownContent, ... } or null if none configured. */
   csGetPresetSkills?: Maybe<Scalars['String']['output']>;
   /** Get CS session stats for a shop */
@@ -1431,11 +1437,6 @@ export interface QueryBrowserProfilesArgs {
 
 export interface QueryCheckUpdateArgs {
   clientVersion: Scalars['String']['input'];
-}
-
-
-export interface QueryCsAssemblePromptArgs {
-  shopId: Scalars['String']['input'];
 }
 
 
@@ -2029,6 +2030,8 @@ export interface ToolSpec {
   name: Scalars['String']['output'];
   operationType: Scalars['String']['output'];
   parameters: Array<ToolParamSpec>;
+  /** Dot-notation field paths hidden from the agent response */
+  prune?: Maybe<Array<Scalars['String']['output']>>;
   /** REST content type */
   restContentType?: Maybe<Scalars['String']['output']>;
   /** REST endpoint path (for non-GraphQL tools) */

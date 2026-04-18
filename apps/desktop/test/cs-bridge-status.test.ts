@@ -77,7 +77,14 @@ const MOCK_SHOP = {
     customerService: {
       enabled: true,
       csDeviceId: "test-gateway",
+      // `assembledPrompt` is now a view on the Shop MST model that composes
+      // `platformSystemPrompt` (embedded per-shop by the backend) with
+      // `businessPrompt`. The mock rootStore in this file is a bare stub
+      // that bypasses the real MST, so we supply the final assembled string
+      // directly — syncFromCache() only reads `cs.assembledPrompt`.
       assembledPrompt: "You are a helpful CS agent",
+      businessPrompt: "You are a helpful CS agent",
+      platformSystemPrompt: "PLATFORM CS PROMPT",
       csProviderOverride: null,
       csModelOverride: null,
       runProfileId: null,

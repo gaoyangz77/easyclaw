@@ -48,7 +48,7 @@ const SHOP_UPDATED_SUBSCRIPTION = `
           csModelOverride
           escalationChannelId
           escalationRecipientId
-          assembledPrompt
+          platformSystemPrompt
         }
         customerServiceBilling {
           tier
