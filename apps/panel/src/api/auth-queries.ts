@@ -149,8 +149,6 @@ export const SUBSCRIPTION_STATUS_QUERY = gql`
       userId
       plan
       status
-      seatsUsed
-      seatsMax
       validUntil
     }
   }
@@ -162,8 +160,6 @@ export const CHECKOUT_MUTATION = gql`
       userId
       plan
       status
-      seatsUsed
-      seatsMax
       validUntil
     }
   }
