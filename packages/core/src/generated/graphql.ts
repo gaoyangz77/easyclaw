@@ -309,6 +309,8 @@ export interface CustomerServiceMessageSummaryPage {
 
 /** Customer service performance metrics */
 export interface CustomerServicePerformance {
+  /** Average first-response time in minutes across chat support sessions in the window, as a string (e.g. '3.4'). */
+  avgFirstResponseTimeMins?: Maybe<Scalars['String']['output']>;
   /** Conversion rate as a percentage string (e.g. '66.67') */
   conversionRate?: Maybe<Scalars['String']['output']>;
   /** CS-guided GMV as a decimal string (e.g. '36500') */
@@ -317,10 +319,8 @@ export interface CustomerServicePerformance {
   currency?: Maybe<Scalars['String']['output']>;
   /** Exclusive end of the reported window (YYYY-MM-DD), injected from request params */
   endDate?: Maybe<Scalars['String']['output']>;
-  /** Response rate as a percentage string (e.g. '93.4') */
-  responsePercentage?: Maybe<Scalars['String']['output']>;
-  /** Average response time in minutes as a string (e.g. '3.4') */
-  responseTimeMins?: Maybe<Scalars['String']['output']>;
+  /** Percentage of chat support sessions in the window whose first response happened within 24 hours, as a percentage string (e.g. '93.4'). Sessions started during vacation mode are excluded. Automated replies (FAQ cards) count as a response. */
+  firstResponseRatePercent?: Maybe<Scalars['String']['output']>;
   /** Customer satisfaction as a percentage string (e.g. '95.2') */
   satisfactionPercentage?: Maybe<Scalars['String']['output']>;
   /** Start of the reported window (YYYY-MM-DD), injected from request params */
@@ -538,6 +538,8 @@ export const EcomMessageType = {
 export type EcomMessageType = typeof EcomMessageType[keyof typeof EcomMessageType];
 /** Order */
 export interface EcomOrder {
+  /** Platform buyer user ID */
+  buyerUserId?: Maybe<Scalars['String']['output']>;
   /** Unix seconds */
   createTime?: Maybe<Scalars['Int']['output']>;
   currency?: Maybe<Scalars['String']['output']>;
@@ -554,8 +556,6 @@ export interface EcomOrder {
   trackingNumber?: Maybe<Scalars['String']['output']>;
   /** Unix seconds */
   updateTime?: Maybe<Scalars['Int']['output']>;
-  /** Platform buyer user ID */
-  userId?: Maybe<Scalars['String']['output']>;
 }
 
 /** Line item on an order */
@@ -593,6 +593,8 @@ export const EcomOrderStatus = {
 export type EcomOrderStatus = typeof EcomOrderStatus[keyof typeof EcomOrderStatus];
 /** Trimmed order summary for list endpoints. Use ecommerceGetOrder for full details including recipient address and line items. */
 export interface EcomOrderSummary {
+  /** Platform buyer user ID */
+  buyerUserId?: Maybe<Scalars['String']['output']>;
   /** Unix seconds */
   createTime?: Maybe<Scalars['Int']['output']>;
   currency?: Maybe<Scalars['String']['output']>;
@@ -604,8 +606,6 @@ export interface EcomOrderSummary {
   status?: Maybe<Scalars['String']['output']>;
   totalAmount?: Maybe<Scalars['String']['output']>;
   trackingNumber?: Maybe<Scalars['String']['output']>;
-  /** Platform buyer user ID */
-  userId?: Maybe<Scalars['String']['output']>;
 }
 
 /** Page of order summaries */
@@ -619,6 +619,8 @@ export interface EcomOrderSummaryPage {
 export interface EcomOrderTracking {
   events?: Maybe<Array<EcomTrackingEvent>>;
   orderId?: Maybe<Scalars['String']['output']>;
+  /** Name of the shipping carrier (e.g. 'USPS', 'FedEx'). Surfaced when TikTok includes it in the Get Tracking response — the field is not in the public docs but appears in actual wire payloads (same as trackingNumber/trackingStatus). */
+  shippingProvider?: Maybe<Scalars['String']['output']>;
   trackingNumber?: Maybe<Scalars['String']['output']>;
   trackingStatus?: Maybe<Scalars['String']['output']>;
 }
@@ -701,6 +703,8 @@ export interface EcomProductSku {
   sellerSku?: Maybe<Scalars['String']['output']>;
   /** Unique ID of this SKU */
   skuId: Scalars['String']['output'];
+  /** Buyer-visible variant label derived from the SKU's sales_attributes (e.g. 'Red / Large'). Joined in order, separated by ' / '. Absent when the product has no sales-attribute variants. */
+  skuName?: Maybe<Scalars['String']['output']>;
   stockQuantity?: Maybe<Scalars['Int']['output']>;
 }
 
@@ -720,9 +724,15 @@ export const EcomProductStatus = {
 export type EcomProductStatus = typeof EcomProductStatus[keyof typeof EcomProductStatus];
 /** Trimmed product summary for list endpoints. Use ecommerceGetProduct for full details including images. */
 export interface EcomProductSummary {
+  /** URL of the first product image (the listing cover). Derived from images[0].url — use ecommerceGetProduct for the full image set. */
+  coverImage?: Maybe<Scalars['String']['output']>;
   /** Unix seconds */
   createTime?: Maybe<Scalars['Int']['output']>;
   description?: Maybe<Scalars['String']['output']>;
+  /** Highest SKU price across the product's variants, formatted to two decimals (e.g. '29.00'). Omitted when no SKU has a numeric price. */
+  priceMax?: Maybe<Scalars['String']['output']>;
+  /** Lowest SKU price across the product's variants, formatted to two decimals (e.g. '10.00'). Omitted when no SKU has a numeric price. When only one SKU exists, priceMin === priceMax. */
+  priceMin?: Maybe<Scalars['String']['output']>;
   productId: Scalars['String']['output'];
   skus?: Maybe<Array<EcomProductSku>>;
   status?: Maybe<Scalars['String']['output']>;
@@ -955,8 +965,6 @@ export interface Mutation {
   createRunProfile: RunProfile;
   /** Create a new surface */
   createSurface: Surface;
-  /** End an active CS session for a conversation (idempotent) */
-  csEndSession: Scalars['Boolean']['output'];
   /** Get an existing active session or create a new one for a conversation */
   csGetOrCreateSession: CsSessionResult;
   /** Increment messageCount on the active CS session for a conversation. Throws if no active session exists (fail-fast so Desktop can detect drift). */
@@ -1031,12 +1039,6 @@ export interface MutationCreateRunProfileArgs {
 
 export interface MutationCreateSurfaceArgs {
   input: CreateSurfaceInput;
-}
-
-
-export interface MutationCsEndSessionArgs {
-  conversationId: Scalars['String']['input'];
-  shopId: Scalars['ID']['input'];
 }
 
 
@@ -1990,6 +1992,7 @@ export const ToolId = {
   EcomGetRejectReasons: 'ECOM_GET_REJECT_REASONS',
   EcomGetReturnRecords: 'ECOM_GET_RETURN_RECORDS',
   EcomGetShippingDocument: 'ECOM_GET_SHIPPING_DOCUMENT',
+  EcomGetShop: 'ECOM_GET_SHOP',
   EcomListOrders: 'ECOM_LIST_ORDERS',
   EcomListShops: 'ECOM_LIST_SHOPS',
   EcomMarkConversationRead: 'ECOM_MARK_CONVERSATION_READ',
