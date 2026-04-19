@@ -138,10 +138,11 @@ export function removeChannelAccount(options: RemoveChannelAccountOptions): void
         }
       }
 
-      // If no accounts left, remove the entire channel config and disable the plugin
+      // Keep the channel plugin enabled even when the last account is removed:
+      // QR-login channels (weixin) need the plugin alive to respond to
+      // `web.login.start` BEFORE any account exists.
       if (Object.keys(accounts).length === 0) {
         delete channels[channelId];
-        disableChannelPlugin(config, channelId);
       }
     }
 
@@ -174,22 +175,6 @@ function enableChannelPlugin(config: Record<string, unknown>, channelId: string)
   entries[channelId] = { ...existing, enabled: true };
 
   log.info(`Enabled channel plugin: ${channelId}`);
-}
-
-/**
- * Disable a channel's plugin in plugins.entries when its last account is removed.
- */
-function disableChannelPlugin(config: Record<string, unknown>, channelId: string): void {
-  if (!config.plugins || typeof config.plugins !== "object") return;
-  const plugins = config.plugins as Record<string, unknown>;
-
-  if (!plugins.entries || typeof plugins.entries !== "object") return;
-  const entries = plugins.entries as Record<string, unknown>;
-
-  if (typeof entries[channelId] === "object" && entries[channelId] !== null) {
-    (entries[channelId] as Record<string, unknown>).enabled = false;
-    log.info(`Disabled channel plugin: ${channelId}`);
-  }
 }
 
 /**

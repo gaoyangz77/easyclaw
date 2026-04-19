@@ -154,6 +154,12 @@ export const ChannelManagerModel = types
 
       const entries: Record<string, { enabled: boolean }> = {};
 
+      // openclaw-weixin is a QR-login bootstrap channel: accounts are created
+      // AFTER QR login succeeds, so the plugin must be enabled before any
+      // account exists. Always keep it on — lifecycle is independent of
+      // account presence.
+      entries["openclaw-weixin"] = { enabled: true };
+
       // Channel accounts from root store
       const channelIds = new Set<string>();
       for (const a of self.root.channelAccounts as any[]) {

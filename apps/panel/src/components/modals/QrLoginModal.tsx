@@ -29,7 +29,15 @@ export function QrLoginModal({ channelId, onClose, onSuccess }: QrLoginModalProp
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [countdown, setCountdown] = useState(QR_REFRESH_SECONDS);
 
-  const abortRef = useRef(false);
+  // Per-invocation abort token: each startLogin call owns its own token + AbortController.
+  // A re-entrant startLogin (StrictMode double-mount, effect re-fire due to dep change)
+  // aborts the OLD token's in-flight fetches first, then creates a fresh token.
+  // This prevents two concurrent loops from both firing web.login.wait and leaving
+  // a ghost long-poll blocking the browser connection slot.
+  type LoginToken = { aborted: boolean; controller: AbortController };
+  const activeTokenRef = useRef<LoginToken | null>(null);
+  // Once a scan succeeds, prevent any subsequent re-entry from spawning a new loop.
+  const completedRef = useRef(false);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onSuccessRef = useRef(onSuccess);
   onSuccessRef.current = onSuccess;
@@ -52,7 +60,24 @@ export function QrLoginModal({ channelId, onClose, onSuccess }: QrLoginModalProp
   }, [clearCountdown]);
 
   const startLogin = useCallback(async () => {
-    abortRef.current = false;
+    // Once a scan succeeded, ignore any re-entry (setPhase("success") + 1200ms
+    // close sequence; parent may re-render and re-fire this effect).
+    if (completedRef.current) return;
+
+    // Abort any in-flight predecessor (StrictMode double-mount, dep change)
+    // before taking over. The abort cancels both the `while` loop (via
+    // token.aborted) and any fetch currently awaiting on the network
+    // (via controller.abort()).
+    const prior = activeTokenRef.current;
+    if (prior && !prior.aborted) {
+      prior.aborted = true;
+      prior.controller.abort();
+    }
+
+    const myToken: LoginToken = { aborted: false, controller: new AbortController() };
+    activeTokenRef.current = myToken;
+    const signal = myToken.controller.signal;
+
     setPhase("loading");
     setErrorMessage(null);
     setQrImageUrl(null);
@@ -62,10 +87,16 @@ export function QrLoginModal({ channelId, onClose, onSuccess }: QrLoginModalProp
       const deadline = Date.now() + SESSION_TIMEOUT_MS;
       let currentQrUrl: string | null = null;
 
-      while (!abortRef.current && Date.now() < deadline) {
+      while (!myToken.aborted && Date.now() < deadline) {
         // Step 1: Get a (possibly fresh) QR code
-        const startRes = await startQrLogin();
-        if (abortRef.current) return;
+        let startRes: Awaited<ReturnType<typeof startQrLogin>>;
+        try {
+          startRes = await startQrLogin(undefined, signal);
+        } catch (e: any) {
+          if (myToken.aborted || e?.name === "AbortError") return;
+          throw e;
+        }
+        if (myToken.aborted) return;
 
         if (!startRes.qrDataUrl) {
           setErrorMessage(startRes.message || t("qrLogin.gatewayUnavailable"));
@@ -81,7 +112,7 @@ export function QrLoginModal({ channelId, onClose, onSuccess }: QrLoginModalProp
             width: 250,
             color: { dark: "#000000FF", light: "#FFFFFFFF" },
           });
-          if (abortRef.current) return;
+          if (myToken.aborted) return;
           setQrImageUrl(qrData);
           setPhase("scanning");
           resetCountdown();
@@ -89,10 +120,13 @@ export function QrLoginModal({ channelId, onClose, onSuccess }: QrLoginModalProp
 
         // Step 3: Poll for scan result (single /wait call per iteration)
         try {
-          const result = await waitQrLogin(undefined, POLL_TIMEOUT_MS);
-          if (abortRef.current) break;
+          const result = await waitQrLogin(undefined, POLL_TIMEOUT_MS, signal);
+          if (myToken.aborted) break;
 
           if (result.connected) {
+            // Mark completed BEFORE any async side-effects so a re-render
+            // triggered by updateAccount's MST patch can't spawn a new loop.
+            completedRef.current = true;
             clearCountdown();
             // Set accountId as initial display name so the row isn't blank
             if (result.accountId) {
@@ -104,43 +138,52 @@ export function QrLoginModal({ channelId, onClose, onSuccess }: QrLoginModalProp
             setPhase("success");
             // Brief delay so user sees the success message
             setTimeout(() => {
-              if (!abortRef.current) {
+              if (!myToken.aborted) {
                 onSuccessRef.current();
                 onCloseRef.current();
               }
             }, 1200);
             return;
           }
-        } catch {
+        } catch (e: any) {
+          if (myToken.aborted || e?.name === "AbortError") return;
           // Poll timeout or transient error -- continue to next /start cycle
         }
 
         // Show refreshing state briefly before looping back to /start
-        if (!abortRef.current && Date.now() < deadline) {
+        if (!myToken.aborted && Date.now() < deadline) {
           setPhase("refreshing");
         }
         // Loop back: /start will create a fresh QR since /wait deleted the session
       }
 
       // Session timed out -- QR expired
-      if (!abortRef.current) {
+      if (!myToken.aborted) {
         clearCountdown();
         setErrorMessage(t("qrLogin.expired"));
         setPhase("error");
       }
     } catch (err: any) {
-      if (!abortRef.current) {
+      if (!myToken.aborted) {
         clearCountdown();
         setErrorMessage(err.message || t("qrLogin.failed"));
         setPhase("error");
       }
+    } finally {
+      // Only clear the activeTokenRef if it still points at our token
+      // (a newer invocation may have already replaced it).
+      if (activeTokenRef.current === myToken) activeTokenRef.current = null;
     }
   }, [t, channelId, entityStore, clearCountdown, resetCountdown]);
 
   useEffect(() => {
     startLogin();
     return () => {
-      abortRef.current = true;
+      const tok = activeTokenRef.current;
+      if (tok && !tok.aborted) {
+        tok.aborted = true;
+        tok.controller.abort();
+      }
       clearCountdown();
     };
   }, [startLogin, clearCountdown]);
