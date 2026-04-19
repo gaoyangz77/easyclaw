@@ -84,8 +84,8 @@ export const CS_ERROR_STAGE = {
   CONTEXT_RESOLUTION: "context_resolution",
   /** Buyer image fetch or compression failed; agent only sees the URL. */
   IMAGE_INGEST: "image_ingest",
-  /** Agent invoked escalate but shop has no routing configured. */
-  ESCALATE_UNCONFIGURED: "escalate_unconfigured",
+  /** Agent invoked cs_escalate and it failed (routing missing, or channel send errored). */
+  ESCALATE: "escalate",
   /** Relay WebSocket connect / token refresh failed. */
   RELAY_CONNECT: "relay_connect",
   /** Relay server rejected our cs_bind_shops request for one or more shops. */

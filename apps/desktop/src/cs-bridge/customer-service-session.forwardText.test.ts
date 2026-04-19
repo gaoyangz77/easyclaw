@@ -62,7 +62,7 @@ vi.mock("../telemetry/cs-telemetry-ref.js", () => ({
     SETUP: "setup",
     CONTEXT_RESOLUTION: "context_resolution",
     IMAGE_INGEST: "image_ingest",
-    ESCALATE_UNCONFIGURED: "escalate_unconfigured",
+    ESCALATE: "escalate",
     RELAY_CONNECT: "relay_connect",
     SHOP_BIND_REJECTED: "shop_bind_rejected",
   },

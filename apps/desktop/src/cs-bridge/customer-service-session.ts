@@ -611,7 +611,7 @@ export class CustomerServiceSession {
     const escalationRecipientId = shopMst?.services?.customerService?.escalationRecipientId;
 
     if (!escalationChannelId || !escalationRecipientId) {
-      this.emitError(CS_ERROR_STAGE.ESCALATE_UNCONFIGURED, {
+      this.emitError(CS_ERROR_STAGE.ESCALATE, {
         reason: !escalationChannelId ? "missing_channel" : "missing_recipient",
       });
       return { ok: false, error: "Escalation routing not configured" };
@@ -655,13 +655,26 @@ export class CustomerServiceSession {
     if (params.context) lines.push(`Context: ${params.context}`);
     lines.push("", "Please reply with your decision (e.g., \"Approved, process full refund\").");
 
-    await openClawConnector.request("send", {
-      to: escalationRecipientId,
-      channel,
-      accountId,
-      message: lines.join("\n"),
-      idempotencyKey: `cs-escalate:${escalation.id}:${Date.now()}`,
-    });
+    try {
+      await openClawConnector.request("send", {
+        to: escalationRecipientId,
+        channel,
+        accountId,
+        message: lines.join("\n"),
+        idempotencyKey: `cs-escalate:${escalation.id}:${Date.now()}`,
+      });
+    } catch (err) {
+      // Channel adapter failed to dispatch the escalation message (e.g. the
+      // target channel isn't logged in, platform rejected the send, network).
+      // Surface to ops — escalation routing config looks valid, but delivery
+      // is broken — then rethrow so the REST handler returns 500 and the
+      // calling tool reports the failure to the agent.
+      this.emitError(CS_ERROR_STAGE.ESCALATE, {
+        reason: "send_failed",
+        errorMessage: err,
+      });
+      throw err;
+    }
 
     log.info(`Escalation ${escalation.id} sent for conv=${this.csContext.conversationId} via ${channel}`);
     return { ok: true, escalationId: escalation.id };
