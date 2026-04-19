@@ -59,6 +59,12 @@ describe("parseScopeType", () => {
  * Extension tool:       custom_ext_tool   (source=plugin, pluginId NOT in OUR_PLUGIN_IDS)
  * Entitled tools:       entitled_tool_1, entitled_tool_2  (from MST store)
  */
+/** Required MST-model fields on every Surface fixture. */
+const SURFACE_TIMESTAMPS = {
+  createdAt: "2026-01-01T00:00:00Z",
+  updatedAt: "2026-01-01T00:00:00Z",
+};
+
 /** Set the default RunProfile on currentUser (the canonical source). */
 function setDefaultRunProfile(runProfileId: string | null): void {
   if (rootStore.currentUser) {
@@ -156,7 +162,7 @@ describe("ToolCapabilityModel.getEffectiveToolsForScope", () => {
     // Create a user surface that only allows entitled_tool_1
     rootStore.ingestGraphQLResponse({
       surfaces: [
-        { id: "restricted-surface", name: "Restricted", allowedToolIds: ["entitled_tool_1"], userId: "user1" },
+        { id: "restricted-surface", name: "Restricted", allowedToolIds: ["entitled_tool_1"], userId: "user1", ...SURFACE_TIMESTAMPS },
       ],
     });
 
@@ -175,7 +181,7 @@ describe("ToolCapabilityModel.getEffectiveToolsForScope", () => {
   it("CS_SESSION RunProfile respects surface restriction", () => {
     rootStore.ingestGraphQLResponse({
       surfaces: [
-        { id: "cs-surface", name: "CS Surface", allowedToolIds: ["entitled_tool_1"], userId: "user1" },
+        { id: "cs-surface", name: "CS Surface", allowedToolIds: ["entitled_tool_1"], userId: "user1", ...SURFACE_TIMESTAMPS },
       ],
     });
 
@@ -272,7 +278,7 @@ describe("Map-indexed views", () => {
   it("surfacesById contains Default + system + user surfaces", () => {
     rootStore.ingestGraphQLResponse({
       surfaces: [
-        { id: "user-surface", name: "User", allowedToolIds: ["entitled_tool_1"], userId: "u1" },
+        { id: "user-surface", name: "User", allowedToolIds: ["entitled_tool_1"], userId: "u1", ...SURFACE_TIMESTAMPS },
       ],
     });
     const map = rootStore.toolCapability.surfacesById;
@@ -390,7 +396,7 @@ describe("default profile + Surface filtering", () => {
     // Surface allows only entitled_tool_1
     rootStore.ingestGraphQLResponse({
       surfaces: [
-        { id: "default-surface", name: "Default Restricted", allowedToolIds: ["entitled_tool_1"], userId: "u1" },
+        { id: "default-surface", name: "Default Restricted", allowedToolIds: ["entitled_tool_1"], userId: "u1", ...SURFACE_TIMESTAMPS },
       ],
       runProfiles: [
         { id: "profile-default-restricted", name: "Default Restricted", selectedToolIds: ["entitled_tool_1", "entitled_tool_2"], surfaceId: "default-surface" },
@@ -410,8 +416,8 @@ describe("default profile + Surface filtering", () => {
   it("session profile overrides default, each with own surface", () => {
     rootStore.ingestGraphQLResponse({
       surfaces: [
-        { id: "broad-surface", name: "Broad", allowedToolIds: ["entitled_tool_1", "entitled_tool_2"], userId: "u1" },
-        { id: "narrow-surface", name: "Narrow", allowedToolIds: ["entitled_tool_2"], userId: "u1" },
+        { id: "broad-surface", name: "Broad", allowedToolIds: ["entitled_tool_1", "entitled_tool_2"], userId: "u1", ...SURFACE_TIMESTAMPS },
+        { id: "narrow-surface", name: "Narrow", allowedToolIds: ["entitled_tool_2"], userId: "u1", ...SURFACE_TIMESTAMPS },
       ],
       runProfiles: [
         { id: "profile-broad", name: "Broad", selectedToolIds: ["entitled_tool_1", "entitled_tool_2"], surfaceId: "broad-surface" },

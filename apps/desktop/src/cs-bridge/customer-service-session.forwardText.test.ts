@@ -2,9 +2,15 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
-vi.mock("@rivonclaw/logger", () => ({
-  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn() }),
-}));
+vi.mock("@rivonclaw/logger", () => {
+  const stubLogger = () => ({ debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() });
+  return {
+    createLogger: stubLogger,
+    createQuietLogger: stubLogger,
+    DEBUG_FLAGS: { PROXY: "DEBUG_PROXY", SECRETS: "DEBUG_SECRETS" },
+    isDebugFlagEnabled: () => false,
+  };
+});
 
 const mockRpcRequest = vi.fn();
 vi.mock("../openclaw/index.js", () => ({
