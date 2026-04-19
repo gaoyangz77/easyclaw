@@ -268,7 +268,7 @@ const telemetryTrack: EndpointHandler = async (req, res, _url, _params, ctx: Api
 // types we ingest into dedicated CH tables (`cs.message`, `cs.token_snapshot`,
 // `cs.tool_call`) are accepted. Anything else is a silent 204 drop. This
 // prevents a misconfigured plugin from flooding the CS stream with noise.
-const CS_EVENT_ALLOWLIST = new Set(["cs.message", "cs.token_snapshot", "cs.tool_call"]);
+const CS_EVENT_ALLOWLIST = new Set(["cs.message", "cs.token_snapshot", "cs.tool_call", "cs.error"]);
 
 const telemetryCsTrack: EndpointHandler = async (req, res, _url, _params, ctx: ApiContext) => {
   const body = (await parseBody(req)) as { eventType?: string; metadata?: Record<string, unknown> };

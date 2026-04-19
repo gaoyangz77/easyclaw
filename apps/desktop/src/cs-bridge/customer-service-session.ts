@@ -31,7 +31,7 @@ import { rootStore } from "../app/store/desktop-store.js";
 import { proxyNetwork } from "../infra/proxy/proxy-aware-network.js";
 import { compressImageForAgent } from "./image-compressor.js";
 import { loadSessionCostSummary } from "../usage/session-usage.js";
-import { emitCsTelemetry } from "../telemetry/cs-telemetry-ref.js";
+import { emitCsTelemetry, emitCsError, CS_ERROR_STAGE } from "../telemetry/cs-telemetry-ref.js";
 import {
   SEND_MESSAGE_MUTATION,
   GET_CONVERSATION_DETAILS_QUERY,
@@ -231,6 +231,7 @@ export class CustomerServiceSession {
     const authSession = getAuthSession();
     if (!authSession) {
       log.warn("No auth session available, cannot create backend CS session");
+      this.emitError(CS_ERROR_STAGE.BACKEND_SESSION, { reason: "no_auth_session" });
       return false;
     }
 
@@ -254,6 +255,7 @@ export class CustomerServiceSession {
       return true;
     } catch (err) {
       log.warn(`CS backend session creation failed: ${err instanceof Error ? err.message : String(err)}`);
+      this.emitError(CS_ERROR_STAGE.BACKEND_SESSION, { reason: "graphql_error", errorMessage: err });
       return false;
     }
   }
@@ -463,6 +465,10 @@ export class CustomerServiceSession {
     const authSession = getAuthSession();
     if (!authSession) {
       log.warn("No auth session available, cannot forward text to buyer");
+      this.emitError(CS_ERROR_STAGE.DELIVER, {
+        reason: "no_auth_session",
+        textLength: text.length,
+      });
       return;
     }
     await authSession.graphqlFetch(SEND_MESSAGE_MUTATION, {
@@ -595,6 +601,9 @@ export class CustomerServiceSession {
     const escalationRecipientId = shopMst?.services?.customerService?.escalationRecipientId;
 
     if (!escalationChannelId || !escalationRecipientId) {
+      this.emitError(CS_ERROR_STAGE.ESCALATE_UNCONFIGURED, {
+        reason: !escalationChannelId ? "missing_channel" : "missing_recipient",
+      });
       return { ok: false, error: "Escalation routing not configured" };
     }
 
@@ -648,6 +657,29 @@ export class CustomerServiceSession {
     return { ok: true, escalationId: escalation.id };
   }
 
+  // -- Telemetry helpers ------------------------------------------------------
+
+  /**
+   * Emit a `cs.error` BI event pre-filled with this session's shop /
+   * conversation / platform context. Thin wrapper around `emitCsError` so
+   * call sites just name the stage + pass a reason / error / textLength.
+   *
+   * Public: the CS bridge also emits via this wrapper when it holds a
+   * session reference (e.g. per-turn delivery failures).
+   */
+  emitError(
+    stage: (typeof CS_ERROR_STAGE)[keyof typeof CS_ERROR_STAGE],
+    opts: { reason?: string; errorMessage?: unknown; runId?: string; textLength?: number } = {},
+  ): void {
+    emitCsError(stage, {
+      shopId: this.csContext.shopId,
+      platformShopId: this.shop.platformShopId,
+      conversationId: this.csContext.conversationId,
+      platform: this.platform,
+      ...opts,
+    });
+  }
+
   // -- Private — message queue ------------------------------------------------
 
   /** Fire-and-forget abort of the active run. Synchronous call (RPC is async but we don't await). */
@@ -678,6 +710,7 @@ export class CustomerServiceSession {
     const authSession = getAuthSession();
     if (!authSession) {
       log.error(`Context resolution failed: no auth session for conv=${this.csContext.conversationId}`);
+      this.emitError(CS_ERROR_STAGE.CONTEXT_RESOLUTION, { reason: "no_auth_session" });
       this.csContext.recentOrders = [];
       this.contextResolved = true;
       return;
@@ -694,6 +727,7 @@ export class CustomerServiceSession {
       const platformBuyerId = detailsResult.ecommerceGetConversationDetails.buyer?.userId;
       if (!platformBuyerId) {
         log.warn(`Context resolution: could not resolve platform buyer ID for conv=${this.csContext.conversationId}`);
+        this.emitError(CS_ERROR_STAGE.CONTEXT_RESOLUTION, { reason: "no_platform_buyer" });
         this.csContext.recentOrders = [];
         this.csContext.orderId = null;
         this.contextResolved = true;
@@ -725,6 +759,7 @@ export class CustomerServiceSession {
       this.contextResolved = true;
     } catch (err) {
       log.warn(`Context resolution failed for conv=${this.csContext.conversationId}:`, err);
+      this.emitError(CS_ERROR_STAGE.CONTEXT_RESOLUTION, { reason: "graphql_error", errorMessage: err });
       // contextResolved stays false — createAndStoreSession will throw,
       // next attempt to create a session for this conversation will retry
     }
@@ -742,6 +777,7 @@ export class CustomerServiceSession {
 
     const runProfileId = this.shop.runProfileId ?? this.opts?.defaultRunProfileId;
     if (!runProfileId) {
+      this.emitError(CS_ERROR_STAGE.SETUP, { reason: "no_run_profile" });
       throw new Error(`Shop ${this.shop.objectId} has no runProfileId configured for CS`);
     }
     rootStore.toolCapability.setSessionRunProfile(this.scopeKey, runProfileId);
@@ -835,6 +871,7 @@ export class CustomerServiceSession {
       return [{ mimeType, content: buffer.toString("base64") }];
     } catch (err) {
       log.warn("Failed to fetch buyer image, agent will see URL only", { err });
+      this.emitError(CS_ERROR_STAGE.IMAGE_INGEST, { reason: "fetch_or_compress", errorMessage: err });
       return undefined;
     }
   }

@@ -21,6 +21,7 @@ export type { CSShopContext } from "./customer-service-session.js";
 import { rootStore } from "../app/store/desktop-store.js";
 import { runtimeStatusStore } from "../app/store/runtime-status-store.js";
 import { normalizePlatform } from "../utils/platform.js";
+import { emitCsError, CS_ERROR_STAGE } from "../telemetry/cs-telemetry-ref.js";
 
 const log = createLogger("cs-bridge");
 
@@ -270,9 +271,16 @@ export class CustomerServiceBridge {
         session!.abortedRunIds.delete(payload.runId);
         log.info(`Run ${payload.runId} was aborted, skipping auto-forward`);
       } else if (payload.state === "error") {
-        // Non-aborted error: log only, no fallback — fail fast so issues surface immediately
+        // Non-aborted error: log only, no fallback — fail fast so issues surface immediately.
+        // Emit cs.error only for runs that produced zero output — the buyer
+        // is left hanging and ops needs to see it. If text was already
+        // forwarded, the run was at least partially useful.
         if (!this.forwardedRuns.has(payload.runId)) {
           log.warn(`Agent run ${payload.runId} ended with error and no text was forwarded`);
+          session?.emitError(CS_ERROR_STAGE.RUN_ERROR, {
+            reason: "no_text",
+            runId: payload.runId,
+          });
         } else {
           log.warn(`Agent run ${payload.runId} ended with error (text was previously forwarded)`);
         }
@@ -370,9 +378,18 @@ export class CustomerServiceBridge {
 
     // Sanitize runtime error/timeout patterns. If nothing is left, the turn
     // is dropped silently — a real human CS wouldn't send "sorry, I couldn't
-    // answer" either.
+    // answer" either. Emit a `cs.error` so ops can see how often a shop's
+    // agent times out entirely.
+    const preSanitizeLength = text.length;
     text = this.sanitizeRuntimeErrors(text);
-    if (!text) return;
+    if (!text) {
+      session.emitError(CS_ERROR_STAGE.SANITIZE, {
+        reason: "runtime_pattern",
+        runId,
+        textLength: preSanitizeLength,
+      });
+      return;
+    }
 
     // Mark delivery initiated synchronously so the chat error handler (which
     // may fire before the network call resolves) defers to us instead of
@@ -391,6 +408,12 @@ export class CustomerServiceBridge {
           `Failed to forward per-turn text for run ${runId} (shop=${session.csContext.shopId}, conversation=${session.csContext.conversationId}):`,
           err,
         );
+        session.emitError(CS_ERROR_STAGE.DELIVER, {
+          reason: "platform_error",
+          errorMessage: err,
+          runId,
+          textLength: text.length,
+        });
       });
   }
 
@@ -495,6 +518,7 @@ export class CustomerServiceBridge {
           // Auth is permanently broken (e.g. refresh token expired/revoked).
           // Stop reconnecting to avoid an infinite loop.
           log.error("Token refresh failed (auth error), stopping CS bridge reconnect:", err);
+          emitCsError(CS_ERROR_STAGE.RELAY_CONNECT, { reason: "auth", errorMessage: err });
           this.lastCloseWasAuthFailure = false;
           return;
         }
@@ -503,6 +527,7 @@ export class CustomerServiceBridge {
         // reconnect attempt will retry the refresh, and schedule a reconnect
         // with backoff instead of connecting with a potentially expired token.
         log.warn("Token refresh failed (transient error), scheduling reconnect:", err);
+        emitCsError(CS_ERROR_STAGE.RELAY_CONNECT, { reason: "transient", errorMessage: err });
         this.scheduleReconnect();
         return;
       }
@@ -656,6 +681,16 @@ export class CustomerServiceBridge {
         }
         if (rejected.length > 0) {
           log.error(`  Rejected (not bound, no conflict — check relay server auth): ${rejected.join(", ")}`);
+          // One event per rejected shop so dashboards can rank by shopId.
+          for (const platformShopId of rejected) {
+            const ctx = this.shopContexts.get(platformShopId);
+            emitCsError(CS_ERROR_STAGE.SHOP_BIND_REJECTED, {
+              shopId: ctx?.objectId ?? "",
+              platformShopId,
+              platform: ctx?.platform ?? "",
+              reason: "relay_rejected",
+            });
+          }
         }
         this.bindingConflicts = result.conflicts;
         break;
@@ -719,6 +754,10 @@ export class CustomerServiceBridge {
       // onRunDispatched callback handles pendingRuns tracking.
     } catch (err) {
       log.error(`Failed to handle buyer message ${frame.messageId}:`, err);
+      session.emitError(CS_ERROR_STAGE.DISPATCH, {
+        reason: "handle_buyer_message",
+        errorMessage: err,
+      });
     }
   }
 

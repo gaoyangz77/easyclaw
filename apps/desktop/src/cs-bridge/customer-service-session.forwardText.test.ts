@@ -49,8 +49,23 @@ vi.mock("../usage/session-usage.js", () => ({
 }));
 
 const mockEmitCsTelemetry = vi.fn();
+const mockEmitCsError = vi.fn();
 vi.mock("../telemetry/cs-telemetry-ref.js", () => ({
   emitCsTelemetry: (...args: unknown[]) => mockEmitCsTelemetry(...args),
+  emitCsError: (...args: unknown[]) => mockEmitCsError(...args),
+  CS_ERROR_STAGE: {
+    DELIVER: "deliver",
+    SANITIZE: "sanitize",
+    RUN_ERROR: "run_error",
+    DISPATCH: "dispatch",
+    BACKEND_SESSION: "backend_session",
+    SETUP: "setup",
+    CONTEXT_RESOLUTION: "context_resolution",
+    IMAGE_INGEST: "image_ingest",
+    ESCALATE_UNCONFIGURED: "escalate_unconfigured",
+    RELAY_CONNECT: "relay_connect",
+    SHOP_BIND_REJECTED: "shop_bind_rejected",
+  },
 }));
 
 // ─── Import after mocks ─────────────────────────────────────────────────────
