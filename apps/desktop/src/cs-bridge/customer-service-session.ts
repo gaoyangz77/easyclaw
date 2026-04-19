@@ -330,6 +330,7 @@ export class CustomerServiceSession {
         direction: "inbound",
         messageId: frame.messageId,
         contentLength: typeof content === "string" ? content.length : 0,
+        runId: result.runId,
       });
     }
 
@@ -483,7 +484,10 @@ export class CustomerServiceSession {
     // BI emits (fire-and-forget). Collect the cumulative token snapshot from
     // the JSONL transcript first; if it's unavailable (RPC down, file miss)
     // we simply skip the token event — the `cs.message` event is still emitted.
-    void this.collectAndEmitTokenSnapshot();
+    // Capture runId at the moment of send — activeRunId holds the run that
+    // produced this reply. Cleared by onRunCompleted which fires after send.
+    const runId = this.activeRunId ?? "";
+    void this.collectAndEmitTokenSnapshot(runId);
     emitCsTelemetry("cs.message", {
       shopId: this.csContext.shopId,
       platformShopId: this.shop.platformShopId,
@@ -491,6 +495,7 @@ export class CustomerServiceSession {
       buyerUserId: this.csContext.buyerUserId,
       direction: "outbound",
       contentLength: text.length,
+      runId,
     });
   }
 
@@ -518,7 +523,7 @@ export class CustomerServiceSession {
    * a best-effort analytics emitter; the rule is "never let BI collection
    * block business logic".
    */
-  private async collectAndEmitTokenSnapshot(): Promise<void> {
+  private async collectAndEmitTokenSnapshot(runId: string): Promise<void> {
     try {
       // scopeKey → sessionId via sessions.list (path resolution only).
       const rpcResult = await openClawConnector.request<{
@@ -562,6 +567,7 @@ export class CustomerServiceSession {
         outputTokens,
         provider: dominantProvider ?? "",
         model: dominantModel ?? "",
+        runId,
       });
     } catch (err) {
       // System boundary: swallow. BI collection never blocks CS traffic.
