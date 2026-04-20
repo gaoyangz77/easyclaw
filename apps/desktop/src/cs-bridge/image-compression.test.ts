@@ -73,12 +73,18 @@ describe("compressImageForAgent", () => {
     // At test time the compiled worker at dist/image-compression-worker.cjs
     // does not exist alongside the test, so Worker spawn or exec will fail.
     // The wrapper must surface the original buffer + mime type rather than
-    // throw or drop the image.
+    // throw or drop the image, AND mark the result `ok: false` with an error
+    // string so callers can emit telemetry.
     const { compressImageForAgent } = await import("./image-compressor.js");
     const original = Buffer.from([1, 2, 3, 4, 5]);
     const result = await compressImageForAgent(original, "image/png");
+    expect(result.ok).toBe(false);
     expect(result.buffer).toEqual(original);
     expect(result.mimeType).toBe("image/png");
+    if (!result.ok) {
+      expect(typeof result.error).toBe("string");
+      expect(result.error.length).toBeGreaterThan(0);
+    }
   }, 10_000);
 });
 
@@ -152,8 +158,10 @@ describe("compressImageForAgent — worker lifecycle edge cases", () => {
     // (fail-open with original buffer) and sets worker = null.
     workerA!.emit("error", new Error("simulated crash"));
     const resultA = await reqA;
+    expect(resultA.ok).toBe(false);
     expect(resultA.buffer).toEqual(Buffer.from("a-payload"));
     expect(resultA.mimeType).toBe("image/png");
+    if (!resultA.ok) expect(resultA.error).toContain("simulated crash");
 
     // Step 3: start request B — this spawns a fresh worker instance.
     const reqB = compressImageForAgent(Buffer.from("b-payload"), "image/png");
@@ -170,6 +178,7 @@ describe("compressImageForAgent — worker lifecycle edge cases", () => {
     // Step 5: request B must resolve from B's own (real, delayed) reply as
     // an echoed JPEG — not as a prematurely failed-open PNG.
     const resultB = await reqB;
+    expect(resultB.ok).toBe(true);
     expect(resultB.mimeType).toBe("image/jpeg");
     expect(Buffer.from(resultB.buffer).equals(Buffer.from("b-payload"))).toBe(true);
 
@@ -188,8 +197,15 @@ describe("compressImageForAgent — worker lifecycle edge cases", () => {
 
     const original = Buffer.from([9, 8, 7]);
     const result = await compressImageForAgent(original, "image/png");
+    expect(result.ok).toBe(false);
     expect(result.buffer).toEqual(original);
     expect(result.mimeType).toBe("image/png");
+    // The failure may surface either synchronously (spawn throw) or via the
+    // "error" event (ENOENT on module resolve, which Node emits
+    // asynchronously). Either path fail-opens with a non-empty error string.
+    if (!result.ok) {
+      expect(result.error).toMatch(/worker (spawn failed|error:)/);
+    }
   }, 10_000);
 
   it("drains an entire queued batch when ensureWorker keeps throwing (Fix 3)", async () => {
@@ -206,6 +222,7 @@ describe("compressImageForAgent — worker lifecycle edge cases", () => {
       inputs.map((buf) => compressImageForAgent(buf, "image/png")),
     );
     for (let i = 0; i < inputs.length; i += 1) {
+      expect(results[i].ok).toBe(false);
       expect(results[i].buffer).toEqual(inputs[i]);
       expect(results[i].mimeType).toBe("image/png");
     }

@@ -11,8 +11,14 @@
  * image is worse than sending a big one — the CS pipeline must never lose a
  * message because of compression.
  *
- * Has no CS-specific knowledge: takes `(Buffer, mimeType)` in, returns
- * `{ buffer, mimeType }` out. Reusable for any off-thread image compression.
+ * The result is a discriminated union — `{ ok: true, buffer, mimeType }` on
+ * success, `{ ok: false, buffer, mimeType, error }` on fail-open (still with
+ * the original buffer so callers that ignore `ok` continue to behave
+ * correctly). Callers that care about observability inspect `ok` and emit
+ * telemetry themselves — this module stays CS-agnostic.
+ *
+ * Has no CS-specific knowledge: takes `(Buffer, mimeType)` in, returns a
+ * `CompressResult` out. Reusable for any off-thread image compression.
  */
 
 import { Worker } from "node:worker_threads";
@@ -21,6 +27,10 @@ import { fileURLToPath } from "node:url";
 import { createLogger } from "@rivonclaw/logger";
 
 const log = createLogger("image-compressor");
+
+export type CompressResult =
+  | { ok: true; buffer: Buffer; mimeType: string }
+  | { ok: false; buffer: Buffer; mimeType: string; error: string };
 
 // Sibling file inside dist/ — the worker is a separate tsdown build that emits
 // `dist/image-compression-worker.cjs` alongside `main.cjs` (see tsdown.config.ts).
@@ -33,7 +43,7 @@ type PendingRequest = {
   id: number;
   buffer: Buffer;
   mimeType: string;
-  resolve: (value: { buffer: Buffer; mimeType: string }) => void;
+  resolve: (value: CompressResult) => void;
 };
 
 type WorkerResponse =
@@ -76,39 +86,54 @@ function ensureWorker(): Worker {
       return;
     }
     if (msg.ok) {
-      pending.resolve({ buffer: Buffer.from(msg.buffer), mimeType: msg.mimeType });
+      pending.resolve({ ok: true, buffer: Buffer.from(msg.buffer), mimeType: msg.mimeType });
     } else {
       log.warn("Image compression worker returned error; falling back to original buffer", { error: msg.error });
-      pending.resolve({ buffer: pending.buffer, mimeType: pending.mimeType });
+      pending.resolve({
+        ok: false,
+        buffer: pending.buffer,
+        mimeType: pending.mimeType,
+        error: msg.error,
+      });
     }
     pumpQueue();
   });
   w.on("error", (err) => {
     if (w !== worker) return; // stale worker — ignore
     log.warn("Image compression worker errored; will respawn on next request", { err });
-    handleWorkerDeath();
+    handleWorkerDeath(`worker error: ${err instanceof Error ? err.message : String(err)}`);
   });
   w.on("exit", (code) => {
     if (w !== worker) return; // stale worker — ignore
     if (code !== 0) {
       log.warn("Image compression worker exited unexpectedly; will respawn on next request", { code });
     }
-    handleWorkerDeath();
+    handleWorkerDeath(`worker exit code=${code}`);
   });
   worker = w;
   return w;
 }
 
-function handleWorkerDeath(): void {
+function handleWorkerDeath(error: string): void {
   worker = null;
   // Fail-open any in-flight and queued requests with their original buffers.
   if (inFlight) {
-    inFlight.resolve({ buffer: inFlight.buffer, mimeType: inFlight.mimeType });
+    inFlight.resolve({
+      ok: false,
+      buffer: inFlight.buffer,
+      mimeType: inFlight.mimeType,
+      error,
+    });
     inFlight = null;
   }
   while (queue.length > 0) {
     const pending = queue.shift()!;
-    pending.resolve({ buffer: pending.buffer, mimeType: pending.mimeType });
+    pending.resolve({
+      ok: false,
+      buffer: pending.buffer,
+      mimeType: pending.mimeType,
+      error,
+    });
   }
 }
 
@@ -131,19 +156,28 @@ function pumpQueue(): void {
     // rest of the queue (each will also fail-open on the same condition).
     log.warn("Failed to dispatch to image worker; falling back to original buffer", { err });
     inFlight = null;
-    next.resolve({ buffer: next.buffer, mimeType: next.mimeType });
+    const error = `worker spawn failed: ${err instanceof Error ? err.message : String(err)}`;
+    next.resolve({
+      ok: false,
+      buffer: next.buffer,
+      mimeType: next.mimeType,
+      error,
+    });
     pumpQueue();
   }
 }
 
 /**
- * Compress an image buffer off the main thread. Returns the compressed buffer
- * and new mime type, or the original inputs if compression fails (fail-open).
+ * Compress an image buffer off the main thread. Returns a discriminated union:
+ *   - `{ ok: true, buffer, mimeType }` on success (compressed output).
+ *   - `{ ok: false, buffer, mimeType, error }` on any failure — buffer/mimeType
+ *     are the original inputs (fail-open) and `error` is a short description
+ *     for observability.
  */
 export function compressImageForAgent(
   buffer: Buffer,
   mimeType: string,
-): Promise<{ buffer: Buffer; mimeType: string }> {
+): Promise<CompressResult> {
   return new Promise((resolve) => {
     const pending: PendingRequest = {
       id: nextId++,

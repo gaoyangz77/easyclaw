@@ -882,19 +882,36 @@ export class CustomerServiceSession {
     if (frame.messageType.toUpperCase() !== "IMAGE") return undefined;
     try {
       const parsed = JSON.parse(frame.content) as { url?: string };
-      if (!parsed.url) return undefined;
+      if (!parsed.url) {
+        this.emitError(CS_ERROR_STAGE.IMAGE_INGEST, { reason: "url_missing" });
+        return undefined;
+      }
       const res = await proxyNetwork.fetch(parsed.url);
-      if (!res.ok) return undefined;
+      if (!res.ok) {
+        this.emitError(CS_ERROR_STAGE.IMAGE_INGEST, {
+          reason: "url_fetch",
+          errorMessage: `HTTP ${res.status}`,
+        });
+        return undefined;
+      }
       const rawBuffer = Buffer.from(await res.arrayBuffer());
       const rawMimeType = res.headers.get("content-type") ?? "image/jpeg";
       // Off-thread compression: resize + re-encode as JPEG so the main
       // Electron event loop doesn't block when multiple shops receive images
-      // concurrently. Fail-open: on worker failure we send the original buffer.
-      const { buffer, mimeType } = await compressImageForAgent(rawBuffer, rawMimeType);
-      return [{ mimeType, content: buffer.toString("base64") }];
+      // concurrently. Fail-open: on worker failure we still deliver the
+      // original buffer to the agent, but emit telemetry so the dashboard can
+      // tell compressed vs. fallback at the population level.
+      const result = await compressImageForAgent(rawBuffer, rawMimeType);
+      if (!result.ok) {
+        this.emitError(CS_ERROR_STAGE.IMAGE_INGEST, {
+          reason: "compress_failed",
+          errorMessage: result.error,
+        });
+      }
+      return [{ mimeType: result.mimeType, content: result.buffer.toString("base64") }];
     } catch (err) {
       log.warn("Failed to fetch buyer image, agent will see URL only", { err });
-      this.emitError(CS_ERROR_STAGE.IMAGE_INGEST, { reason: "fetch_or_compress", errorMessage: err });
+      this.emitError(CS_ERROR_STAGE.IMAGE_INGEST, { reason: "unexpected", errorMessage: err });
       return undefined;
     }
   }
