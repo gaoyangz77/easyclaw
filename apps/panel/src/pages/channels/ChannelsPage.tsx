@@ -1,5 +1,6 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { observer } from "mobx-react-lite";
 import { getChannelAccountConfig, trackEvent, type ChannelAccountSnapshot } from "../../api/index.js";
 import { useEntityStore } from "../../store/EntityStoreProvider.js";
 import { pollGatewayReady } from "./poll-gateway.js";
@@ -14,7 +15,7 @@ import { useChannelsData } from "./use-channels-data.js";
 import { ChannelAccountsTable } from "./ChannelAccountsTable.js";
 import { QrLoginModal } from "../../components/modals/QrLoginModal.js";
 
-export function ChannelsPage() {
+export const ChannelsPage = observer(function ChannelsPage() {
   const { t, i18n } = useTranslation();
   const entityStore = useEntityStore();
   const {
@@ -46,10 +47,15 @@ export function ChannelsPage() {
 
   const visibleChannels = getVisibleChannels(i18n.language, selectedDropdownChannel);
 
-  const allAccounts = useMemo(
-    () => snapshot ? buildAccountsList(snapshot, t) : [],
-    [snapshot, t],
-  );
+  // MST is the authoritative source for channel accounts. The gateway snapshot
+  // is only used as an overlay for runtime status fields.
+  //
+  // We deliberately do NOT wrap this in `useMemo`: `entityStore.channelAccounts`
+  // is a MobX observable array whose reference is stable across mutations, so a
+  // `useMemo` keyed on it would return stale results when individual accounts
+  // change. `observer()` already re-runs this function on any tracked MobX read,
+  // and rebuilding the list is O(accounts) — cheap enough to do every render.
+  const allAccounts = buildAccountsList(entityStore.channelAccounts, snapshot, t);
 
   const handleMobileModalClose = useCallback(() => setMobileModalOpen(false), []);
   const handleMobileBindingSuccess = useCallback(() => {
@@ -375,4 +381,4 @@ export function ChannelsPage() {
       />
     </div>
   );
-}
+});
