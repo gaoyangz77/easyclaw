@@ -185,12 +185,9 @@ app.whenReady().then(async () => {
     deviceId = "unknown";
   }
 
-  // Boot migrations — phase A (pre-storage). See boot-migrations.ts for
-  // the full registry, introduction version, and safe-removal version of
-  // each migration.
-  const { runPreStorageMigrations, runPostConfigMigrations, runPostInitMigrations } =
-    await import("./boot-migrations.js");
-  await runPreStorageMigrations();
+  // Boot migrations — see boot-migrations.ts for the full registry,
+  // introduction version, and safe-removal version of each migration.
+  const { runPostConfigMigrations } = await import("./boot-migrations.js");
 
   // Initialize storage and secrets
   const storage = createStorage();
@@ -416,11 +413,6 @@ app.whenReady().then(async () => {
       }
     }
   }, DEFAULTS.desktop.oauthCleanupIntervalMs);
-
-  // Boot migrations — phase C (post-init: needs storage + stateDir + configPath).
-  await runPostInitMigrations(storage, stateDir, configPath);
-
-
 
   // Clean up any stale openclaw processes before starting.
   // With dynamic ports, orphaned processes won't block new instances,
