@@ -185,10 +185,12 @@ app.whenReady().then(async () => {
     deviceId = "unknown";
   }
 
-  // --- Rebrand migration (EasyClaw → RivonClaw) ---
-  // TODO(cleanup): Remove after v1.8.0 (see auth/rebrand-migration.ts)
-  const { migrateFromEasyClaw } = await import("../auth/rebrand-migration.js");
-  await migrateFromEasyClaw();
+  // Boot migrations — phase A (pre-storage). See boot-migrations.ts for
+  // the full registry, introduction version, and safe-removal version of
+  // each migration.
+  const { runPreStorageMigrations, runPostConfigMigrations, runPostInitMigrations } =
+    await import("./boot-migrations.js");
+  await runPreStorageMigrations();
 
   // Initialize storage and secrets
   const storage = createStorage();
@@ -350,13 +352,8 @@ app.whenReady().then(async () => {
   resetDevicePairing(stateDir);
   const configPath = ensureGatewayConfig();
 
-  // One-shot migration of legacy weixin account keys in openclaw.json.
-  // Rewrites `xxx@im.bot` → `xxx-im-bot` so every downstream consumer
-  // (SQLite migration 27, MST, gateway `channels.status`) agrees on the
-  // canonical dash form. Idempotent — runs on every boot but no-ops once
-  // keys are canonical.
-  const { migrateWeixinAccountKeys } = await import("../channels/weixin-account-id-migration.js");
-  migrateWeixinAccountKeys(configPath);
+  // Boot migrations — phase B (post-config, pre-gateway-write).
+  await runPostConfigMigrations(configPath);
 
   // In packaged app, plugins/extensions live in Resources/.
   // In dev, config-writer auto-resolves via monorepo root.
@@ -420,9 +417,8 @@ app.whenReady().then(async () => {
     }
   }, DEFAULTS.desktop.oauthCleanupIntervalMs);
 
-  // One-time backfill: ensure existing allowFrom entries have channel_recipients rows as owners
-  const { backfillOwnerMigration } = await import("../auth/owner-migration.js");
-  await backfillOwnerMigration(storage, stateDir, configPath);
+  // Boot migrations — phase C (post-init: needs storage + stateDir + configPath).
+  await runPostInitMigrations(storage, stateDir, configPath);
 
 
 
