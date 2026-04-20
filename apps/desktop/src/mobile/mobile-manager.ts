@@ -40,10 +40,12 @@ async function readMobileAllowlist(): Promise<string[]> {
   try {
     const filePath = join(resolveCredentialsDir(), "mobile-allowFrom.json");
     const content = await fs.readFile(filePath, "utf-8");
+    if (!content.trim()) return [];
     const data: AllowFromStore = JSON.parse(content);
     return Array.isArray(data.allowFrom) ? data.allowFrom : [];
   } catch (err: any) {
     if (err.code === "ENOENT") return [];
+    if (err instanceof SyntaxError) return [];
     throw err;
   }
 }

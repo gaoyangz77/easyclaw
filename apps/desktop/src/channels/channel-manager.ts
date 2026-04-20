@@ -52,10 +52,12 @@ async function readPairingRequests(channelId: string): Promise<PairingRequest[]>
   try {
     const filePath = resolvePairingPath(channelId);
     const content = await fs.readFile(filePath, "utf-8");
+    if (!content.trim()) return [];
     const data: PairingStore = JSON.parse(content);
     return Array.isArray(data.requests) ? data.requests : [];
   } catch (err: any) {
     if (err.code === "ENOENT") return [];
+    if (err instanceof SyntaxError) return [];
     throw err;
   }
 }
@@ -79,10 +81,12 @@ async function readAllowFromList(channelId: string, accountId?: string): Promise
   try {
     const filePath = resolveAllowFromPathForChannel(channelId, accountId);
     const content = await fs.readFile(filePath, "utf-8");
+    if (!content.trim()) return [];
     const data: AllowFromStore = JSON.parse(content);
     return Array.isArray(data.allowFrom) ? data.allowFrom : [];
   } catch (err: any) {
     if (err.code === "ENOENT") return [];
+    if (err instanceof SyntaxError) return [];
     throw err;
   }
 }
