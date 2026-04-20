@@ -554,6 +554,14 @@ export class CustomerServiceSession {
         0,
         Math.floor(Number.isFinite(summary.output) ? summary.output : 0),
       );
+      const cacheReadTokens = Math.max(
+        0,
+        Math.floor(Number.isFinite(summary.cacheRead) ? summary.cacheRead : 0),
+      );
+      const cacheWriteTokens = Math.max(
+        0,
+        Math.floor(Number.isFinite(summary.cacheWrite) ? summary.cacheWrite : 0),
+      );
 
       const latest = summary.latestAssistantModel;
 
@@ -562,6 +570,8 @@ export class CustomerServiceSession {
         conversationId: this.csContext.conversationId,
         inputTokens,
         outputTokens,
+        cacheReadTokens,
+        cacheWriteTokens,
         provider: latest?.provider ?? "",
         model: latest?.model ?? "",
         runId,

@@ -179,9 +179,9 @@ describe("CustomerServiceSession.forwardTextToBuyer — sends message and emits 
     mockLoadSessionCostSummary.mockResolvedValueOnce({
       input: 1234,
       output: 567,
-      cacheRead: 0,
-      cacheWrite: 0,
-      totalTokens: 1801,
+      cacheRead: 89,
+      cacheWrite: 21,
+      totalTokens: 1911,
       totalCost: 0,
       inputCost: 0,
       outputCost: 0,
@@ -215,6 +215,8 @@ describe("CustomerServiceSession.forwardTextToBuyer — sends message and emits 
       conversationId: "conv-xyz",
       inputTokens: 1234,
       outputTokens: 567,
+      cacheReadTokens: 89,
+      cacheWriteTokens: 21,
       provider: "anthropic",
       model: "claude-sonnet-4.6",
     });
