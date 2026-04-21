@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.8.2",
+    "date": "2026-04-21",
+    "en": [
+      "Fix production update download links so desktop clients can fetch installers from the correct release URLs",
+      "Improve ecommerce shop setup with smarter default selections and a cleaner market configuration flow"
+    ],
+    "zh": [
+      "修复生产环境更新下载链接，客户端现在能从正确的发布地址获取安装包",
+      "优化电商店铺配置默认选项，开店与市场配置流程更顺手"
+    ]
+  },
+  {
     "version": "1.8.1",
     "date": "2026-04-20",
     "en": [
