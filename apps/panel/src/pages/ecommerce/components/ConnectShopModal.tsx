@@ -36,27 +36,22 @@ export function ConnectShopModal({
   const [selectedPlatform, setSelectedPlatform] = useState<string>("");
   const prevOpenRef = useRef(false);
 
-  // Auto-select first available market and platform when modal opens
-  useEffect(() => {
-    if (isOpen && !prevOpenRef.current) {
-      const markets = [...new Set(platformApps.map((app) => app.market))];
-      const firstMarket = markets.length > 0 ? markets[0] : "";
-      setSelectedMarket(firstMarket);
-      if (firstMarket) {
-        const appsForMarket = platformApps.filter((app) => app.market === firstMarket);
-        const platforms = [...new Set(appsForMarket.map((app) => app.platform))];
-        setSelectedPlatform(platforms.length > 0 ? platforms[0] : "");
-      } else {
-        setSelectedPlatform("");
-      }
-    }
-    prevOpenRef.current = isOpen;
-  }, [isOpen, platformApps]);
-
   const availableMarkets = useMemo(
     () => [...new Set(platformApps.map((app) => app.market))],
     [platformApps],
   );
+
+  // Auto-select the preferred market when the modal opens.
+  useEffect(() => {
+    if (isOpen && !prevOpenRef.current) {
+      const preferredMarket = availableMarkets.includes("US")
+        ? "US"
+        : (availableMarkets[0] ?? "");
+      setSelectedMarket(preferredMarket);
+      setSelectedPlatform("");
+    }
+    prevOpenRef.current = isOpen;
+  }, [availableMarkets, isOpen]);
 
   const matchingAppsForMarket = useMemo(() => {
     if (!selectedMarket) return [];
@@ -67,6 +62,21 @@ export function ConnectShopModal({
     () => [...new Set(matchingAppsForMarket.map((app) => app.platform))],
     [matchingAppsForMarket],
   );
+
+  // Keep platform selection in sync with the currently selected market.
+  useEffect(() => {
+    if (!selectedMarket) {
+      if (selectedPlatform) setSelectedPlatform("");
+      return;
+    }
+    if (availablePlatforms.length === 0) {
+      if (selectedPlatform) setSelectedPlatform("");
+      return;
+    }
+    if (!selectedPlatform || !availablePlatforms.includes(selectedPlatform)) {
+      setSelectedPlatform(availablePlatforms[0]);
+    }
+  }, [availablePlatforms, selectedMarket, selectedPlatform]);
 
   const matchedApps = useMemo(() => {
     if (!selectedMarket || !selectedPlatform) return [];
@@ -108,10 +118,7 @@ export function ConnectShopModal({
               ) : (
                 <Select
                   value={selectedMarket}
-                  onChange={(v) => {
-                    setSelectedMarket(v);
-                    setSelectedPlatform("");
-                  }}
+                  onChange={(v) => setSelectedMarket(v)}
                   className="input-full"
                   placeholder={t("ecommerce.addShopModal.marketPlaceholder")}
                   options={availableMarkets.map((market) => ({
