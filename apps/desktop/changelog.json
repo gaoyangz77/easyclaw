@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.8.3",
+    "date": "2026-04-21",
+    "en": [
+      "Fix customer-service replies leaking internal tool text and correct the related order query shape",
+      "Show local chat titles immediately for a snappier chat session experience"
+    ],
+    "zh": [
+      "修复客服回复中偶发混入内部工具文本的问题，并修正相关订单查询结构",
+      "本地聊天标题现在会更快显示，对话列表反馈更及时"
+    ]
+  },
+  {
     "version": "1.8.2",
     "date": "2026-04-21",
     "en": [
