@@ -2342,6 +2342,10 @@ export default {
     },
     market: {
       US: "美国",
+      MY: "马来西亚",
+      TH: "泰国",
+      ID: "印尼",
+      PH: "菲律宾",
       ROW: "其他地区",
     },
     platform: {

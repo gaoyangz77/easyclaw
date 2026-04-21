@@ -2355,6 +2355,10 @@ export default {
     },
     market: {
       US: "United States",
+      MY: "Malaysia",
+      TH: "Thailand",
+      ID: "Indonesia",
+      PH: "Philippines",
       ROW: "Rest of World",
     },
     platform: {

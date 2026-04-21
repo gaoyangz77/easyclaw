@@ -18,12 +18,6 @@ interface ConnectShopModalProps {
   onCancelOAuth: () => void;
 }
 
-// Market containment mapping -- for future-proofing
-const MARKET_CONTAINS: Record<string, string[]> = {
-  US: ["US"],
-  ROW: ["ROW"],
-};
-
 export function ConnectShopModal({
   isOpen,
   onClose,
@@ -49,8 +43,7 @@ export function ConnectShopModal({
       const firstMarket = markets.length > 0 ? markets[0] : "";
       setSelectedMarket(firstMarket);
       if (firstMarket) {
-        const contained = MARKET_CONTAINS[firstMarket] ?? [firstMarket];
-        const appsForMarket = platformApps.filter((app) => contained.includes(app.market));
+        const appsForMarket = platformApps.filter((app) => app.market === firstMarket);
         const platforms = [...new Set(appsForMarket.map((app) => app.platform))];
         setSelectedPlatform(platforms.length > 0 ? platforms[0] : "");
       } else {
@@ -67,8 +60,7 @@ export function ConnectShopModal({
 
   const matchingAppsForMarket = useMemo(() => {
     if (!selectedMarket) return [];
-    const contained = MARKET_CONTAINS[selectedMarket] ?? [selectedMarket];
-    return platformApps.filter((app) => contained.includes(app.market));
+    return platformApps.filter((app) => app.market === selectedMarket);
   }, [platformApps, selectedMarket]);
 
   const availablePlatforms = useMemo(
@@ -78,9 +70,8 @@ export function ConnectShopModal({
 
   const matchedApps = useMemo(() => {
     if (!selectedMarket || !selectedPlatform) return [];
-    const contained = MARKET_CONTAINS[selectedMarket] ?? [selectedMarket];
     return platformApps.filter(
-      (app) => contained.includes(app.market) && app.platform === selectedPlatform,
+      (app) => app.market === selectedMarket && app.platform === selectedPlatform,
     );
   }, [platformApps, selectedMarket, selectedPlatform]);
 
@@ -213,4 +204,3 @@ export function ConnectShopModal({
     </Modal>
   );
 }
-

@@ -1390,7 +1390,11 @@ export const PlatformAppStatus = {
 export type PlatformAppStatus = typeof PlatformAppStatus[keyof typeof PlatformAppStatus];
 /** Platform market region */
 export const PlatformMarket = {
+  Id: 'ID',
+  My: 'MY',
+  Ph: 'PH',
   Row: 'ROW',
+  Th: 'TH',
   Us: 'US'
 } as const;
 
