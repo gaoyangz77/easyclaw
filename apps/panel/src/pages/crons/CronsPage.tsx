@@ -1,12 +1,12 @@
 import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { trackEvent } from "../../api/index.js";
-import { getRunProfileForScope, setRunProfileForScope } from "../../api/tool-registry.js";
+import { setRunProfileForScope } from "../../api/tool-registry.js";
 import { Select } from "../../components/inputs/Select.js";
 import { ConfirmDialog } from "../../components/modals/ConfirmDialog.js";
 import { useCronManager } from "./useCronManager.js";
 import { CronJobForm } from "./CronJobForm.js";
-import { TEMP_CRON_SCOPE_KEY } from "./hooks/useCronForm.js";
+import { SUBMIT_RUN_PROFILE_ID_KEY } from "./hooks/useCronForm.js";
 import { CronRunHistory } from "./CronRunHistory.js";
 import { CronJobTable } from "./components/CronJobTable.js";
 import type { CronJob, CronListParams } from "./cron-utils.js";
@@ -96,17 +96,18 @@ export function CronsPage() {
   }, [cron, deleteTarget]);
 
   const handleFormSubmit = useCallback(async (params: Record<string, unknown>) => {
+    const runProfileIdRaw = params[SUBMIT_RUN_PROFILE_ID_KEY];
+    const runProfileId = typeof runProfileIdRaw === "string" ? runProfileIdRaw : null;
+    const cronParams = { ...params };
+    delete cronParams[SUBMIT_RUN_PROFILE_ID_KEY];
+
     const isCreate = !editingJob;
     if (editingJob) {
-      await cron.updateJob(editingJob.id, params);
+      await cron.updateJob(editingJob.id, cronParams);
+      await setRunProfileForScope(editingJob.id, runProfileId);
     } else {
-      const newJob = await cron.addJob(params);
-      // Copy RunProfile from temporary scope to the real job ID
-      const tempRunProfileId = await getRunProfileForScope(TEMP_CRON_SCOPE_KEY);
-      if (tempRunProfileId) {
-        await setRunProfileForScope(newJob.id, tempRunProfileId);
-        await setRunProfileForScope(TEMP_CRON_SCOPE_KEY, null);
-      }
+      const newJob = await cron.addJob(cronParams);
+      await setRunProfileForScope(newJob.id, runProfileId);
     }
     if (isCreate) trackEvent("cron.created");
     setFormOpen(false);

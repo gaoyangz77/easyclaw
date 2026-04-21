@@ -2,13 +2,12 @@ import { useState, useCallback, useMemo, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { fetchChannelStatus, fetchAllowlist, type ChannelsStatusSnapshot } from "../../../api/channels.js";
 import { KNOWN_CHANNELS } from "../../../lib/channel-defs.js";
-import { setRunProfileForScope } from "../../../api/tool-registry.js";
+import { getRunProfileForScope } from "../../../api/tool-registry.js";
 import { useEntityStore } from "../../../store/EntityStoreProvider.js";
 import type { CronJob, CronJobFormData, FormErrors } from "../cron-utils.js";
 import { defaultFormData, cronJobToFormData, formDataToCreateParams, formDataToPatch, validateCronForm } from "../cron-utils.js";
 
-/** Stable scope key used for tool selections when creating a new cron job (no real ID yet). */
-export const TEMP_CRON_SCOPE_KEY = "__new_cron__";
+export const SUBMIT_RUN_PROFILE_ID_KEY = "__runProfileId";
 
 interface UseCronFormParams {
   mode: "create" | "edit";
@@ -36,6 +35,27 @@ export function useCronForm({ mode, initialData, onSubmit }: UseCronFormParams) 
   const entityStore = useEntityStore();
   const runProfiles = entityStore.allRunProfiles;
   const [selectedRunProfileId, setSelectedRunProfileId] = useState("");
+
+  useEffect(() => {
+    const scopeKey = mode === "edit" && initialData ? initialData.id : null;
+    if (!scopeKey) {
+      setSelectedRunProfileId("");
+      return;
+    }
+
+    let cancelled = false;
+    getRunProfileForScope(scopeKey).then((runProfileId) => {
+      if (!cancelled) {
+        setSelectedRunProfileId(runProfileId ?? "");
+      }
+    }).catch(() => {
+      if (!cancelled) {
+        setSelectedRunProfileId("");
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [mode, initialData?.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,13 +122,17 @@ export function useCronForm({ mode, initialData, onSubmit }: UseCronFormParams) 
       const params = mode === "edit" && initialData
         ? formDataToPatch(initialData, form)
         : formDataToCreateParams(form);
+      (params as Record<string, unknown>)[SUBMIT_RUN_PROFILE_ID_KEY] =
+        selectedRunProfileId && runProfiles.find((p) => p.id === selectedRunProfileId)
+          ? selectedRunProfileId
+          : null;
       await onSubmit(params);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : String(err));
     } finally {
       setSaving(false);
     }
-  }, [form, mode, initialData, onSubmit]);
+  }, [form, mode, initialData, onSubmit, selectedRunProfileId, runProfiles]);
 
   /** Channel account options as `channelId:accountId` pairs, matching EcommercePage pattern. */
   const connectedChannelOptions = useMemo(() => {
@@ -194,13 +218,7 @@ export function useCronForm({ mode, initialData, onSubmit }: UseCronFormParams) 
 
   const handleRunProfileChange = useCallback((profileId: string) => {
     setSelectedRunProfileId(profileId);
-    const cronScopeKey = mode === "edit" && initialData ? initialData.id : TEMP_CRON_SCOPE_KEY;
-    if (!profileId || !runProfiles.find((p) => p.id === profileId)) {
-      setRunProfileForScope(cronScopeKey, null).catch(() => {});
-      return;
-    }
-    setRunProfileForScope(cronScopeKey, profileId).catch(() => {});
-  }, [mode, initialData, runProfiles]);
+  }, []);
 
   return {
     form,
