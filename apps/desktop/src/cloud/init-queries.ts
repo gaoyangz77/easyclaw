@@ -76,8 +76,11 @@ export const INIT_SURFACES_QUERY = `
     surfaces {
       id
       name
+      description
       userId
       allowedToolIds
+      createdAt
+      updatedAt
     }
   }
 `;
