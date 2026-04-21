@@ -97,6 +97,10 @@ export interface AutoUpdaterDeps {
   telemetryTrack?: (event: string, meta?: Record<string, unknown>) => void;
 }
 
+type ClientUpdatePayload = GQL.UpdatePayload & {
+  downloadUrl: string | null;
+};
+
 function resolveReleaseAssetName(version: string): string | null {
   switch (process.platform) {
     case "darwin": {
@@ -121,7 +125,7 @@ function resolveUpdateDownloadUrl(updateFeedUrl: string, version: string): strin
 
 export function createAutoUpdater(deps: AutoUpdaterDeps) {
   let latestUpdateInfo: UpdateInfo | null = null;
-  let backendUpdateInfo: GQL.UpdatePayload | null = null;
+  let backendUpdateInfo: ClientUpdatePayload | null = null;
   let updateDownloadState: UpdateDownloadState = { status: "idle" };
   let runFullCleanup: (() => Promise<void>) | null = null;
 
@@ -191,7 +195,7 @@ export function createAutoUpdater(deps: AutoUpdaterDeps) {
     deps.updateTray();
   }
 
-  function toClientUpdateInfo(info: GQL.UpdatePayload): GQL.UpdatePayload {
+  function toClientUpdateInfo(info: GQL.UpdatePayload): ClientUpdatePayload {
     return {
       ...info,
       // Download artifacts are platform-specific, so derive the current
