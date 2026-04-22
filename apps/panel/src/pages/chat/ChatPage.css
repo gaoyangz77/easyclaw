@@ -809,14 +809,6 @@
   color: var(--color-text-muted);
 }
 
-.chat-tool-event-running {
-  color: var(--color-text-secondary);
-}
-
-.chat-tool-event-failed {
-  color: #b42318;
-}
-
 .chat-tool-event-header {
   display: flex;
   align-items: center;
@@ -827,25 +819,6 @@
 .chat-tool-event-icon {
   font-size: 11px;
   flex-shrink: 0;
-}
-
-.chat-tool-event-status {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 6px;
-  min-height: 16px;
-  border-radius: 999px;
-  font-size: 10px;
-  line-height: 1;
-  background: rgba(148, 163, 184, 0.16);
-  color: inherit;
-}
-
-.chat-tool-event-error {
-  padding-left: 17px;
-  color: inherit;
-  white-space: pre-wrap;
-  word-break: break-word;
 }
 
 /* ===== Tool Args Collapsible ===== */

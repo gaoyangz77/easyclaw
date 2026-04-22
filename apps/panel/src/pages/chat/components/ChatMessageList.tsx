@@ -48,25 +48,15 @@ export function ChatMessageList({
       )}
       {visibleMessages.map((msg, i) => {
         if (msg.role === "tool-event") {
-          const statusLabel = msg.toolStatus
-            ? t(`chat.toolStatus_${msg.toolStatus}`, { defaultValue: msg.toolStatus })
-            : null;
-          const eventClass = `chat-tool-event${msg.toolStatus ? ` chat-tool-event-${msg.toolStatus}` : ""}`;
           return preserveToolEvents ? (
-            <div key={i} className={eventClass}>
+            <div key={i} className="chat-tool-event">
               <div className="chat-tool-event-header">
                 <span className="chat-tool-event-icon">&#9881;</span>
                 {t("chat.toolEventLabel", { tool: msg.toolName })}
-                {statusLabel && (
-                  <span className="chat-tool-event-status">{statusLabel}</span>
-                )}
                 {msg.toolArgs && Object.keys(msg.toolArgs).length > 0 && (
                   <ToolArgsDisplay args={msg.toolArgs} />
                 )}
               </div>
-              {msg.toolStatus === "failed" && msg.toolError && (
-                <div className="chat-tool-event-error">{msg.toolError}</div>
-              )}
             </div>
           ) : null;
         }
