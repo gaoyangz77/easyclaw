@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.8.6",
+    "date": "2026-04-22",
+    "en": [
+      "Fix desktop ecommerce auth bootstrap so sign-in and shop connection initialize more reliably",
+      "Improve customer-service bridge error details so failures are easier to understand and troubleshoot",
+      "Simplify tool error display in chat so error messages are cleaner and less noisy"
+    ],
+    "zh": [
+      "修复桌面端电商认证初始化问题，登录和店铺连接流程更稳定",
+      "增强客服桥接报错信息，失败原因更清楚，也更容易排查",
+      "优化对话里的工具报错展示，错误提示更简洁不打扰"
+    ]
+  },
+  {
     "version": "1.8.5",
     "date": "2026-04-22",
     "en": [
