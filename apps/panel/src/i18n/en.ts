@@ -2371,12 +2371,14 @@ export default {
     table: {
       headers: {
         name: "Shop Name",
+        alias: "Alias",
         platform: "Platform",
         region: "Region",
         authStatus: "Auth Status",
         csBalance: "CS Balance",
         actions: "Actions",
       },
+      aliasPlaceholder: "Set alias...",
     },
     shopDrawer: {
       tabs: {

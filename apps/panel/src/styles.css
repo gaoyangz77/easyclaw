@@ -7255,6 +7255,33 @@ html[lang="zh"] .acct-tool-chips {
   color: var(--color-text);
 }
 
+.shop-alias-input {
+  width: 100%;
+  min-width: 140px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  color: var(--color-text);
+  transition: border-color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.shop-alias-input:hover {
+  border-color: var(--color-border-light);
+}
+
+.shop-alias-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  background: var(--color-bg-alt);
+}
+
+.shop-alias-input:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
 .shop-balance-cell {
   display: inline-flex;
   align-items: center;

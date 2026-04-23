@@ -60,6 +60,7 @@ export const ShopModel = types.model("Shop", {
   platformAppId: types.optional(types.string, ""),
   platformShopId: types.string,
   shopName: types.string,
+  alias: types.optional(types.maybeNull(types.string), null),
   authStatus: types.optional(types.string, ""),
   region: types.optional(types.string, ""),
   accessTokenExpiresAt: types.maybeNull(types.string),

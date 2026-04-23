@@ -166,6 +166,18 @@ export const EcommercePage = observer(function EcommercePage() {
     }
   }
 
+  async function handleUpdateAlias(shopId: string, alias: string) {
+    setUpgradePrompt(false);
+    try {
+      const shop = shops.find((s) => s.id === shopId);
+      if (!shop) throw new Error(`Shop ${shopId} not found`);
+      await (shop as typeof shop & { updateAlias: (nextAlias: string) => Promise<unknown> }).updateAlias(alias);
+    } catch (err) {
+      handleError(err, "ecommerce.updateFailed");
+      throw err;
+    }
+  }
+
   async function handleToggleCustomerService(shopId: string, currentValue: boolean) {
     setTogglingServiceId(shopId);
     setUpgradePrompt(false);
@@ -359,6 +371,7 @@ export const EcommercePage = observer(function EcommercePage() {
         shops={shops}
         oauthLoading={oauthFlow.oauthLoading}
         oauthWaiting={oauthFlow.oauthWaiting}
+        onUpdateAlias={handleUpdateAlias}
         onOpenDrawer={openDrawer}
         onReauthorize={handleReauthorize}
         onRequestDelete={setConfirmDeleteShopId}

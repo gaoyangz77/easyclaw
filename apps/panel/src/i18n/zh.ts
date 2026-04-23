@@ -2358,12 +2358,14 @@ export default {
     table: {
       headers: {
         name: "店铺名称",
+        alias: "别名",
         platform: "平台",
         region: "地区",
         authStatus: "授权状态",
         csBalance: "客服余额",
         actions: "操作",
       },
+      aliasPlaceholder: "设置别名...",
     },
     shopDrawer: {
       tabs: {

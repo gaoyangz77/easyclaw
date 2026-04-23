@@ -3,6 +3,7 @@ import { ShopModel as ShopModelBase } from "@rivonclaw/core/models";
 import {
   UPDATE_SHOP_MUTATION,
   DELETE_SHOP_MUTATION,
+  ECOMMERCE_UPDATE_SHOP_MUTATION,
 } from "../../api/shops-queries.js";
 import type { PanelStoreEnv } from "../types.js";
 
@@ -12,6 +13,7 @@ export const ShopModel = ShopModelBase.actions((self) => {
   return {
     update: flow(function* (input: {
       shopName?: string;
+      alias?: string;
       authStatus?: string;
       region?: string;
       services?: {
@@ -32,6 +34,14 @@ export const ShopModel = ShopModelBase.actions((self) => {
         variables: { id: self.id, input },
       });
       return result.data!.updateShop;
+    }),
+
+    updateAlias: flow(function* (alias: string) {
+      const result = yield client().mutate({
+        mutation: ECOMMERCE_UPDATE_SHOP_MUTATION,
+        variables: { shopId: self.id, alias },
+      });
+      return result.data!.ecommerceUpdateShop;
     }),
 
     delete: flow(function* () {

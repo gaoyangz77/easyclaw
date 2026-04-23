@@ -1266,6 +1266,7 @@ export interface MutationEcommerceUpdateInventoryArgs {
 
 
 export interface MutationEcommerceUpdateShopArgs {
+  alias?: InputMaybe<Scalars['String']['input']>;
   customerServiceSettings?: InputMaybe<AgentCsSettingsInput>;
   shopId: Scalars['String']['input'];
 }
@@ -1932,6 +1933,7 @@ export interface SessionStateBackupManifestInput {
 /** A connected e-commerce shop */
 export interface Shop {
   accessTokenExpiresAt?: Maybe<Scalars['DateTimeISO']['output']>;
+  alias?: Maybe<Scalars['String']['output']>;
   authStatus: ShopAuthStatus;
   createdAt: Scalars['DateTimeISO']['output'];
   grantedScopes: Array<Scalars['String']['output']>;
@@ -2212,6 +2214,7 @@ export interface UpdateRunProfileInput {
 
 /** Input for updating an existing shop */
 export interface UpdateShopInput {
+  alias?: InputMaybe<Scalars['String']['input']>;
   authStatus?: InputMaybe<ShopAuthStatus>;
   grantedScopes?: InputMaybe<Array<Scalars['String']['input']>>;
   region?: InputMaybe<ShopRegion>;

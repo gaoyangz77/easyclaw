@@ -7,6 +7,7 @@ export const SHOP_FIELDS_FRAGMENT = gql`
     platformAppId
     platformShopId
     shopName
+    alias
     authStatus
     region
     accessTokenExpiresAt
@@ -80,6 +81,15 @@ export const UPDATE_SHOP_MUTATION = gql`
   mutation UpdateShop($id: ID!, $input: UpdateShopInput!) {
     updateShop(id: $id, input: $input) {
       ...ShopFields
+    }
+  }
+`;
+
+export const ECOMMERCE_UPDATE_SHOP_MUTATION = gql`
+  mutation EcommerceUpdateShop($shopId: String!, $alias: String) {
+    ecommerceUpdateShop(shopId: $shopId, alias: $alias) {
+      shopId
+      message
     }
   }
 `;
