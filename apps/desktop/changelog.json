@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.8.8",
+    "date": "2026-04-23",
+    "en": [
+      "Improve ecommerce setup with direct shop alias editing and a cleaner, more stable shop table layout",
+      "Fix webchat keepalive timing so chat connections wait for the sidecar to be ready before reconnecting"
+    ],
+    "zh": [
+      "优化电商店铺管理：支持直接编辑店铺别名，列表布局也更清晰稳定",
+      "修复网页聊天连接保活时机，等待 sidecar 就绪后再重连，减少连接异常"
+    ]
+  },
+  {
     "version": "1.8.7",
     "date": "2026-04-23",
     "en": [
