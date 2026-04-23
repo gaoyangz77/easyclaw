@@ -3,6 +3,7 @@ import type Database from "better-sqlite3";
 export interface ChatSession {
   key: string;
   customTitle: string | null;
+  panelTitle: string | null;
   pinned: boolean;
   archivedAt: number | null;
   createdAt: number;
@@ -11,6 +12,7 @@ export interface ChatSession {
 interface ChatSessionRow {
   key: string;
   custom_title: string | null;
+  panel_title: string | null;
   pinned: number;
   archived_at: number | null;
   created_at: number;
@@ -20,6 +22,7 @@ function rowToSession(row: ChatSessionRow): ChatSession {
   return {
     key: row.key,
     customTitle: row.custom_title,
+    panelTitle: row.panel_title,
     pinned: row.pinned === 1,
     archivedAt: row.archived_at,
     createdAt: row.created_at,
@@ -32,7 +35,7 @@ export class ChatSessionsRepository {
   /** Upsert a chat session record. Only provided fields are updated. */
   upsert(
     key: string,
-    fields: Partial<Pick<ChatSession, "customTitle" | "pinned" | "archivedAt">>,
+    fields: Partial<Pick<ChatSession, "customTitle" | "panelTitle" | "pinned" | "archivedAt">>,
   ): ChatSession {
     const existing = this.db
       .prepare("SELECT * FROM chat_sessions WHERE key = ?")
@@ -45,6 +48,10 @@ export class ChatSessionsRepository {
       if (fields.customTitle !== undefined) {
         sets.push("custom_title = ?");
         values.push(fields.customTitle);
+      }
+      if (fields.panelTitle !== undefined) {
+        sets.push("panel_title = ?");
+        values.push(fields.panelTitle);
       }
       if (fields.pinned !== undefined) {
         sets.push("pinned = ?");
@@ -68,11 +75,12 @@ export class ChatSessionsRepository {
     const now = Date.now();
     this.db
       .prepare(
-        "INSERT INTO chat_sessions (key, custom_title, pinned, archived_at, created_at) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO chat_sessions (key, custom_title, panel_title, pinned, archived_at, created_at) VALUES (?, ?, ?, ?, ?, ?)",
       )
       .run(
         key,
         fields.customTitle ?? null,
+        fields.panelTitle ?? null,
         fields.pinned ? 1 : 0,
         fields.archivedAt ?? null,
         now,

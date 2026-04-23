@@ -8,6 +8,7 @@ import { fetchChatSessions, deleteChatSession } from "../../api/chat-sessions.js
 /** Minimal gateway session info for merging into archived dropdown. */
 export type GatewaySessionInfo = {
   key: string;
+  panelTitle?: string;
   derivedTitle?: string;
   lastMessagePreview?: string;
 };
@@ -35,6 +36,8 @@ function abbreviateKey(key: string): string {
 /** Derive the display label for a session tab. */
 function tabLabel(session: SessionTabInfo, t: (key: string) => string): string {
   if (session.key === DEFAULT_SESSION_KEY) return t("chat.sessionMain");
+  if (session.customTitle) return session.customTitle;
+  if (session.panelTitle) return session.panelTitle;
   if (session.derivedTitle) return session.derivedTitle;
   if (session.isLocal) return t("chat.newSessionTitle");
   if (session.displayName) return session.displayName;
@@ -198,6 +201,7 @@ function formatArchivedTime(ts: number, locale: string): string {
 
 /** Merged archived item: SQLite metadata + optional gateway data. */
 type ArchivedItem = ChatSessionMeta & {
+  panelTitle?: string | null;
   derivedTitle?: string;
   lastMessagePreview?: string;
 };
@@ -283,7 +287,7 @@ function SwipeableArchivedItem({
 
   useEffect(() => () => clearTimeout(wheelTimerRef.current), []);
 
-  const displayTitle = item.customTitle || item.derivedTitle || abbreviateKey(item.key);
+  const displayTitle = item.customTitle || item.panelTitle || item.derivedTitle || abbreviateKey(item.key);
   const revealed = offsetX <= -DELETE_THRESHOLD / 2;
 
   return (
@@ -318,8 +322,8 @@ function SwipeableArchivedItem({
             {item.archivedAt
               ? `${t("chat.archivedAt")} ${formatArchivedTime(item.archivedAt, i18n.language)}`
               : abbreviateKey(item.key)}
-            {item.customTitle && item.derivedTitle ? ` · ${item.derivedTitle}` : ""}
-            {(item.customTitle || item.derivedTitle) ? ` · ${abbreviateKey(item.key)}` : ""}
+            {item.customTitle && (item.panelTitle || item.derivedTitle) ? ` · ${item.panelTitle || item.derivedTitle}` : ""}
+            {(item.customTitle || item.panelTitle || item.derivedTitle) ? ` · ${abbreviateKey(item.key)}` : ""}
           </span>
         </button>
       </div>

@@ -430,4 +430,11 @@ export const migrations: Migration[] = [
           AND json_type(config, '$.botName') IS NOT NULL;
     `,
   },
+  {
+    id: 29,
+    name: "add_panel_title_to_chat_sessions",
+    sql: `
+      ALTER TABLE chat_sessions ADD COLUMN panel_title TEXT;
+    `,
+  },
 ];

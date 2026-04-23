@@ -7,6 +7,7 @@ export const TOOL_SPECS_SYNC_QUERY = `
       displayName
       description
       supportsPersistResult
+      resultSchema
       surfaces
       runProfiles
       graphqlOperation
@@ -49,6 +50,7 @@ export const TOOL_SPECS_SYNC_QUERY = `
       restEndpoint
       restContentType
       supportedPlatforms
+      prune
     }
   }
 `;

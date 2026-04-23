@@ -1,6 +1,12 @@
 import { useTranslation } from "react-i18next";
 import type { ChatMessage } from "../chat-utils.js";
-import { cleanMessageText, IMAGE_PLACEHOLDER, IMAGE_EXPIRED_PLACEHOLDER, formatTimestamp } from "../chat-utils.js";
+import {
+  cleanMessageText,
+  IMAGE_PLACEHOLDER,
+  IMAGE_EXPIRED_PLACEHOLDER,
+  STOP_COMMAND_PLACEHOLDER,
+  formatTimestamp,
+} from "../chat-utils.js";
 import { MarkdownMessage, CopyButton, CollapsibleContent, ToolArgsDisplay } from "../ChatMessage.js";
 
 export interface ChatMessageListProps {
@@ -62,7 +68,8 @@ export function ChatMessageList({
         }
         const cleaned = cleanMessageText(msg.text)
           .replaceAll(IMAGE_PLACEHOLDER, t("chat.imageAttachment"))
-          .replaceAll(IMAGE_EXPIRED_PLACEHOLDER, t("chat.imageExpired"));
+          .replaceAll(IMAGE_EXPIRED_PLACEHOLDER, t("chat.imageExpired"))
+          .replaceAll(STOP_COMMAND_PLACEHOLDER, t("chat.stopCommandFeedback"));
         const hasImages = msg.images && msg.images.length > 0;
         // Skip empty bubbles (text stripped by cleanMessageText and no images)
         if (!cleaned && !hasImages) return null;

@@ -31,6 +31,8 @@ export type PendingImage = { dataUrl: string; base64: string; mimeType: string }
 /** Metadata for a session tab, sourced from gateway `sessions.list`. */
 export type SessionTabInfo = {
   key: string;
+  customTitle?: string;
+  panelTitle?: string;
   displayName?: string;
   derivedTitle?: string;
   channel?: string;
@@ -107,6 +109,7 @@ export const IMAGE_PLACEHOLDER = "\u200B[__IMAGE__]\u200B";
 /** Marker for image blocks whose data was stripped by the gateway and not
  *  restored from cache (expired / cleared). Replaced with i18n text at render time. */
 export const IMAGE_EXPIRED_PLACEHOLDER = "\u200B[__IMAGE_EXPIRED__]\u200B";
+export const STOP_COMMAND_PLACEHOLDER = "\u200B[__STOP_COMMAND__]\u200B";
 
 /**
  * Clean up raw gateway message text:
@@ -230,6 +233,16 @@ export function cleanDerivedTitle(raw: string | undefined): string | undefined {
   return cleaned || undefined;
 }
 
+export function isPanelSessionKey(key: string): boolean {
+  return key.startsWith("agent:main:panel-");
+}
+
+export function buildAutoSessionTitle(raw: string): string | undefined {
+  const title = raw.trim();
+  if (!title) return undefined;
+  return title.length > 30 ? `${title.slice(0, 30)}…` : title;
+}
+
 export function formatTimestamp(ts: number, locale: string): string {
   const d = new Date(ts);
   if (locale.startsWith("zh")) {
@@ -252,6 +265,15 @@ export function extractText(content: unknown): string {
     .filter((b: { type?: string }) => b.type === "text")
     .map((b: { text?: string }) => b.text ?? "")
     .join("");
+}
+
+function hasInjectedAbortMeta(message: Record<string, unknown>): boolean {
+  const meta = message.openclawAbort;
+  return Boolean(
+    meta &&
+    typeof meta === "object" &&
+    (meta as { aborted?: unknown }).aborted === true,
+  );
 }
 
 export function extractImages(content: unknown): ChatImage[] {
@@ -498,7 +520,14 @@ function isToolCallBlock(block: Record<string, unknown>): boolean {
  * visibility is controlled at render time via the preserveToolEvents setting.
  */
 export function parseRawMessages(
-  raw?: Array<{ role?: string; content?: unknown; timestamp?: number; idempotencyKey?: string; provenance?: unknown }>,
+  raw?: Array<{
+    role?: string;
+    content?: unknown;
+    timestamp?: number;
+    idempotencyKey?: string;
+    provenance?: unknown;
+    openclawAbort?: unknown;
+  }>,
 ): ChatMessage[] {
   if (!raw) return [];
   const parsed: ChatMessage[] = [];
@@ -512,6 +541,7 @@ export function parseRawMessages(
       const strippedImages = images.length === 0 && hasImageBlocks(msg.content);
       // Skip internal gateway maintenance prompts (e.g. pre-compaction memory flush)
       if (msg.role === "user" && isInternalPrompt(text)) continue;
+      const abortInjected = msg.role === "assistant" && hasInjectedAbortMeta(msg as Record<string, unknown>);
       if (text.trim() || images.length > 0 || strippedImages) {
         const entry: ChatMessage = { role: msg.role, text, timestamp: msg.timestamp ?? 0, images: images.length > 0 ? images : undefined };
         if (strippedImages) {
@@ -535,7 +565,23 @@ export function parseRawMessages(
             entry.channel = prov.sourceTool ?? prov.sourceChannel ?? prov.kind;
           }
         }
-        parsed.push(entry);
+        const previous = parsed[parsed.length - 1];
+        const isAbortDuplicate =
+          abortInjected &&
+          msg.role === "assistant" &&
+          !entry.images &&
+          previous?.role === "assistant" &&
+          previous.text === entry.text;
+        if (!isAbortDuplicate) {
+          parsed.push(entry);
+        }
+      }
+      if (abortInjected) {
+        parsed.push({
+          role: "assistant",
+          text: `\u23F9 ${STOP_COMMAND_PLACEHOLDER}`,
+          timestamp: msg.timestamp ?? 0,
+        });
       }
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
         for (const block of msg.content) {

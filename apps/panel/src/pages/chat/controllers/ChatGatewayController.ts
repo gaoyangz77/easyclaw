@@ -39,9 +39,11 @@ import {
   INITIAL_VISIBLE,
   FETCH_BATCH,
   PAGE_SIZE,
+  buildAutoSessionTitle,
   extractToolError,
   extractText,
   extractToolCallName,
+  isPanelSessionKey,
   localizeError,
   mergeTerminalError,
   parseRawMessages,
@@ -83,6 +85,15 @@ function generateSessionKey(): string {
   return `agent:main:panel-${id}`;
 }
 
+function findFirstPanelUserTitle(messages: ChatMessage[]): string | undefined {
+  const firstUser = messages.find((msg) =>
+    msg.role === "user" &&
+    !msg.isExternal &&
+    typeof msg.text === "string" &&
+    msg.text.trim());
+  return firstUser ? buildAutoSessionTitle(firstUser.text) : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Controller
 // ---------------------------------------------------------------------------
@@ -117,6 +128,7 @@ export class ChatGatewayController {
    */
   private terminalErrors = new Map<string, { runId: string; text: string; timestamp: number }>();
   private recentlyCompletedTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private pendingStopNotices = new Set<string>();
   // Scroll hints — one-shot flags consumed by ChatPage on each render
   shouldInstantScroll = false;
   stickyHint = false;
@@ -201,6 +213,39 @@ export class ChatGatewayController {
   /** Get the run state model for a specific session (creating the session if needed). */
   private runStateFor(sessionKey: string): IChatRunState {
     return this.store.getOrCreateSession(sessionKey).runState;
+  }
+
+  private stopNoticeKey(sessionKey: string, runId: string): string {
+    return `${sessionKey}:${runId}`;
+  }
+
+  private markPendingStopNotice(sessionKey: string, runId: string): void {
+    this.pendingStopNotices.add(this.stopNoticeKey(sessionKey, runId));
+  }
+
+  private consumePendingStopNotice(sessionKey: string, runId: string): boolean {
+    return this.pendingStopNotices.delete(this.stopNoticeKey(sessionKey, runId));
+  }
+
+  private clearPendingStopNotice(sessionKey: string, runId: string): void {
+    this.pendingStopNotices.delete(this.stopNoticeKey(sessionKey, runId));
+  }
+
+  private persistPanelTitle(key: string, title: string): void {
+    const nextMeta = { ...this.metaMap.get(key), key, panelTitle: title } as ChatSessionMeta;
+    this.metaMap.set(key, nextMeta);
+    updateChatSession(key, { panelTitle: title }).catch(() => {});
+  }
+
+  private ensurePanelSessionTitleFromHistory(sessionKey: string, sessionMessages: ChatMessage[]): void {
+    if (!isPanelSessionKey(sessionKey)) return;
+    const session = this.store.sessions.get(sessionKey);
+    if (!session || session.customTitle || session.panelTitle) return;
+    const title = findFirstPanelUserTitle(sessionMessages);
+    if (!title) return;
+    session.setPanelTitle(title);
+    session.setLocalTitle(title);
+    this.persistPanelTitle(sessionKey, title);
   }
 
   // ---------------------------------------------------------------------------
@@ -717,6 +762,7 @@ export class ChatGatewayController {
           if (terminalWhileTooling) {
             session?.completeToolEvent(chatRunId);
           }
+          this.clearPendingStopNotice(activeKey, chatRunId);
           rs.finalizeRun(chatRunId);
           this.markRunRecentlyCompleted(activeKey, chatRunId);
           this.refreshSessions();
@@ -726,6 +772,7 @@ export class ChatGatewayController {
           if (terminalWhileTooling) {
             session?.settleToolEvent(chatRunId, "failed", payload.errorMessage);
           }
+          this.clearPendingStopNotice(activeKey, chatRunId);
           this.lifecycleErrors.delete(chatRunId);
           rs.failRun(chatRunId);
           this.markRunRecentlyCompleted(activeKey, chatRunId);
@@ -801,6 +848,13 @@ export class ChatGatewayController {
           if (abortedText?.trim()) {
             session.appendMessage({ role: "assistant", text: abortedText, timestamp: Date.now() });
           }
+          if (this.consumePendingStopNotice(activeKey, chatRunId!)) {
+            session.appendMessage({
+              role: "assistant",
+              text: `\u23F9 ${this.t("chat.stopCommandFeedback")}`,
+              timestamp: Date.now(),
+            });
+          }
           session.runState.setLastAgentStream(null);
           if (session.runState.externalPending) {
             session.runState.setExternalPending(false);
@@ -827,7 +881,17 @@ export class ChatGatewayController {
         }
         this.loadHistory();
       }
+      if (payload.state === "aborted" && this.consumePendingStopNotice(activeKey, chatRunId)) {
+        session.appendMessage({
+          role: "assistant",
+          text: `\u23F9 ${this.t("chat.stopCommandFeedback")}`,
+          timestamp: Date.now(),
+        });
+      }
       if (payload.state === "final" || payload.state === "error" || payload.state === "aborted") {
+        if (payload.state !== "aborted") {
+          this.clearPendingStopNotice(activeKey, chatRunId);
+        }
         this.cleanupTerminalRuns(activeKey);
         if (session.runState.externalPending) {
           session.runState.setExternalPending(false);
@@ -1055,6 +1119,7 @@ export class ChatGatewayController {
 
           let parsed = parseRawMessages(result?.messages);
           parsed = await restoreImages(key, parsed).catch(() => parsed);
+          this.ensurePanelSessionTitleFromHistory(key, parsed);
           const merged = mergeTerminalError(parsed, this.terminalErrors.get(key));
           session.setMessages(merged);
           session.setAllFetched(parsed.length < FETCH_BATCH);
@@ -1235,6 +1300,8 @@ export class ChatGatewayController {
         const m = meta.get(s.key);
         return {
           key: s.key,
+          customTitle: m?.customTitle,
+          panelTitle: m?.panelTitle,
           displayName: s.displayName,
           derivedTitle: cleanDerivedTitle(s.derivedTitle),
           channel: s.channel ?? s.lastChannel,
@@ -1244,6 +1311,8 @@ export class ChatGatewayController {
           totalTokens: s.totalTokensFresh !== false ? s.totalTokens : undefined,
         } as {
           key: string;
+          customTitle?: string;
+          panelTitle?: string;
           displayName?: string;
           derivedTitle?: string;
           channel?: string;
@@ -1269,15 +1338,6 @@ export class ChatGatewayController {
       }
 
       this.store.setSessions(tabs);
-
-      // Apply customTitles from metaMap — kept separate from derivedTitle
-      // so clearing a custom name immediately falls back to gateway derivedTitle.
-      for (const [key, m] of meta) {
-        if (m.customTitle) {
-          const sess = this.store.sessions.get(key);
-          if (sess) sess.setCustomTitle(m.customTitle);
-        }
-      }
     } catch {
       // Non-fatal
     }
@@ -1364,9 +1424,14 @@ export class ChatGatewayController {
     if (optimisticImages) {
       saveImages(activeKey, idempotencyKey, sentAt, optimisticImages).catch(() => {});
     }
-    // Auto-title: use first message text until gateway derivedTitle arrives
-    if (!session.customTitle && !session.derivedTitle && !session.localTitle && trimmedText) {
-      session.setLocalTitle(trimmedText.length > 30 ? trimmedText.slice(0, 30) + "…" : trimmedText);
+    // Panel sessions own their tab titles; seed one from the first user message.
+    if (!session.customTitle && !session.panelTitle && !session.localTitle && isPanelSessionKey(activeKey) && trimmedText) {
+      const autoTitle = buildAutoSessionTitle(trimmedText);
+      if (autoTitle) {
+        session.setLocalTitle(autoTitle);
+        session.setPanelTitle(autoTitle);
+        this.persistPanelTitle(activeKey, autoTitle);
+      }
     }
     this.shouldInstantScroll = true;
     this.stickyHint = true;
@@ -1416,18 +1481,11 @@ export class ChatGatewayController {
     const targetRunId = stopRs.abortTargetRunId;
     if (!targetRunId) return;
     trackEvent("chat.generation_stopped");
+    this.markPendingStopNotice(activeKey, targetRunId);
     this.client.request("chat.abort", {
       sessionKey: activeKey,
       runId: targetRunId,
     }).catch(() => {});
-    const session = this.store.activeSession;
-    if (session) {
-      session.appendMessage({
-        role: "assistant",
-        text: `\u23F9 ${this.t("chat.stopCommandFeedback")}`,
-        timestamp: Date.now(),
-      });
-    }
   }
 
   resetSession(): void {
@@ -1522,6 +1580,7 @@ export class ChatGatewayController {
       // Guard: don't wipe existing messages if gateway returns empty on reconnect
       if (parsed.length === 0 && session.messages.length > 0) return;
       parsed = await restoreImages(activeKey, parsed).catch(() => parsed);
+      this.ensurePanelSessionTitleFromHistory(activeKey, parsed);
       session.setAllFetched(parsed.length < FETCH_BATCH);
       this.shouldInstantScroll = true;
       this.stickyHint = true;
@@ -1553,6 +1612,7 @@ export class ChatGatewayController {
 
       let parsed = parseRawMessages(result?.messages);
       parsed = await restoreImages(this.store.activeSessionKey, parsed).catch(() => parsed);
+      this.ensurePanelSessionTitleFromHistory(this.store.activeSessionKey, parsed);
 
       if (parsed.length < this.fetchLimit || parsed.length <= oldCount) {
         session.setAllFetched(true);

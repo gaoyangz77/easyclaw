@@ -36,8 +36,10 @@ export const ChatStoreModel = types
         if (isHiddenSession(session.key)) continue;
         tabs.push({
           key: session.key,
+          customTitle: session.customTitle ?? undefined,
+          panelTitle: session.panelTitle ?? session.localTitle ?? undefined,
           displayName: session.displayName ?? undefined,
-          derivedTitle: session.customTitle ?? session.derivedTitle ?? session.localTitle ?? undefined,
+          derivedTitle: session.derivedTitle ?? undefined,
           channel: session.channel ?? undefined,
           updatedAt: session.updatedAt ?? undefined,
           kind: session.kind ?? undefined,
@@ -100,6 +102,7 @@ export const ChatStoreModel = types
     getOrCreateSession(key: string, defaults?: {
       displayName?: string | null;
       derivedTitle?: string | null;
+      panelTitle?: string | null;
       channel?: string | null;
       updatedAt?: number | null;
       kind?: string | null;
@@ -113,6 +116,7 @@ export const ChatStoreModel = types
           key,
           displayName: defaults?.displayName ?? null,
           derivedTitle: defaults?.derivedTitle ?? null,
+          panelTitle: defaults?.panelTitle ?? null,
           channel: defaults?.channel ?? null,
           updatedAt: defaults?.updatedAt ?? null,
           kind: defaults?.kind ?? null,
@@ -144,6 +148,7 @@ export const ChatStoreModel = types
           existing.updateMetadata({
             displayName: tab.displayName ?? null,
             derivedTitle: tab.derivedTitle ?? null,
+            panelTitle: tab.panelTitle ?? null,
             channel: tab.channel ?? null,
             updatedAt: tab.updatedAt ?? null,
             kind: tab.kind ?? null,
@@ -156,6 +161,7 @@ export const ChatStoreModel = types
             key: tab.key,
             displayName: tab.displayName ?? null,
             derivedTitle: tab.derivedTitle ?? null,
+            panelTitle: tab.panelTitle ?? null,
             channel: tab.channel ?? null,
             updatedAt: tab.updatedAt ?? null,
             kind: tab.kind ?? null,

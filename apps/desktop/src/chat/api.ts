@@ -32,6 +32,7 @@ const updateChatSession: EndpointHandler = async (req, res, _url, params, ctx: A
   const body = (await parseBody(req)) as Record<string, unknown>;
   const fields: Record<string, unknown> = {};
   if ("customTitle" in body) fields.customTitle = body.customTitle as string | null;
+  if ("panelTitle" in body) fields.panelTitle = body.panelTitle as string | null;
   if ("pinned" in body) fields.pinned = Boolean(body.pinned);
   if ("archivedAt" in body) fields.archivedAt = body.archivedAt as number | null;
   const session = storage.chatSessions.upsert(key, fields);

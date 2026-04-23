@@ -14,6 +14,10 @@ interface ToolMultiSelectProps {
   allowedToolIds?: string[];
 }
 
+interface ToolListItem extends AvailableTool {
+  unavailable?: boolean;
+}
+
 /**
  * Multi-select checkbox list of individual tools, grouped by category.
  * Categories are collapsible and show a source badge (System / Extensions / Cloud).
@@ -29,8 +33,10 @@ export const ToolMultiSelect = observer(function ToolMultiSelect({ selected, onC
     [allowedToolIds],
   );
 
+  const visibleToolIds = useMemo(() => new Set(tools.filter((tool) => !allowedSet || allowedSet.has(tool.id)).map((tool) => tool.id)), [tools, allowedSet]);
+
   const grouped = useMemo(() => {
-    const map = new Map<string, AvailableTool[]>();
+    const map = new Map<string, ToolListItem[]>();
     for (const tool of tools) {
       if (allowedSet && !allowedSet.has(tool.id)) continue;
       const cat = tool.category || "other";
@@ -38,10 +44,33 @@ export const ToolMultiSelect = observer(function ToolMultiSelect({ selected, onC
       list.push(tool);
       map.set(cat, list);
     }
+
+    const selectedUnavailable: ToolListItem[] = [];
+    for (const toolId of selected) {
+      if (visibleToolIds.has(toolId)) continue;
+      const existingTool = tools.find((tool) => tool.id === toolId);
+      selectedUnavailable.push(existingTool
+        ? { ...existingTool, unavailable: true }
+        : {
+            id: toolId,
+            displayName: toolId,
+            description: t("tools.selector.unavailableSelectedHint"),
+            category: "__unavailable__",
+            source: "entitled",
+            unavailable: true,
+          });
+    }
+    if (selectedUnavailable.length > 0) {
+      map.set("__unavailable__", selectedUnavailable);
+    }
+
     return map;
-  }, [tools, allowedSet]);
+  }, [tools, allowedSet, selected, visibleToolIds, t]);
 
   function categoryLabel(category: string): string {
+    if (category === "__unavailable__") {
+      return t("tools.selector.unavailableSelected");
+    }
     return t(`tools.selector.category.${category}`, { defaultValue: category });
   }
 
@@ -115,14 +144,20 @@ export const ToolMultiSelect = observer(function ToolMultiSelect({ selected, onC
             {!isCollapsed && (
               <div className="tool-ms-items">
                 {catTools.map((tool) => (
-                  <label key={tool.id} className="tool-ms-item" title={tool.description}>
+                  <label
+                    key={tool.id}
+                    className={`tool-ms-item${tool.unavailable ? " tool-ms-item-unavailable" : ""}`}
+                    title={tool.description}
+                  >
                     <input
                       type="checkbox"
                       className="tool-ms-checkbox"
                       checked={selected.has(tool.id)}
                       onChange={() => toggle(tool.id)}
                     />
-                    <span className="tool-ms-item-name">{toolLabel(tool.id)}</span>
+                    <span className={`tool-ms-item-name${tool.unavailable ? " tool-ms-item-name-unavailable" : ""}`}>
+                      {toolLabel(tool.id)}
+                    </span>
                   </label>
                 ))}
               </div>

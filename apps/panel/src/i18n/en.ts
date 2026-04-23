@@ -1568,6 +1568,8 @@ export default {
     selector: {
       title: "Tool Selection",
       noTools: "No tools available",
+      unavailableSelected: "Selected but unavailable",
+      unavailableSelectedHint: "This tool is no longer available in the current tool list, but you can still deselect it here.",
       sourceSystem: "System",
       sourceExtension: "Extension",
       sourceCloud: "Cloud",

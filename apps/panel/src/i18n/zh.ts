@@ -1556,6 +1556,8 @@ export default {
     selector: {
       title: "工具选择",
       noTools: "没有可用的工具",
+      unavailableSelected: "已选但不可用",
+      unavailableSelectedHint: "该工具已不在当前工具列表中，但你仍然可以在这里取消选择。",
       sourceSystem: "系统",
       sourceExtension: "扩展",
       sourceCloud: "云端",

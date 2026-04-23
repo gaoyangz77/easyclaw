@@ -47,6 +47,7 @@ export const ToolModel = types
     supportedPlatforms: types.optional(types.array(types.string), []),
     parameters: types.optional(types.array(ToolParamSpecModel), []),
     contextBindings: types.optional(types.array(ToolContextBindingModel), []),
+    prune: types.optional(types.array(types.string), []),
   })
   .views((self) => ({
     /** i18n key for the tool's category label. */

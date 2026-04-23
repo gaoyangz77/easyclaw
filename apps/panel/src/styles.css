@@ -6998,9 +6998,18 @@ html[lang="zh"] .acct-tool-chips {
   background: var(--brand-tint-04);
 }
 
+.tool-ms-item-unavailable {
+  opacity: 0.78;
+}
+
 .tool-ms-item-name {
   font-size: 13px;
   color: var(--color-text);
+}
+
+.tool-ms-item-name-unavailable {
+  text-decoration: line-through;
+  color: var(--color-text-muted);
 }
 
 .tool-ms-checkbox {

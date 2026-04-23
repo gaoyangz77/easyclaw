@@ -4,6 +4,7 @@ import { API, clientPath } from "@rivonclaw/core/api-contract";
 export interface ChatSessionMeta {
   key: string;
   customTitle: string | null;
+  panelTitle: string | null;
   pinned: boolean;
   archivedAt: number | null;
   createdAt: number;
@@ -23,7 +24,7 @@ export async function fetchChatSessions(opts?: {
 
 export async function updateChatSession(
   key: string,
-  fields: Partial<Pick<ChatSessionMeta, "customTitle" | "pinned" | "archivedAt">>,
+  fields: Partial<Pick<ChatSessionMeta, "customTitle" | "panelTitle" | "pinned" | "archivedAt">>,
 ): Promise<ChatSessionMeta> {
   const { session } = await fetchJson<{ session: ChatSessionMeta }>(
     clientPath(API["chatSessions.update"], { key }),

@@ -49,6 +49,8 @@ export const ChatSessionModel = types
 
     // Custom user-given title (null = use gateway derivedTitle)
     customTitle: types.maybeNull(types.string),
+    /** Panel-owned auto title, persisted in local metadata for panel sessions. */
+    panelTitle: types.maybeNull(types.string),
     /** Auto-generated from first message text — used until gateway derivedTitle arrives. */
     localTitle: types.maybeNull(types.string),
 
@@ -151,6 +153,9 @@ export const ChatSessionModel = types
     setLocalTitle(t: string | null) {
       self.localTitle = t;
     },
+    setPanelTitle(t: string | null) {
+      self.panelTitle = t;
+    },
     setPendingImages(imgs: PendingImage[]) {
       self.pendingImages.replace(imgs);
     },
@@ -164,6 +169,7 @@ export const ChatSessionModel = types
     updateMetadata(fields: {
       displayName?: string | null;
       derivedTitle?: string | null;
+      panelTitle?: string | null;
       channel?: string | null;
       updatedAt?: number | null;
       kind?: string | null;
@@ -174,6 +180,7 @@ export const ChatSessionModel = types
     }) {
       if (fields.displayName !== undefined) self.displayName = fields.displayName;
       if (fields.derivedTitle !== undefined) self.derivedTitle = fields.derivedTitle;
+      if (fields.panelTitle !== undefined) self.panelTitle = fields.panelTitle;
       if (fields.channel !== undefined) self.channel = fields.channel;
       if (fields.updatedAt !== undefined) self.updatedAt = fields.updatedAt;
       if (fields.kind !== undefined) self.kind = fields.kind;

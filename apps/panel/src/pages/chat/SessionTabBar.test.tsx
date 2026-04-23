@@ -20,7 +20,7 @@ describe("SessionTabBar", () => {
       <SessionTabBar
         sessions={[
           { key: "agent:main:main" },
-          { key: "agent:panel:test", isLocal: true, derivedTitle: "First prompt title" },
+          { key: "agent:panel:test", isLocal: true, panelTitle: "First prompt title" },
         ]}
         activeSessionKey="agent:panel:test"
         unreadKeys={new Set()}
@@ -35,6 +35,28 @@ describe("SessionTabBar", () => {
 
     expect(screen.getByText("First prompt title")).toBeTruthy();
     expect(screen.queryByText("chat.newSessionTitle")).toBeNull();
+  });
+
+  it("prefers a panel title over a gateway derived title for panel sessions", () => {
+    render(
+      <SessionTabBar
+        sessions={[
+          { key: "agent:main:main" },
+          { key: "agent:main:panel-9137969f", panelTitle: "我的首条消息", derivedTitle: "panel-9137969f" },
+        ]}
+        activeSessionKey="agent:main:panel-9137969f"
+        unreadKeys={new Set()}
+        onSwitchSession={() => {}}
+        onNewChat={() => {}}
+        onArchiveSession={() => {}}
+        onRenameSession={() => {}}
+        onRestoreSession={() => {}}
+        onReorderSession={() => {}}
+      />,
+    );
+
+    expect(screen.getByText("我的首条消息")).toBeTruthy();
+    expect(screen.queryByText("panel-9137969f")).toBeNull();
   });
 
   it("keeps the default label for a blank local session", () => {

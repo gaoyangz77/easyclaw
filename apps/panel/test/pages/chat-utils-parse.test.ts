@@ -3,7 +3,13 @@
  * injection when the gateway strips image data from history.
  */
 import { describe, it, expect } from "vitest";
-import { parseRawMessages, IMAGE_EXPIRED_PLACEHOLDER, localizeError, mergeTerminalError } from "../../src/pages/chat/chat-utils.js";
+import {
+  parseRawMessages,
+  IMAGE_EXPIRED_PLACEHOLDER,
+  STOP_COMMAND_PLACEHOLDER,
+  localizeError,
+  mergeTerminalError,
+} from "../../src/pages/chat/chat-utils.js";
 import type { ChatMessage } from "../../src/pages/chat/chat-utils.js";
 
 describe("parseRawMessages — stripped image handling", () => {
@@ -181,6 +187,48 @@ describe("parseRawMessages — stripped image handling", () => {
         toolStatus: "failed",
         toolError: "backend timeout",
         timestamp: 8000,
+      }),
+    ]);
+  });
+
+  it("reconstructs a persistent stop bubble from abort metadata and skips duplicate partial text", () => {
+    const raw = [
+      {
+        role: "user" as const,
+        content: [{ type: "text", text: "你现在有什么工具?" }],
+        timestamp: 9000,
+      },
+      {
+        role: "assistant" as const,
+        content: [{ type: "text", text: "我现在能直接用的主要工具有这些：" }],
+        timestamp: 9100,
+      },
+      {
+        role: "assistant" as const,
+        content: [{ type: "text", text: "我现在能直接用的主要工具有这些：" }],
+        timestamp: 9100,
+        idempotencyKey: "run-stop:assistant",
+        openclawAbort: {
+          aborted: true,
+          origin: "rpc",
+          runId: "run-stop",
+        },
+      },
+    ];
+
+    const result = parseRawMessages(raw);
+    expect(result).toEqual([
+      expect.objectContaining({
+        role: "user",
+        text: "你现在有什么工具?",
+      }),
+      expect.objectContaining({
+        role: "assistant",
+        text: "我现在能直接用的主要工具有这些：",
+      }),
+      expect.objectContaining({
+        role: "assistant",
+        text: `\u23F9 ${STOP_COMMAND_PLACEHOLDER}`,
       }),
     ]);
   });
