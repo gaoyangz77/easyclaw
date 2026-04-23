@@ -84,6 +84,10 @@ export interface DispatchResult {
   runId?: string;
 }
 
+interface CatchUpDispatchOptions {
+  operatorInstruction?: string;
+}
+
 export interface EscalationResult {
   decision: string;
   instructions: string;
@@ -586,16 +590,33 @@ export class CustomerServiceSession {
     }
   }
 
+  private buildCatchUpMessage(options?: CatchUpDispatchOptions): string {
+    const sections = [
+      "[Internal: System]\n" +
+      "A customer may be waiting for a response in this conversation. " +
+      "WARNING: There may have been messages exchanged since your last interaction that you did not receive. " +
+      "You MUST call ecom_cs_get_conversation_messages to check the latest conversation state before responding. " +
+      "Do not rely on your existing context — verify what the buyer actually said most recently.",
+    ];
+
+    const operatorInstruction = options?.operatorInstruction?.trim();
+    if (operatorInstruction) {
+      sections.push(
+        "[Internal: Operator Instruction]\n" +
+        operatorInstruction,
+      );
+    }
+
+    return sections.join("\n\n");
+  }
+
   /** Dispatch an agent run to catch up on a missed conversation. Ensures backend session first. */
-  async dispatchCatchUp(): Promise<DispatchResult> {
+  async dispatchCatchUp(options?: CatchUpDispatchOptions): Promise<DispatchResult> {
     if (!await this.ensureBackendSession()) {
       throw new Error("Failed to create backend CS session (insufficient balance?)");
     }
     return this.dispatch({
-      message: "[Internal: System]\nA customer may be waiting for a response in this conversation. " +
-        "WARNING: There may have been messages exchanged since your last interaction that you did not receive. " +
-        "You MUST call ecom_cs_get_conversation_messages to check the latest conversation state before responding. " +
-        "Do not rely on your existing context — verify what the buyer actually said most recently.",
+      message: this.buildCatchUpMessage(options),
       idempotencyKey: `cs-start:${this.csContext.conversationId}:${Date.now()}`,
     });
   }

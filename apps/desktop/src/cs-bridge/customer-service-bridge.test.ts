@@ -687,6 +687,26 @@ describe("agent dispatch", () => {
     expect(prompt).toContain("mongo-id-123");
   });
 
+  it("dispatchCatchUp appends operator instruction as a separate internal block", async () => {
+    const bridge = createBridge();
+    bridge.setShopContext(defaultShop);
+
+    const session = await bridge.getOrCreateSession(defaultShop.objectId, {
+      conversationId: "conv-operator",
+    });
+
+    await session.dispatchCatchUp({
+      operatorInstruction: "This refund request looks unreasonable. Review carefully and do not promise compensation unless the evidence supports it.",
+    });
+
+    const agentCall = mockRpcRequest.mock.calls.findLast((c: any[]) => c[0] === "agent");
+    const message = agentCall?.[1].message as string;
+    expect(message).toContain("[Internal: System]");
+    expect(message).toContain("ecom_cs_get_conversation_messages");
+    expect(message).toContain("[Internal: Operator Instruction]");
+    expect(message).toContain("This refund request looks unreasonable.");
+  });
+
   it("extraSystemPrompt includes orderId when present", async () => {
     const bridge = createBridge();
     bridge.setShopContext(defaultShop);

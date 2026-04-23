@@ -884,7 +884,7 @@ export class CustomerServiceBridge {
   /** Get existing session or create a new one. */
   async getOrCreateSession(
     shopObjectId: string,
-    params: { conversationId: string; buyerUserId: string; imUserId?: string; orderId?: string },
+    params: { conversationId: string; buyerUserId?: string; imUserId?: string; orderId?: string },
   ): Promise<CustomerServiceSession> {
     const existing = this.sessions.get(params.conversationId);
     if (existing) return existing;
@@ -898,12 +898,14 @@ export class CustomerServiceBridge {
   private async createAndStoreSession(
     shop: CSShopContext,
     shopObjectId: string,
-    params: { conversationId: string; buyerUserId: string; imUserId?: string; orderId?: string },
+    params: { conversationId: string; buyerUserId?: string; imUserId?: string; orderId?: string },
   ): Promise<CustomerServiceSession> {
     const csContext = {
       shopId: shopObjectId,
       conversationId: params.conversationId,
-      buyerUserId: params.buyerUserId,
+      // Manual starts no longer need buyerUserId — resolve it from conversation
+      // details before the session becomes visible to the gateway/tools.
+      buyerUserId: params.buyerUserId ?? params.imUserId ?? "",
       imUserId: params.imUserId,
       orderId: params.orderId,
     };

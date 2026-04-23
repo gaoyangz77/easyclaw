@@ -172,7 +172,7 @@ const startConversation: EndpointHandler = async (req, res, _url, _params, _ctx)
   if (!bridge) { sendJson(res, 503, { error: "CS bridge not available" }); return; }
 
   const body = await parseBody(req) as Record<string, unknown>;
-  const missing = ["shopId", "conversationId", "buyerUserId"]
+  const missing = ["shopId", "conversationId"]
     .filter((f) => !body[f] || typeof body[f] !== "string");
   if (missing.length > 0) {
     sendJson(res, 400, { error: `Missing required fields: ${missing.join(", ")}` });
@@ -182,10 +182,14 @@ const startConversation: EndpointHandler = async (req, res, _url, _params, _ctx)
   try {
     const session = await bridge.getOrCreateSession(body.shopId as string, {
       conversationId: body.conversationId as string,
-      buyerUserId: body.buyerUserId as string,
+      buyerUserId: typeof body.buyerUserId === "string" ? body.buyerUserId : undefined,
       orderId: typeof body.orderId === "string" ? body.orderId : undefined,
     });
-    const result = await session.dispatchCatchUp();
+    const result = await session.dispatchCatchUp({
+      operatorInstruction: typeof body.operatorInstruction === "string"
+        ? body.operatorInstruction
+        : undefined,
+    });
     sendJson(res, 200, result);
   } catch (err) {
     sendJson(res, 500, { error: formatDetailedErrorMessage(err) });
