@@ -11,6 +11,24 @@ import { ToolCapabilityModel } from "./ToolCapability.js";
 import { UserModel } from "./User.js";
 import { PlatformAppModel } from "./PlatformApp.js";
 import { ServiceCreditModel } from "./ServiceCredit.js";
+import {
+  SystemRunProfile,
+  SystemSurface,
+  type SystemRunProfile as SystemRunProfileId,
+  type SystemSurface as SystemSurfaceId,
+} from "../generated/graphql.js";
+
+const SYSTEM_RUN_PROFILE_TOOL_AUGMENTATIONS: Partial<Record<SystemRunProfileId, string[]>> = {
+  [SystemRunProfile.CustomerService]: ["image"],
+};
+
+const SYSTEM_SURFACE_TOOL_AUGMENTATIONS: Partial<Record<SystemSurfaceId, string[]>> = {
+  [SystemSurface.EcommerceSeller]: ["image"],
+};
+
+function dedupeToolIds(toolIds: string[]): string[] {
+  return [...new Set(toolIds)];
+}
 
 const AuthBootstrapStateModel = types.model("AuthBootstrapState", {
   status: types.optional(
@@ -82,7 +100,15 @@ export const RootStoreModel = types
       }
       const derived: { id: string; name: string; allowedToolIds: string[]; userId: string }[] = [];
       for (const [name, toolIds] of surfaceMap) {
-        derived.push({ id: name, name, allowedToolIds: toolIds, userId: "" });
+        derived.push({
+          id: name,
+          name,
+          allowedToolIds: dedupeToolIds([
+            ...toolIds,
+            ...(SYSTEM_SURFACE_TOOL_AUGMENTATIONS[name as SystemSurfaceId] ?? []),
+          ]),
+          userId: "",
+        });
       }
       return derived;
     },
@@ -141,15 +167,20 @@ export const RootStoreModel = types
       const derivedSurfaces = self.getDerivedSurfaces();
       const profiles: { id: string; name: string; selectedToolIds: string[]; surfaceId: string; userId: string }[] = [];
       for (const [name, toolIds] of profileMap) {
+        const runProfileId = name as SystemRunProfileId;
+        const augmentedToolIds = dedupeToolIds([
+          ...toolIds,
+          ...(SYSTEM_RUN_PROFILE_TOOL_AUGMENTATIONS[runProfileId] ?? []),
+        ]);
         const matchingSurface = derivedSurfaces.find((s) => {
           if (s.id === "Default") return false;
           const surfaceToolSet = new Set(s.allowedToolIds);
-          return toolIds.every((tid) => surfaceToolSet.has(tid));
+          return augmentedToolIds.every((tid) => surfaceToolSet.has(tid));
         });
         profiles.push({
           id: name,
           name,
-          selectedToolIds: toolIds,
+          selectedToolIds: augmentedToolIds,
           surfaceId: matchingSurface?.id ?? "Default",
           userId: "",
         });

@@ -55,9 +55,9 @@ describe("parseScopeType", () => {
 /**
  * Helper: seed MST store and initialize toolCapability with deterministic mock data.
  *
- * System tools (core):  read, write, exec
+ * System tools (core):  read, write, exec, image
  * Extension tool:       custom_ext_tool   (source=plugin, pluginId NOT in OUR_PLUGIN_IDS)
- * Entitled tools:       entitled_tool_1, entitled_tool_2  (from MST store)
+ * Entitled tools:       entitled_tool_1, entitled_tool_2, cs_lookup  (from MST store)
  */
 /** Required MST-model fields on every Surface fixture. */
 const SURFACE_TIMESTAMPS = {
@@ -92,6 +92,17 @@ function seedTestStore(): void {
     toolSpecs: [
       { id: "entitled_tool_1", name: "entitled_tool_1", displayName: "entitled_tool_1", description: "", category: "", operationType: "query", parameters: [] },
       { id: "entitled_tool_2", name: "entitled_tool_2", displayName: "entitled_tool_2", description: "", category: "", operationType: "query", parameters: [] },
+      {
+        id: "cs_lookup",
+        name: "cs_lookup",
+        displayName: "cs_lookup",
+        description: "",
+        category: "",
+        operationType: "query",
+        surfaces: ["ECOMMERCE_SELLER"],
+        runProfiles: ["CUSTOMER_SERVICE"],
+        parameters: [],
+      },
     ],
     // Seed RunProfiles for use in tests
     runProfiles: [
@@ -108,6 +119,7 @@ function seedTestStore(): void {
     { id: "read", source: "core" },
     { id: "write", source: "core" },
     { id: "exec", source: "core" },
+    { id: "image", source: "core" },
     // This plugin is in OUR_PLUGIN_IDS, so it should be excluded from customExtensionToolIds
     { id: "ecom_send_message", source: "plugin", pluginId: "rivonclaw-cloud-tools" },
     // This plugin is NOT in OUR_PLUGIN_IDS, so it becomes a custom extension tool
@@ -202,6 +214,19 @@ describe("ToolCapabilityModel.getEffectiveToolsForScope", () => {
     expect(result).not.toContain("read");
     expect(result).not.toContain("write");
     expect(result).not.toContain("exec");
+  });
+
+  it("CS system run profile augmentation includes image", () => {
+    const result = rootStore.toolCapability.computeEffectiveTools("CUSTOMER_SERVICE");
+    expect(result.runProfileSelectedToolIds).toContain("image");
+    expect(result.effectiveToolIds).toContain("image");
+  });
+
+  it("CS system run profile stays attached to ecommerce seller surface", () => {
+    const profile = rootStore.toolCapability.runProfilesById.get("CUSTOMER_SERVICE");
+    const surface = rootStore.toolCapability.surfacesById.get("ECOMMERCE_SELLER");
+    expect(profile?.surfaceId).toBe("ECOMMERCE_SELLER");
+    expect(surface?.resolvedToolIds).toContain("image");
   });
 
   it("CS_SESSION + no RunProfile → empty (defense-in-depth)", () => {
