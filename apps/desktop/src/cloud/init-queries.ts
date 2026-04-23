@@ -108,6 +108,7 @@ export const INIT_SHOPS_QUERY = `
       platformAppId
       platformShopId
       shopName
+      alias
       authStatus
       region
       accessTokenExpiresAt

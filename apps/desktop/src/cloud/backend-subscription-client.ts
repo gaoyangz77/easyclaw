@@ -33,6 +33,7 @@ const SHOP_UPDATED_SUBSCRIPTION = `
       platformAppId
       platformShopId
       shopName
+      alias
       authStatus
       region
       accessTokenExpiresAt
