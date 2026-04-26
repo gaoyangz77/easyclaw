@@ -63,6 +63,7 @@ import { createGatewayConfigHandlers } from "../gateway/config-handlers.js";
 import { loadClientToolSpecs } from "../gateway/client-tool-loader.js";
 import { tryStartCsBridge, stopCsBridge } from "../gateway/connection.js";
 import { openClawConnector } from "../openclaw/index.js";
+import { ensureOpenClawCliShimInstalled } from "../cli/shim-installer.js";
 import { setStorageRef } from "./storage-ref.js";
 import { setProviderKeysStore } from "../gateway/provider-keys-ref.js";
 import { setVendorDir } from "../gateway/vendor-dir-ref.js";
@@ -378,6 +379,18 @@ app.whenReady().then(async () => {
   const stateDir = resolveOpenClawStateDir();
   resetDevicePairing(stateDir);
   const configPath = ensureGatewayConfig();
+
+  if (app.isPackaged) {
+    ensureOpenClawCliShimInstalled({
+      electronBin: process.execPath,
+      resourcesPath: process.resourcesPath,
+      userDataDir: app.getPath("userData"),
+      stateDir,
+      configPath,
+    }).catch((err: unknown) => {
+      log.warn("Failed to install OpenClaw CLI shim:", err);
+    });
+  }
 
   // Boot migrations — phase B (post-config, pre-gateway-write).
   await runPostConfigMigrations(configPath);

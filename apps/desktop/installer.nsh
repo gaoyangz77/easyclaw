@@ -11,6 +11,8 @@
 ;   2. customCheckAppRunning — replaces _CHECK_APP_RUNNING (no dialog)
 ;   3. customUnInstallCheck  — gracefully handles old-uninstaller failure
 ;   4. customUnInit          — same cleanup for the uninstaller binary
+;   5. customInstall         — install the OpenClaw CLI shim into user PATH
+;   6. customUnInstall       — remove the user-level CLI shim
 
 ; ---------------------------------------------------------------------------
 ; Shared helper: kill all RivonClaw-related processes
@@ -30,6 +32,28 @@
   nsExec::ExecToLog 'wmic process where "name='"'"'node.exe'"'"' and commandline like '"'"'%easyclaw%'"'"'" call terminate'
   Pop $0
   Sleep 5000
+!macroend
+
+; ---------------------------------------------------------------------------
+; Shared helper: install OpenClaw CLI shim for the current user
+; ---------------------------------------------------------------------------
+!macro _installOpenClawCliShim
+  SetShellVarContext current
+  CreateDirectory "$LOCALAPPDATA\RivonClaw\bin"
+  FileOpen $0 "$LOCALAPPDATA\RivonClaw\bin\openclaw.cmd" w
+  FileWrite $0 "@echo off$\r$\n"
+  FileWrite $0 "setlocal$\r$\n"
+  FileWrite $0 "set $\"ELECTRON_RUN_AS_NODE=1$\"$\r$\n"
+  FileWrite $0 "set $\"RIVONCLAW_ELECTRON_BIN=$INSTDIR\RivonClaw.exe$\"$\r$\n"
+  FileWrite $0 "set $\"RIVONCLAW_DESKTOP_USER_DATA=$APPDATA\@easyclaw\desktop$\"$\r$\n"
+  FileWrite $0 "$\"$INSTDIR\RivonClaw.exe$\" $\"$INSTDIR\resources\cli\openclaw-launcher.cjs$\" %*$\r$\n"
+  FileWrite $0 "exit /b %ERRORLEVEL%$\r$\n"
+  FileClose $0
+
+  ; Add the shim dir to HKCU Path idempotently. This affects new terminals;
+  ; Desktop also rewrites the shim on startup with the current state/config paths.
+  nsExec::ExecToLog 'powershell -NoProfile -ExecutionPolicy Bypass -Command "$bin=[Environment]::ExpandEnvironmentVariables(''%LOCALAPPDATA%\RivonClaw\bin''); $path=[Environment]::GetEnvironmentVariable(''Path'',''User''); $entries=@(); if($path){$entries=$path -split '';'' | ? { $_ }}; if(-not ($entries | ? { $_.TrimEnd([char]92) -ieq $bin.TrimEnd([char]92) })){ [Environment]::SetEnvironmentVariable(''Path'', (($entries + $bin) | ? { $_ }) -join '';'', ''User'') }"'
+  Pop $0
 !macroend
 
 ; ---------------------------------------------------------------------------
@@ -88,6 +112,13 @@
 !macroend
 
 ; ---------------------------------------------------------------------------
+; Hook 1b: customInstall — install user-level OpenClaw CLI shim
+; ---------------------------------------------------------------------------
+!macro customInstall
+  !insertmacro _installOpenClawCliShim
+!macroend
+
+; ---------------------------------------------------------------------------
 ; Hook 2: customCheckAppRunning — replaces the default _CHECK_APP_RUNNING
 ;
 ; The default logic detects ANY process under $INSTDIR via PowerShell and
@@ -115,4 +146,12 @@
 !macro customUnInit
   !insertmacro _killRivonClawProcesses
   RMDir /r "$TEMP\openclaw"
+!macroend
+
+; ---------------------------------------------------------------------------
+; Hook 5: customUnInstall — remove user-level CLI shim
+; ---------------------------------------------------------------------------
+!macro customUnInstall
+  SetShellVarContext current
+  Delete "$LOCALAPPDATA\RivonClaw\bin\openclaw.cmd"
 !macroend

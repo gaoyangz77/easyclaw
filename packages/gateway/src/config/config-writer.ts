@@ -138,7 +138,9 @@ const REMOVED_PLUGIN_IDS = new Set([
   "mobile",
   // v2026.4.11: modelstudio merged into the qwen extension plugin.
   "modelstudio",
-  // v1.8.9: rivonclaw-tools prompt-prepend extension replaced by vendor prompt patch 0009.
+  // v1.8.10: RivonClaw Desktop ships an OpenClaw CLI shim, so the prompt
+  // override plugin that told agents not to use the CLI is removed. Vendor prompt
+  // patch 0009 also replaces the upstream CLI guidance directly in OpenClaw.
   "easyclaw-tools", "rivonclaw-tools",
 ]);
 

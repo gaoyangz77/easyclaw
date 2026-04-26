@@ -22,6 +22,12 @@ icon: build/icon
 
 # Files copied outside asar into Contents/Resources/
 extraResources:
+  # OpenClaw CLI launcher and thin shims. Runtime shims are installed into
+  # user PATH by Desktop on startup and by the Windows installer.
+  - from: "cli"
+    to: "cli"
+    filter:
+      - "openclaw-launcher.cjs"
   # OpenClaw vendor runtime — must be outside asar (runs as a separate Node.js process)
   - from: "../../vendor/openclaw"
     to: "vendor/openclaw"
