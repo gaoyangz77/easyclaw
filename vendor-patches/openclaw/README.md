@@ -145,6 +145,25 @@ first-class runtime tools.
 prompt sections or a post-build system-prompt transform that lets RivonClaw
 remove CLI guidance without patching vendor source.
 
+### 0010 — Brand agent prompt for RivonClaw Desktop
+
+**File:** `0010-vendor-openclaw-brand-agent-prompt-for-rivonclaw-desktop.patch`
+
+**Why:** Patch 0009 removes the CLI quick reference, but the default agent
+prompt still identifies the assistant as running inside OpenClaw and labels
+user-visible runtime/tooling sections as OpenClaw. RivonClaw embeds OpenClaw as
+the underlying gateway/runtime, but agent-facing product identity should be
+RivonClaw Desktop to avoid mixed-brand answers when users inspect the prompt.
+
+**Change:** Rebrand agent-visible identity, update headings, tool summaries,
+messaging, and workspace-file text to RivonClaw/RivonClaw Desktop. Keep
+OpenClaw where it refers to the underlying runtime, upstream docs/source, CLI
+command name, or protocol paths such as `/__openclaw__/canvas/...`.
+
+**Removal:** Drop when upstream OpenClaw supports branded/runtime-specific
+prompt sections or when RivonClaw can post-process default prompt sections
+without patching vendor source.
+
 ### 0004 — Skip `stopChannel` for new-account QR logins
 
 **File:** `0004-vendor-openclaw-skip-stopChannel-for-new-account-QR-.patch`
