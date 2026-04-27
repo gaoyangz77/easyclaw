@@ -1050,12 +1050,165 @@ export interface GeneratePairingResult {
   qrUrl?: Maybe<Scalars['String']['output']>;
 }
 
+/** Image file metadata stored in object storage */
+export interface ImageAsset {
+  bucket: Scalars['String']['output'];
+  createdAt: Scalars['DateTimeISO']['output'];
+  deletedAt?: Maybe<Scalars['DateTimeISO']['output']>;
+  expiresAt?: Maybe<Scalars['DateTimeISO']['output']>;
+  extension: Scalars['String']['output'];
+  height?: Maybe<Scalars['Int']['output']>;
+  id: Scalars['ID']['output'];
+  linkedEntityId?: Maybe<Scalars['String']['output']>;
+  linkedEntityType?: Maybe<Scalars['String']['output']>;
+  mimeType: Scalars['String']['output'];
+  objectKey: Scalars['String']['output'];
+  publicUrl?: Maybe<Scalars['String']['output']>;
+  references: Array<ImageAssetReference>;
+  sha256: Scalars['String']['output'];
+  sizeBytes: Scalars['Int']['output'];
+  status: ImageAssetStatus;
+  updatedAt: Scalars['DateTimeISO']['output'];
+  uri: Scalars['String']['output'];
+  userId: Scalars['String']['output'];
+  width?: Maybe<Scalars['Int']['output']>;
+}
+
+/** Entity reference that currently uses an image asset */
+export interface ImageAssetReference {
+  entityId: Scalars['String']['output'];
+  entityType: Scalars['String']['output'];
+  linkedAt: Scalars['DateTimeISO']['output'];
+}
+
+/** Lifecycle state for a user-uploaded image asset */
+export const ImageAssetStatus = {
+  Deleted: 'DELETED',
+  Permanent: 'PERMANENT',
+  Temporary: 'TEMPORARY'
+} as const;
+
+export type ImageAssetStatus = typeof ImageAssetStatus[keyof typeof ImageAssetStatus];
 /** OAuth initiation response with authorization URL */
 export interface InitiateOAuthResponse {
   authUrl: Scalars['String']['output'];
   state: Scalars['String']['output'];
 }
 
+/** Dimension unit for inventory goods */
+export const InventoryDimensionUnit = {
+  Cm: 'CM',
+  In: 'IN'
+} as const;
+
+export type InventoryDimensionUnit = typeof InventoryDimensionUnit[keyof typeof InventoryDimensionUnit];
+/** Canonical merchant-owned stockable inventory item */
+export interface InventoryGood {
+  barcode?: Maybe<Scalars['String']['output']>;
+  countryOfOrigin?: Maybe<Scalars['String']['output']>;
+  createdAt: Scalars['DateTimeISO']['output'];
+  declaredValue?: Maybe<Scalars['Float']['output']>;
+  declaredValueCurrency?: Maybe<Scalars['String']['output']>;
+  dimensionUnit?: Maybe<InventoryDimensionUnit>;
+  gtin?: Maybe<Scalars['String']['output']>;
+  heightValue?: Maybe<Scalars['Float']['output']>;
+  hsCode?: Maybe<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  imageAssetId?: Maybe<Scalars['ID']['output']>;
+  imageUri?: Maybe<Scalars['String']['output']>;
+  isBattery?: Maybe<Scalars['Boolean']['output']>;
+  isHazmat?: Maybe<Scalars['Boolean']['output']>;
+  lengthValue?: Maybe<Scalars['Float']['output']>;
+  name: Scalars['String']['output'];
+  /** Merchant-owned stockable SKU. This is matched exactly; the backend does not normalize it. */
+  sku: Scalars['String']['output'];
+  status: InventoryGoodStatus;
+  updatedAt: Scalars['DateTimeISO']['output'];
+  userId: Scalars['String']['output'];
+  weightUnit?: Maybe<InventoryWeightUnit>;
+  weightValue?: Maybe<Scalars['Float']['output']>;
+  widthValue?: Maybe<Scalars['Float']['output']>;
+}
+
+/** Resolution result for an external source SKU against canonical InventoryGood identity */
+export interface InventoryGoodIdentityResolution {
+  canWrite: Scalars['Boolean']['output'];
+  inventoryGood?: Maybe<InventoryGood>;
+  mapping?: Maybe<InventoryGoodMapping>;
+  reason?: Maybe<Scalars['String']['output']>;
+  resolutionType: InventoryGoodIdentityResolutionType;
+  sellerSku: Scalars['String']['output'];
+  sourceId: Scalars['ID']['output'];
+  sourceSystem: InventoryGoodMappingSourceSystem;
+}
+
+/** How an external SKU was resolved to a canonical InventoryGood */
+export const InventoryGoodIdentityResolutionType = {
+  DefaultSku: 'DEFAULT_SKU',
+  ExplicitMapping: 'EXPLICIT_MAPPING',
+  MappingTargetInvalid: 'MAPPING_TARGET_INVALID',
+  NotFound: 'NOT_FOUND',
+  UnverifiedMapping: 'UNVERIFIED_MAPPING'
+} as const;
+
+export type InventoryGoodIdentityResolutionType = typeof InventoryGoodIdentityResolutionType[keyof typeof InventoryGoodIdentityResolutionType];
+/** Sparse override mapping from an external source SKU/unit to a canonical InventoryGood */
+export interface InventoryGoodMapping {
+  createdAt: Scalars['DateTimeISO']['output'];
+  id: Scalars['ID']['output'];
+  inventoryGoodId: Scalars['ID']['output'];
+  lastSeenAt?: Maybe<Scalars['DateTimeISO']['output']>;
+  notes?: Maybe<Scalars['String']['output']>;
+  /** External seller SKU or warehouse goods SKU. This is matched exactly; the backend does not normalize it. */
+  sellerSku: Scalars['String']['output'];
+  /** System-local Mongo ID for the external source connection, such as Shop._id or a WMS connection ID. */
+  sourceId: Scalars['ID']['output'];
+  sourceSystem: InventoryGoodMappingSourceSystem;
+  status: InventoryGoodMappingStatus;
+  updatedAt: Scalars['DateTimeISO']['output'];
+  userId: Scalars['String']['output'];
+  verificationStatus: InventoryGoodMappingVerificationStatus;
+}
+
+/** External inventory/catalog source system */
+export const InventoryGoodMappingSourceSystem = {
+  TiktokFbt: 'TIKTOK_FBT',
+  TiktokShop: 'TIKTOK_SHOP',
+  YejoinWms: 'YEJOIN_WMS'
+} as const;
+
+export type InventoryGoodMappingSourceSystem = typeof InventoryGoodMappingSourceSystem[keyof typeof InventoryGoodMappingSourceSystem];
+/** Lifecycle state of an external SKU to InventoryGood identity mapping */
+export const InventoryGoodMappingStatus = {
+  Active: 'ACTIVE',
+  Archived: 'ARCHIVED'
+} as const;
+
+export type InventoryGoodMappingStatus = typeof InventoryGoodMappingStatus[keyof typeof InventoryGoodMappingStatus];
+/** Confidence state for an external SKU identity mapping */
+export const InventoryGoodMappingVerificationStatus = {
+  AutoMatched: 'AUTO_MATCHED',
+  Unverified: 'UNVERIFIED',
+  UserConfirmed: 'USER_CONFIRMED'
+} as const;
+
+export type InventoryGoodMappingVerificationStatus = typeof InventoryGoodMappingVerificationStatus[keyof typeof InventoryGoodMappingVerificationStatus];
+/** Lifecycle state of a canonical stockable inventory item */
+export const InventoryGoodStatus = {
+  Active: 'ACTIVE',
+  Archived: 'ARCHIVED'
+} as const;
+
+export type InventoryGoodStatus = typeof InventoryGoodStatus[keyof typeof InventoryGoodStatus];
+/** Weight unit for inventory goods */
+export const InventoryWeightUnit = {
+  G: 'G',
+  Kg: 'KG',
+  Lb: 'LB',
+  Oz: 'OZ'
+} as const;
+
+export type InventoryWeightUnit = typeof InventoryWeightUnit[keyof typeof InventoryWeightUnit];
 export interface LlmKey {
   key: Scalars['String']['output'];
   suspendedUntil?: Maybe<Scalars['DateTimeISO']['output']>;
@@ -1144,6 +1297,8 @@ export interface Mutation {
   logout: Scalars['Boolean']['output'];
   /** Unified browser profile management: create, update, delete, archive, or batch delete profiles */
   manageBrowserProfile: BrowserProfileManageResult;
+  /** Promote a temporary uploaded image into permanent object storage and link it to an entity. Pass the assetId returned by POST /api/uploads/images; imageUri is accepted as a fallback. */
+  promoteImageAsset: ImageAsset;
   /** Publish an update notification to all connected clients (admin only) */
   publishUpdate: Scalars['Boolean']['output'];
   /** Redeem a service credit to a shop */
@@ -1158,6 +1313,10 @@ export interface Mutation {
   revokeAllSessions: Scalars['Int']['output'];
   /** Set or clear the default RunProfile for the current user */
   setDefaultRunProfile: MeResponse;
+  /** Pull platform warehouse lists for one shop and auto-map official fulfillment warehouses when possible. */
+  syncShopWarehouses: ShopWarehouseSyncPayload;
+  /** Pull warehouses from one WMS account and upsert canonical Warehouse records. */
+  syncWmsWarehouses: WmsWarehouseSyncPayload;
   /** Unenroll from a product module */
   unenrollModule: MeResponse;
   /** Update an existing run profile */
@@ -1170,6 +1329,16 @@ export interface Mutation {
   uploadSessionStateBackup: Scalars['Boolean']['output'];
   /** Verify a pairing code from mobile and create relay token */
   verifyPairingCode: VerifyPairingResult;
+  /** Write external SKU to InventoryGood mappings in batch. Omit id to locate by sourceSystem + sourceId + sellerSku or create a new mapping. */
+  writeInventoryGoodMappings: Array<InventoryGoodMapping>;
+  /** Write canonical stockable inventory goods in batch. Omit id to locate by exact sku or create a new good. */
+  writeInventoryGoods: Array<InventoryGood>;
+  /** Write shop warehouse mappings in batch. Use this after AI or user confirms platform warehouse to canonical warehouse matches. */
+  writeShopWarehouseMappings: Array<ShopWarehouse>;
+  /** Write canonical warehouses in batch. Omit input.id to create; pass input.id to update. */
+  writeWarehouses: Array<Warehouse>;
+  /** Write WMS accounts in batch. New accounts and endpoint/apiToken changes automatically sync warehouses. apiToken is write-only. */
+  writeWmsAccounts: Array<WriteWmsAccountPayload>;
 }
 
 
@@ -1301,6 +1470,11 @@ export interface MutationManageBrowserProfileArgs {
 }
 
 
+export interface MutationPromoteImageAssetArgs {
+  input: PromoteImageAssetInput;
+}
+
+
 export interface MutationPublishUpdateArgs {
   version: Scalars['String']['input'];
 }
@@ -1324,6 +1498,16 @@ export interface MutationRegisterArgs {
 
 export interface MutationSetDefaultRunProfileArgs {
   runProfileId?: InputMaybe<Scalars['String']['input']>;
+}
+
+
+export interface MutationSyncShopWarehousesArgs {
+  shopId: Scalars['ID']['input'];
+}
+
+
+export interface MutationSyncWmsWarehousesArgs {
+  wmsAccountId: Scalars['ID']['input'];
 }
 
 
@@ -1360,6 +1544,31 @@ export interface MutationUploadSessionStateBackupArgs {
 export interface MutationVerifyPairingCodeArgs {
   mobileDeviceId: Scalars['String']['input'];
   pairingCode: Scalars['String']['input'];
+}
+
+
+export interface MutationWriteInventoryGoodMappingsArgs {
+  inputs: Array<WriteInventoryGoodMappingInput>;
+}
+
+
+export interface MutationWriteInventoryGoodsArgs {
+  inputs: Array<WriteInventoryGoodInput>;
+}
+
+
+export interface MutationWriteShopWarehouseMappingsArgs {
+  inputs: Array<WriteShopWarehouseMappingInput>;
+}
+
+
+export interface MutationWriteWarehousesArgs {
+  inputs: Array<WriteWarehouseInput>;
+}
+
+
+export interface MutationWriteWmsAccountsArgs {
+  inputs: Array<WriteWmsAccountInput>;
 }
 
 /** OAuth flow completed payload (e.g. TikTok shop authorization) */
@@ -1445,6 +1654,18 @@ export const PlatformType = {
 } as const;
 
 export type PlatformType = typeof PlatformType[keyof typeof PlatformType];
+/** Promote a temporary uploaded image into permanent object storage */
+export interface PromoteImageAssetInput {
+  /** ImageAsset ID returned by POST /api/uploads/images. Prefer this over imageUri. */
+  assetId?: InputMaybe<Scalars['ID']['input']>;
+  /** Temporary image URI returned by POST /api/uploads/images. Used only when assetId is unavailable. */
+  imageUri?: InputMaybe<Scalars['String']['input']>;
+  /** Entity ID that owns this image. May be omitted while creating a new entity. */
+  linkedEntityId?: InputMaybe<Scalars['String']['input']>;
+  /** Entity type that will own this image, e.g. INVENTORY_GOOD or PRODUCT. */
+  linkedEntityType: Scalars['String']['input'];
+}
+
 export interface ProviderPricing {
   currency: Scalars['String']['output'];
   models: Array<ModelPricing>;
@@ -1512,6 +1733,8 @@ export interface Query {
   ecommerceSearchProducts: Array<EcomProductSummary>;
   /** Search return/refund/replacement requests and return a flat list. Pagination is handled internally by the backend. */
   ecommerceSearchReturns: Array<EcomReturn>;
+  /** List recent image assets for the authenticated user */
+  imageAssets: Array<ImageAsset>;
   /** Get LLM quota status for the current user */
   llmQuotaStatus: LlmQuotaStatus;
   /** Get current authenticated user profile */
@@ -1528,6 +1751,18 @@ export interface Query {
   platformApps: Array<PlatformApp>;
   /** Get pricing for all providers */
   pricing: Array<ProviderPricing>;
+  /** Read external SKU to InventoryGood mappings. Use input.id for one row, or filters for a list. */
+  readInventoryGoodMappings: Array<InventoryGoodMapping>;
+  /** Read canonical stockable inventory goods. Use input.id for one row, or filters for a list. */
+  readInventoryGoods: Array<InventoryGood>;
+  /** Read shop-scoped platform warehouses. Use input.id for one row, or filters for a list. */
+  readShopWarehouses: Array<ShopWarehouse>;
+  /** Read canonical warehouses. Use input.id for one row, or filters for a list. */
+  readWarehouses: Array<Warehouse>;
+  /** Read WMS accounts. Use input.id for one account, or filters for a list. Credentials are never returned. */
+  readWmsAccounts: Array<WmsAccount>;
+  /** Resolve an external source seller SKU to a canonical InventoryGood for safe inventory writes. */
+  resolveInventoryGoodIdentity: InventoryGoodIdentityResolution;
   /** Get a single run profile by ID */
   runProfile?: Maybe<RunProfile>;
   /** List run profiles for the authenticated user, optionally filtered by surface */
@@ -1760,6 +1995,38 @@ export interface QueryPricingArgs {
 }
 
 
+export interface QueryReadInventoryGoodMappingsArgs {
+  input: ReadInventoryGoodMappingsInput;
+}
+
+
+export interface QueryReadInventoryGoodsArgs {
+  input: ReadInventoryGoodsInput;
+}
+
+
+export interface QueryReadShopWarehousesArgs {
+  input: ReadShopWarehousesInput;
+}
+
+
+export interface QueryReadWarehousesArgs {
+  input: ReadWarehousesInput;
+}
+
+
+export interface QueryReadWmsAccountsArgs {
+  input: ReadWmsAccountsInput;
+}
+
+
+export interface QueryResolveInventoryGoodIdentityArgs {
+  sellerSku: Scalars['String']['input'];
+  sourceId: Scalars['ID']['input'];
+  sourceSystem: InventoryGoodMappingSourceSystem;
+}
+
+
 export interface QueryRunProfileArgs {
   id: Scalars['ID']['input'];
 }
@@ -1833,6 +2100,84 @@ export interface QueryWaitForPairingArgs {
 export interface QuotaCircleStatus {
   refreshAt: Scalars['DateTimeISO']['output'];
   remainingPercent: Scalars['Float']['output'];
+}
+
+/** Read external SKU to InventoryGood mappings. Pass id to read one mapping, or omit id to list by filters. */
+export interface ReadInventoryGoodMappingsInput {
+  /** InventoryGoodMapping ID. When provided, the result contains zero or one mapping. */
+  id?: InputMaybe<Scalars['ID']['input']>;
+  /** Canonical InventoryGood ID to find mappings for. */
+  inventoryGoodId?: InputMaybe<Scalars['ID']['input']>;
+  /** Maximum number of mappings to return, capped at 500. */
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  /** Exact seller SKU or warehouse goods SKU in the external source. */
+  sellerSku?: InputMaybe<Scalars['String']['input']>;
+  /** Source connection Mongo ID, such as Shop._id or WmsAccount._id. */
+  sourceId?: InputMaybe<Scalars['ID']['input']>;
+  /** External source system filter, such as TIKTOK_SHOP or YEJOIN_WMS. */
+  sourceSystem?: InputMaybe<InventoryGoodMappingSourceSystem>;
+  /** Filter by lifecycle status. Defaults to ACTIVE when omitted. */
+  status?: InputMaybe<InventoryGoodMappingStatus>;
+}
+
+/** Read canonical inventory goods. Pass id to read one good, or omit id to list by filters. */
+export interface ReadInventoryGoodsInput {
+  /** InventoryGood ID. When provided, the result contains zero or one good. */
+  id?: InputMaybe<Scalars['ID']['input']>;
+  /** Maximum number of goods to return, capped at 500. */
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  /** Search by exact sku, barcode, GTIN, or text metadata. */
+  search?: InputMaybe<Scalars['String']['input']>;
+  /** Filter by lifecycle status. Defaults to ACTIVE when omitted. */
+  status?: InputMaybe<InventoryGoodStatus>;
+}
+
+/** Read shop-scoped platform warehouses. Pass id to read one row, or omit id to list by filters. */
+export interface ReadShopWarehousesInput {
+  /** ShopWarehouse ID. When provided, the result contains zero or one row. */
+  id?: InputMaybe<Scalars['ID']['input']>;
+  /** Maximum number of shop warehouses to return, capped at 500. */
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  /** Filter by mapping confidence state. */
+  mappingStatus?: InputMaybe<ShopWarehouseMappingStatus>;
+  /** Connected Shop ID whose platform warehouses should be listed. */
+  shopId?: InputMaybe<Scalars['ID']['input']>;
+  /** Filter by lifecycle status. Defaults to ACTIVE when omitted. */
+  status?: InputMaybe<ShopWarehouseStatus>;
+  /** Canonical Warehouse ID to find platform warehouses mapped to it. */
+  warehouseId?: InputMaybe<Scalars['ID']['input']>;
+}
+
+/** Read canonical warehouses. Pass id to read one warehouse, or omit id to list by filters. */
+export interface ReadWarehousesInput {
+  /** Canonical Warehouse ID. When provided, the result contains zero or one warehouse. */
+  id?: InputMaybe<Scalars['ID']['input']>;
+  /** Maximum number of warehouses to return, capped at 500. */
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  /** Filter by provider, such as YEJOIN or TIKTOK_FBT. */
+  provider?: InputMaybe<WarehouseProvider>;
+  /** Search by warehouse name, code, or external warehouse ID. */
+  search?: InputMaybe<Scalars['String']['input']>;
+  /** Filter by source connection ID, such as WmsAccount._id or Shop._id. */
+  sourceId?: InputMaybe<Scalars['ID']['input']>;
+  /** Filter by lifecycle status. Defaults to ACTIVE when omitted. */
+  status?: InputMaybe<WarehouseStatus>;
+  /** Filter by warehouse type, such as OFFICIAL_PLATFORM or THIRD_PARTY_WMS. */
+  warehouseType?: InputMaybe<WarehouseType>;
+}
+
+/** Read WMS accounts. Pass id to read one account, or omit id to list by filters. Credentials are never returned. */
+export interface ReadWmsAccountsInput {
+  /** WmsAccount ID. When provided, the result contains zero or one account. */
+  id?: InputMaybe<Scalars['ID']['input']>;
+  /** Filter by user-facing WMS account label. */
+  label?: InputMaybe<Scalars['String']['input']>;
+  /** Maximum number of WMS accounts to return, capped at 500. */
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  /** Filter by WMS provider, such as YEJOIN. */
+  provider?: InputMaybe<WmsAccountProvider>;
+  /** Filter by lifecycle status. Defaults to ACTIVE when omitted. */
+  status?: InputMaybe<WmsAccountStatus>;
 }
 
 /** Registration input */
@@ -2003,6 +2348,73 @@ export const ShopTimezoneSource = {
 } as const;
 
 export type ShopTimezoneSource = typeof ShopTimezoneSource[keyof typeof ShopTimezoneSource];
+/** Warehouse identity exposed by an e-commerce shop platform */
+export interface ShopWarehouse {
+  address?: Maybe<WarehouseAddress>;
+  createdAt: Scalars['DateTimeISO']['output'];
+  effectStatus: ShopWarehouseEffectStatus;
+  id: Scalars['ID']['output'];
+  isDefault: Scalars['Boolean']['output'];
+  lastSyncedAt?: Maybe<Scalars['DateTimeISO']['output']>;
+  mappingStatus: ShopWarehouseMappingStatus;
+  name: Scalars['String']['output'];
+  notes?: Maybe<Scalars['String']['output']>;
+  /** Platform physical/entity warehouse ID, such as TikTok entity_id. */
+  platformEntityId?: Maybe<Scalars['String']['output']>;
+  /** Raw platform sub type, such as DOMESTIC_WAREHOUSE or CB_OVERSEA_WAREHOUSE. */
+  platformSubType?: Maybe<Scalars['String']['output']>;
+  /** Warehouse ID returned by the shop platform, such as TikTok warehouse_id. */
+  platformWarehouseId: Scalars['String']['output'];
+  regionCode?: Maybe<Scalars['String']['output']>;
+  shopId: Scalars['ID']['output'];
+  status: ShopWarehouseStatus;
+  updatedAt: Scalars['DateTimeISO']['output'];
+  userId: Scalars['String']['output'];
+  /** Canonical Warehouse ID after matching. Null means this platform warehouse is not safely mapped yet. */
+  warehouseId?: Maybe<Scalars['ID']['output']>;
+  warehouseType: ShopWarehouseType;
+}
+
+/** Platform-side availability state of a shop warehouse */
+export const ShopWarehouseEffectStatus = {
+  Disabled: 'DISABLED',
+  Enabled: 'ENABLED',
+  Restricted: 'RESTRICTED',
+  Unknown: 'UNKNOWN'
+} as const;
+
+export type ShopWarehouseEffectStatus = typeof ShopWarehouseEffectStatus[keyof typeof ShopWarehouseEffectStatus];
+/** Confidence state for matching a shop warehouse to a canonical warehouse */
+export const ShopWarehouseMappingStatus = {
+  AutoMatched: 'AUTO_MATCHED',
+  Unmapped: 'UNMAPPED',
+  UserConfirmed: 'USER_CONFIRMED'
+} as const;
+
+export type ShopWarehouseMappingStatus = typeof ShopWarehouseMappingStatus[keyof typeof ShopWarehouseMappingStatus];
+/** Lifecycle state of a shop-scoped platform warehouse */
+export const ShopWarehouseStatus = {
+  Active: 'ACTIVE',
+  Archived: 'ARCHIVED'
+} as const;
+
+export type ShopWarehouseStatus = typeof ShopWarehouseStatus[keyof typeof ShopWarehouseStatus];
+/** Result of syncing shop-scoped platform warehouses */
+export interface ShopWarehouseSyncPayload {
+  /** Official fulfillment warehouse rows auto-mapped through provider APIs such as TikTok FBT. */
+  officialFulfillmentWarehouses: Array<ShopWarehouse>;
+  /** Platform warehouse rows returned by the shop logistics warehouse API. */
+  platformWarehouses: Array<ShopWarehouse>;
+}
+
+/** Platform warehouse role in a shop */
+export const ShopWarehouseType = {
+  Fulfillment: 'FULFILLMENT',
+  Return: 'RETURN',
+  Sales: 'SALES'
+} as const;
+
+export type ShopWarehouseType = typeof ShopWarehouseType[keyof typeof ShopWarehouseType];
 export interface Skill {
   author: Scalars['String']['output'];
   chinaAvailable: Scalars['Boolean']['output'];
@@ -2283,4 +2695,232 @@ export interface WaitPairingResult {
   pairingId?: Maybe<Scalars['String']['output']>;
   reason?: Maybe<Scalars['String']['output']>;
   relayUrl?: Maybe<Scalars['String']['output']>;
+}
+
+/** Canonical warehouse identity used by inventory management */
+export interface Warehouse {
+  address?: Maybe<WarehouseAddress>;
+  /** Merchant or provider-facing warehouse code, such as DYY-NY. */
+  code?: Maybe<Scalars['String']['output']>;
+  createdAt: Scalars['DateTimeISO']['output'];
+  /** Provider warehouse ID, such as fbt_warehouse_id or Yejoin storage code. */
+  externalWarehouseId?: Maybe<Scalars['String']['output']>;
+  id: Scalars['ID']['output'];
+  lastSyncedAt?: Maybe<Scalars['DateTimeISO']['output']>;
+  name: Scalars['String']['output'];
+  notes?: Maybe<Scalars['String']['output']>;
+  provider: WarehouseProvider;
+  regionCode?: Maybe<Scalars['String']['output']>;
+  /** System-local source connection ID, such as WmsAccount._id or Shop._id. */
+  sourceId?: Maybe<Scalars['ID']['output']>;
+  status: WarehouseStatus;
+  updatedAt: Scalars['DateTimeISO']['output'];
+  userId: Scalars['String']['output'];
+  warehouseType: WarehouseType;
+}
+
+/** Warehouse address snapshot */
+export interface WarehouseAddress {
+  addressLine1?: Maybe<Scalars['String']['output']>;
+  addressLine2?: Maybe<Scalars['String']['output']>;
+  city?: Maybe<Scalars['String']['output']>;
+  district?: Maybe<Scalars['String']['output']>;
+  fullAddress?: Maybe<Scalars['String']['output']>;
+  postalCode?: Maybe<Scalars['String']['output']>;
+  region?: Maybe<Scalars['String']['output']>;
+  regionCode?: Maybe<Scalars['String']['output']>;
+  state?: Maybe<Scalars['String']['output']>;
+}
+
+/** Warehouse address patch */
+export interface WarehouseAddressInput {
+  /** Primary street address line. */
+  addressLine1?: InputMaybe<Scalars['String']['input']>;
+  /** Secondary address line, suite, unit, or building details. */
+  addressLine2?: InputMaybe<Scalars['String']['input']>;
+  /** City. */
+  city?: InputMaybe<Scalars['String']['input']>;
+  /** District, county, or local administrative area. */
+  district?: InputMaybe<Scalars['String']['input']>;
+  /** Full address string as returned by the source system. */
+  fullAddress?: InputMaybe<Scalars['String']['input']>;
+  /** Postal or ZIP code. */
+  postalCode?: InputMaybe<Scalars['String']['input']>;
+  /** Country or region display name returned by the source system. */
+  region?: InputMaybe<Scalars['String']['input']>;
+  /** Country or region code for the warehouse address, preferably ISO 3166-1 alpha-2. */
+  regionCode?: InputMaybe<Scalars['String']['input']>;
+  /** State or province. */
+  state?: InputMaybe<Scalars['String']['input']>;
+}
+
+/** System or provider that owns the physical or platform warehouse */
+export const WarehouseProvider = {
+  AmazonFba: 'AMAZON_FBA',
+  Seller: 'SELLER',
+  TiktokFbt: 'TIKTOK_FBT',
+  Yejoin: 'YEJOIN'
+} as const;
+
+export type WarehouseProvider = typeof WarehouseProvider[keyof typeof WarehouseProvider];
+/** Lifecycle state of a canonical warehouse */
+export const WarehouseStatus = {
+  Active: 'ACTIVE',
+  Archived: 'ARCHIVED'
+} as const;
+
+export type WarehouseStatus = typeof WarehouseStatus[keyof typeof WarehouseStatus];
+/** Business type of a canonical warehouse */
+export const WarehouseType = {
+  OfficialPlatform: 'OFFICIAL_PLATFORM',
+  SellerManaged: 'SELLER_MANAGED',
+  ThirdPartyWms: 'THIRD_PARTY_WMS'
+} as const;
+
+export type WarehouseType = typeof WarehouseType[keyof typeof WarehouseType];
+/** Third-party WMS API account connection */
+export interface WmsAccount {
+  createdAt: Scalars['DateTimeISO']['output'];
+  endpoint: Scalars['String']['output'];
+  id: Scalars['ID']['output'];
+  label: Scalars['String']['output'];
+  lastSyncError?: Maybe<Scalars['String']['output']>;
+  lastSyncedAt?: Maybe<Scalars['DateTimeISO']['output']>;
+  notes?: Maybe<Scalars['String']['output']>;
+  provider: WmsAccountProvider;
+  status: WmsAccountStatus;
+  updatedAt: Scalars['DateTimeISO']['output'];
+  userId: Scalars['String']['output'];
+}
+
+/** Third-party WMS provider */
+export const WmsAccountProvider = {
+  Yejoin: 'YEJOIN'
+} as const;
+
+export type WmsAccountProvider = typeof WmsAccountProvider[keyof typeof WmsAccountProvider];
+/** Lifecycle state of a WMS account connection */
+export const WmsAccountStatus = {
+  Active: 'ACTIVE',
+  Archived: 'ARCHIVED'
+} as const;
+
+export type WmsAccountStatus = typeof WmsAccountStatus[keyof typeof WmsAccountStatus];
+/** Result of syncing warehouses from a WMS account */
+export interface WmsWarehouseSyncPayload {
+  /** WMS provider that produced the warehouses. */
+  provider: WmsAccountProvider;
+  /** Number of warehouses read from the WMS and upserted into canonical Warehouse. */
+  warehousesSynced: Scalars['Int']['output'];
+  /** WMS account ID that was synced. */
+  wmsAccountId: Scalars['ID']['output'];
+}
+
+/** Write a canonical stockable inventory item. Omit id to locate by exact sku or create a new item. */
+export interface WriteInventoryGoodInput {
+  barcode?: InputMaybe<Scalars['String']['input']>;
+  countryOfOrigin?: InputMaybe<Scalars['String']['input']>;
+  declaredValue?: InputMaybe<Scalars['Float']['input']>;
+  declaredValueCurrency?: InputMaybe<Scalars['String']['input']>;
+  dimensionUnit?: InputMaybe<InventoryDimensionUnit>;
+  gtin?: InputMaybe<Scalars['String']['input']>;
+  heightValue?: InputMaybe<Scalars['Float']['input']>;
+  hsCode?: InputMaybe<Scalars['String']['input']>;
+  /** Existing InventoryGood ID to update. Omit to locate by userId + sku. */
+  id?: InputMaybe<Scalars['ID']['input']>;
+  /** Temporary ImageAsset ID to promote. Pass null to clear the current image. */
+  imageAssetId?: InputMaybe<Scalars['ID']['input']>;
+  /** Temporary image URI to promote. Used only when imageAssetId is unavailable. */
+  imageUri?: InputMaybe<Scalars['String']['input']>;
+  isBattery?: InputMaybe<Scalars['Boolean']['input']>;
+  isHazmat?: InputMaybe<Scalars['Boolean']['input']>;
+  lengthValue?: InputMaybe<Scalars['Float']['input']>;
+  name?: InputMaybe<Scalars['String']['input']>;
+  sku?: InputMaybe<Scalars['String']['input']>;
+  status?: InputMaybe<InventoryGoodStatus>;
+  weightUnit?: InputMaybe<InventoryWeightUnit>;
+  weightValue?: InputMaybe<Scalars['Float']['input']>;
+  widthValue?: InputMaybe<Scalars['Float']['input']>;
+}
+
+/** Write a sparse external SKU to InventoryGood mapping. Omit id to locate by sourceSystem + sourceId + sellerSku. */
+export interface WriteInventoryGoodMappingInput {
+  /** Existing InventoryGoodMapping ID to update. Omit to locate by natural key. */
+  id?: InputMaybe<Scalars['ID']['input']>;
+  inventoryGoodId?: InputMaybe<Scalars['ID']['input']>;
+  lastSeenAt?: InputMaybe<Scalars['DateTimeISO']['input']>;
+  notes?: InputMaybe<Scalars['String']['input']>;
+  sellerSku?: InputMaybe<Scalars['String']['input']>;
+  sourceId?: InputMaybe<Scalars['ID']['input']>;
+  sourceSystem?: InputMaybe<InventoryGoodMappingSourceSystem>;
+  status?: InputMaybe<InventoryGoodMappingStatus>;
+  verificationStatus?: InputMaybe<InventoryGoodMappingVerificationStatus>;
+}
+
+/** Write one shop warehouse to canonical warehouse mapping. Pass warehouseId to confirm a mapping; pass null to clear it. */
+export interface WriteShopWarehouseMappingInput {
+  /** Mapping confidence to store. Defaults to USER_CONFIRMED when warehouseId is provided. */
+  mappingStatus?: InputMaybe<ShopWarehouseMappingStatus>;
+  /** ShopWarehouse ID to update. */
+  shopWarehouseId: Scalars['ID']['input'];
+  /** Canonical Warehouse ID. Pass null to clear the mapping. */
+  warehouseId?: InputMaybe<Scalars['ID']['input']>;
+}
+
+/** Write a canonical warehouse. Omit id to create; pass id to update. */
+export interface WriteWarehouseInput {
+  /** Warehouse address snapshot. Pass null to clear it. */
+  address?: InputMaybe<WarehouseAddressInput>;
+  /** Merchant or provider-facing warehouse code, such as DYY-NY. */
+  code?: InputMaybe<Scalars['String']['input']>;
+  /** Provider warehouse ID, such as Yejoin storage code or TikTok fbt_warehouse_id. */
+  externalWarehouseId?: InputMaybe<Scalars['String']['input']>;
+  /** Existing Warehouse ID to update. Omit to create a new warehouse. */
+  id?: InputMaybe<Scalars['ID']['input']>;
+  /** Last successful source sync timestamp. Usually system-managed. */
+  lastSyncedAt?: InputMaybe<Scalars['DateTimeISO']['input']>;
+  /** Warehouse display name. */
+  name?: InputMaybe<Scalars['String']['input']>;
+  /** Optional operator notes about this warehouse. */
+  notes?: InputMaybe<Scalars['String']['input']>;
+  /** Warehouse provider, such as YEJOIN or TIKTOK_FBT. */
+  provider?: InputMaybe<WarehouseProvider>;
+  /** Country or region code for the warehouse, preferably ISO 3166-1 alpha-2. */
+  regionCode?: InputMaybe<Scalars['String']['input']>;
+  /** Source connection ID, such as WmsAccount._id or Shop._id. */
+  sourceId?: InputMaybe<Scalars['ID']['input']>;
+  /** Lifecycle status. Use ARCHIVED instead of hard deleting. */
+  status?: InputMaybe<WarehouseStatus>;
+  /** Warehouse business type, such as OFFICIAL_PLATFORM or THIRD_PARTY_WMS. */
+  warehouseType?: InputMaybe<WarehouseType>;
+}
+
+/** Write a WMS account. Omit id to locate by provider + label or create a new account. apiToken is write-only. */
+export interface WriteWmsAccountInput {
+  /** WMS API token/key. Stored write-only and never exposed by WmsAccount. */
+  apiToken?: InputMaybe<Scalars['String']['input']>;
+  /** Base API endpoint for this WMS account. */
+  endpoint?: InputMaybe<Scalars['String']['input']>;
+  /** Existing WmsAccount ID to update. Omit to create a new account. */
+  id?: InputMaybe<Scalars['ID']['input']>;
+  /** User-facing account label, unique per provider for the user. */
+  label?: InputMaybe<Scalars['String']['input']>;
+  /** Most recent sync error message, if any. Usually system-managed. */
+  lastSyncError?: InputMaybe<Scalars['String']['input']>;
+  /** Last successful warehouse sync timestamp. Usually system-managed. */
+  lastSyncedAt?: InputMaybe<Scalars['DateTimeISO']['input']>;
+  /** Optional operator notes about this WMS connection. */
+  notes?: InputMaybe<Scalars['String']['input']>;
+  /** WMS provider implementation. Required when creating a new account. */
+  provider?: InputMaybe<WmsAccountProvider>;
+  /** Lifecycle status. Use ARCHIVED instead of hard deleting. */
+  status?: InputMaybe<WmsAccountStatus>;
+}
+
+/** Result of writing a WMS account */
+export interface WriteWmsAccountPayload {
+  /** Created or updated WMS account. apiToken is never returned. */
+  account: WmsAccount;
+  /** Sync result when the account is new or its endpoint/apiToken changed. */
+  sync?: Maybe<WmsWarehouseSyncPayload>;
 }
