@@ -1764,12 +1764,16 @@ export interface Query {
   readInventoryGoodMappings: Array<InventoryGoodMapping>;
   /** Read canonical stockable inventory goods. Use input.id for one row, or filters for a list. */
   readInventoryGoods: Array<InventoryGood>;
+  /** Read active shop SKU coverage against canonical InventoryGood. Returns unrecognized active shop SKUs and active InventoryGoods that this shop does not currently resolve to. */
+  readShopInventoryGoodCoverage: ShopInventoryGoodCoveragePayload;
   /** Read shop-scoped platform warehouses. Use input.id for one row, or filters for a list. */
   readShopWarehouses: Array<ShopWarehouse>;
   /** Read canonical warehouses. Use input.id for one row, or filters for a list. */
   readWarehouses: Array<Warehouse>;
   /** Read WMS accounts. Use input.id for one account, or filters for a list. Credentials are never returned. */
   readWmsAccounts: Array<WmsAccount>;
+  /** Read WMS goods coverage against canonical InventoryGood without writing data. Use before syncWmsInventoryGoods to show which WMS goods are not yet active InventoryGoods. */
+  readWmsInventoryGoodCoverage: WmsInventoryGoodCoveragePayload;
   /** Resolve an external source seller SKU to a canonical InventoryGood for safe inventory writes. */
   resolveInventoryGoodIdentity: InventoryGoodIdentityResolution;
   /** Get a single run profile by ID */
@@ -2014,6 +2018,11 @@ export interface QueryReadInventoryGoodsArgs {
 }
 
 
+export interface QueryReadShopInventoryGoodCoverageArgs {
+  input: ReadShopInventoryGoodCoverageInput;
+}
+
+
 export interface QueryReadShopWarehousesArgs {
   input: ReadShopWarehousesInput;
 }
@@ -2026,6 +2035,11 @@ export interface QueryReadWarehousesArgs {
 
 export interface QueryReadWmsAccountsArgs {
   input: ReadWmsAccountsInput;
+}
+
+
+export interface QueryReadWmsInventoryGoodCoverageArgs {
+  wmsAccountId: Scalars['ID']['input'];
 }
 
 
@@ -2117,8 +2131,6 @@ export interface ReadInventoryGoodMappingsInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   /** Canonical InventoryGood ID to find mappings for. */
   inventoryGoodId?: InputMaybe<Scalars['ID']['input']>;
-  /** Maximum number of mappings to return, capped at 500. */
-  limit?: InputMaybe<Scalars['Int']['input']>;
   /** Exact seller SKU or warehouse goods SKU in the external source. */
   sellerSku?: InputMaybe<Scalars['String']['input']>;
   /** Source connection Mongo ID, such as Shop._id or WmsAccount._id. */
@@ -2141,12 +2153,16 @@ export interface ReadInventoryGoodsInput {
   status?: InputMaybe<InventoryGoodStatus>;
 }
 
+/** Read active shop SKU coverage against canonical InventoryGood identity. */
+export interface ReadShopInventoryGoodCoverageInput {
+  /** Shop Mongo ID to audit. */
+  shopId: Scalars['ID']['input'];
+}
+
 /** Read shop-scoped platform warehouses. Pass id to read one row, or omit id to list by filters. */
 export interface ReadShopWarehousesInput {
   /** ShopWarehouse ID. When provided, the result contains zero or one row. */
   id?: InputMaybe<Scalars['ID']['input']>;
-  /** Maximum number of shop warehouses to return, capped at 500. */
-  limit?: InputMaybe<Scalars['Int']['input']>;
   /** Connected Shop ID whose platform warehouses should be listed. */
   shopId?: InputMaybe<Scalars['ID']['input']>;
   /** Filter by lifecycle status. Defaults to ACTIVE when omitted. */
@@ -2159,8 +2175,6 @@ export interface ReadShopWarehousesInput {
 export interface ReadWarehousesInput {
   /** Canonical Warehouse ID. When provided, the result contains zero or one warehouse. */
   id?: InputMaybe<Scalars['ID']['input']>;
-  /** Maximum number of warehouses to return, capped at 500. */
-  limit?: InputMaybe<Scalars['Int']['input']>;
   /** Filter by provider, such as YEJOIN or TIKTOK_FBT. */
   provider?: InputMaybe<WarehouseProvider>;
   /** Search by warehouse name, code, or external warehouse ID. */
@@ -2179,8 +2193,6 @@ export interface ReadWmsAccountsInput {
   id?: InputMaybe<Scalars['ID']['input']>;
   /** Filter by user-facing WMS account label. */
   label?: InputMaybe<Scalars['String']['input']>;
-  /** Maximum number of WMS accounts to return, capped at 500. */
-  limit?: InputMaybe<Scalars['Int']['input']>;
   /** Filter by WMS provider, such as YEJOIN. */
   provider?: InputMaybe<WmsAccountProvider>;
   /** Filter by lifecycle status. Defaults to ACTIVE when omitted. */
@@ -2314,6 +2326,22 @@ export interface ShopAuthStatusResponse {
   accessTokenExpiresAt?: Maybe<Scalars['DateTimeISO']['output']>;
   hasToken: Scalars['Boolean']['output'];
   refreshTokenExpiresAt?: Maybe<Scalars['DateTimeISO']['output']>;
+}
+
+/** Coverage view for active shop SKUs and canonical InventoryGoods. */
+export interface ShopInventoryGoodCoveragePayload {
+  /** Product status scanned. This audit intentionally only checks active shop products. */
+  productStatus: EcomProductStatus;
+  /** Shop Mongo ID that was audited. */
+  shopId: Scalars['ID']['output'];
+  /** InventoryGoodMapping source ID used for this shop. */
+  sourceId: Scalars['ID']['output'];
+  /** InventoryGoodMapping source system used for this shop. */
+  sourceSystem: InventoryGoodMappingSourceSystem;
+  /** Active InventoryGoods that no active shop SKU currently resolves to. */
+  unmatchedInventoryGoods: Array<InventoryGood>;
+  /** Active shop SKU rows that cannot be safely resolved to InventoryGood. */
+  unrecognizedShopSkus: Array<UnrecognizedShopSku>;
 }
 
 /** E-commerce platform identifier */
@@ -2505,6 +2533,10 @@ export interface SyncWmsInventoryGoodsPayload {
   fetched: Scalars['Int']['output'];
   /** InventoryGood rows created or updated by this sync. */
   goods: Array<InventoryGood>;
+  /** Number of WMS product images that could not be copied. The InventoryGood row may still be synced. */
+  imageFailed: Scalars['Int']['output'];
+  /** Number of WMS product images copied into permanent object storage. */
+  imageImported: Scalars['Int']['output'];
   /** Whether existing InventoryGood rows were overwritten by WMS attributes. */
   overrideExisting: Scalars['Boolean']['output'];
   /** Number of existing InventoryGood rows preserved because overrideExisting was false. */
@@ -2648,6 +2680,56 @@ export interface ToolSpec {
   /** True when clients may expose persistResult for this tool */
   supportsPersistResult?: Maybe<Scalars['Boolean']['output']>;
   surfaces?: Maybe<Array<SystemSurface>>;
+}
+
+/** One active shop SKU that cannot be safely resolved to canonical InventoryGood. */
+export interface UnrecognizedShopSku {
+  /** SKU currency, when available from the platform product search response. */
+  currency?: Maybe<Scalars['String']['output']>;
+  /** SKU sale price, when available from the platform product search response. */
+  price?: Maybe<Scalars['String']['output']>;
+  /** Platform product ID that owns this SKU. */
+  productId: Scalars['String']['output'];
+  /** First platform product image URL, when available. */
+  productImageUrl?: Maybe<Scalars['String']['output']>;
+  /** Platform product title for review context. */
+  productTitle?: Maybe<Scalars['String']['output']>;
+  /** Why this SKU needs user or AI mapping work before inventory writes are safe. */
+  reason: Scalars['String']['output'];
+  /** Resolution state produced by exact SKU and explicit mapping rules. */
+  resolutionType: InventoryGoodIdentityResolutionType;
+  /** Platform seller SKU. Missing when the platform SKU has no seller SKU. */
+  sellerSku?: Maybe<Scalars['String']['output']>;
+  /** Platform SKU ID. */
+  skuId: Scalars['String']['output'];
+  /** Total stock quantity across platform inventory rows, when available. */
+  stockQuantity?: Maybe<Scalars['Int']['output']>;
+}
+
+/** One WMS inventory good that does not exist as an active canonical InventoryGood. */
+export interface UnrecognizedWmsInventoryGood {
+  barcode?: Maybe<Scalars['String']['output']>;
+  countryOfOrigin?: Maybe<Scalars['String']['output']>;
+  declaredValue?: Maybe<Scalars['Float']['output']>;
+  declaredValueCurrency?: Maybe<Scalars['String']['output']>;
+  dimensionUnit?: Maybe<InventoryDimensionUnit>;
+  gtin?: Maybe<Scalars['String']['output']>;
+  heightValue?: Maybe<Scalars['Float']['output']>;
+  hsCode?: Maybe<Scalars['String']['output']>;
+  /** External WMS image URL that can be imported during sync. */
+  imageUrl?: Maybe<Scalars['String']['output']>;
+  isBattery?: Maybe<Scalars['Boolean']['output']>;
+  isHazmat?: Maybe<Scalars['Boolean']['output']>;
+  lengthValue?: Maybe<Scalars['Float']['output']>;
+  /** WMS goods name. */
+  name: Scalars['String']['output'];
+  /** Why this WMS good needs InventoryGood sync or review. */
+  reason: Scalars['String']['output'];
+  /** WMS goods SKU. */
+  sku: Scalars['String']['output'];
+  weightUnit?: Maybe<InventoryWeightUnit>;
+  weightValue?: Maybe<Scalars['Float']['output']>;
+  widthValue?: Maybe<Scalars['Float']['output']>;
 }
 
 /** Update notification payload */
@@ -2836,6 +2918,16 @@ export const WmsAccountStatus = {
 } as const;
 
 export type WmsAccountStatus = typeof WmsAccountStatus[keyof typeof WmsAccountStatus];
+/** Read-only coverage view for WMS goods against canonical InventoryGoods. */
+export interface WmsInventoryGoodCoveragePayload {
+  /** WMS provider that produced these goods. */
+  provider: WmsAccountProvider;
+  /** WMS goods that need InventoryGood sync or review. */
+  unrecognizedWmsInventoryGoods: Array<UnrecognizedWmsInventoryGood>;
+  /** WMS account ID that was scanned. */
+  wmsAccountId: Scalars['ID']['output'];
+}
+
 /** Warehouse management system settings per shop (user-configurable) */
 export interface WmsSettings {
   /** Whether WMS/inventory management is enabled for this shop. */
