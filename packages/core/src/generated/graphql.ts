@@ -940,6 +940,14 @@ export interface EcomShippingDocument {
   trackingNumber?: Maybe<Scalars['String']['output']>;
 }
 
+/** Inventory updates for one shop */
+export interface EcomShopUpdateInventoryInput {
+  /** Shop ID (the 'id' field from ecommerce_list_shops) */
+  shopId: Scalars['String']['input'];
+  /** SKU inventory updates to apply to this shop. */
+  updates: Array<EcomUpdateInventoryInput>;
+}
+
 /** Per-SKU performance metrics for shop analytics */
 export interface EcomSkuPerformance {
   /** Shop-local date for this SKU performance row (YYYY-MM-DD) */
@@ -988,39 +996,53 @@ export interface EcomTrackingEvent {
   updateTimeMillis?: Maybe<Scalars['Float']['output']>;
 }
 
-/** Per-SKU error returned by the inventory update endpoint */
-export interface EcomUpdateInventoryError {
+/** Per-SKU inventory update failure returned by the platform */
+export interface EcomUpdateInventoryFailure {
   code?: Maybe<Scalars['Int']['output']>;
-  message?: Maybe<Scalars['String']['output']>;
+  /** Human-readable failure reason returned by the platform. */
+  reason?: Maybe<Scalars['String']['output']>;
   skuId?: Maybe<Scalars['String']['output']>;
-  warehouseErrors?: Maybe<Array<EcomUpdateInventoryWarehouseError>>;
+  warehouseFailures?: Maybe<Array<EcomUpdateInventoryWarehouseFailure>>;
 }
 
-/** Simplified inventory update request for one SKU */
+/** Inventory update request for one SKU */
 export interface EcomUpdateInventoryInput {
-  /** Desired in-stock quantity for this SKU. The backend expands this into TikTok's warehouse-level payload for single-warehouse SKUs. */
-  quantity: Scalars['Int']['input'];
+  /** Warehouse-level inventory rows for this SKU. For multi-warehouse SKUs, include every assigned warehouse with its desired quantity. */
+  inventory: Array<EcomUpdateInventoryWarehouseInput>;
+  /** Product ID that owns this SKU. TikTok's update inventory endpoint is product-scoped. */
+  productId: Scalars['String']['input'];
   /** SKU ID to update */
   skuId: Scalars['String']['input'];
 }
 
 /** Result of updating product inventory */
 export interface EcomUpdateInventoryResult {
-  errors?: Maybe<Array<EcomUpdateInventoryError>>;
-  message?: Maybe<Scalars['String']['output']>;
-  /** Product IDs touched by this request. Multiple products can be updated in one simplified resolver call. */
-  productIds?: Maybe<Array<Scalars['String']['output']>>;
-  /** True when TikTok reported no per-SKU errors. */
+  /** Only SKU updates that failed, with platform failure reasons. */
+  failures?: Maybe<Array<EcomUpdateInventoryFailure>>;
+  /** Shop ID that this result belongs to, when returned from the multi-shop resolver. */
+  shopId?: Maybe<Scalars['String']['output']>;
+  /** True when the platform returned no SKU-scoped failures for this shop. */
   success: Scalars['Boolean']['output'];
-  /** SKU IDs that completed without a SKU-scoped TikTok error. */
-  updatedSkuIds?: Maybe<Array<Scalars['String']['output']>>;
 }
 
-/** Warehouse-level error returned while updating a SKU's inventory */
-export interface EcomUpdateInventoryWarehouseError {
+/** Warehouse-level inventory update failure returned by the platform */
+export interface EcomUpdateInventoryWarehouseFailure {
   code?: Maybe<Scalars['Int']['output']>;
-  message?: Maybe<Scalars['String']['output']>;
+  /** Human-readable failure reason returned by the platform. */
+  reason?: Maybe<Scalars['String']['output']>;
   warehouseId?: Maybe<Scalars['String']['output']>;
+}
+
+/** Warehouse-level inventory update for one SKU */
+export interface EcomUpdateInventoryWarehouseInput {
+  /** Optional backorder quantity for this warehouse. Omit to keep TikTok's existing value. */
+  backorderQuantity?: InputMaybe<Scalars['Int']['input']>;
+  /** Optional backorder handling time in working days. TikTok requires the same handling time across warehouses for a SKU. */
+  handlingTime?: InputMaybe<Scalars['Int']['input']>;
+  /** Desired in-stock quantity for this SKU in this warehouse. TikTok requires an integer between 1 and 99,999. */
+  quantity: Scalars['Int']['input'];
+  /** Warehouse ID to update. TikTok allows this to be omitted only when the SKU is assigned to exactly one warehouse. */
+  warehouseId?: InputMaybe<Scalars['String']['input']>;
 }
 
 /** Result of updating a shop through the agent-facing resolver */
@@ -1313,8 +1335,8 @@ export interface Mutation {
   ecommerceMarkConversationRead: Scalars['Boolean']['output'];
   /** Send a rich card (order, product, or logistics) in a CS conversation. */
   ecommerceSendMessage: CustomerServiceSendMessageResult;
-  /** Update inventory for one or more SKUs using a simplified input shape. Each item only accepts skuId and quantity; the backend performs the TikTok-specific product/warehouse expansion. */
-  ecommerceUpdateInventory: EcomUpdateInventoryResult;
+  /** Update inventory for one or more shops. Each input item contains shopId and its SKU inventory updates. */
+  ecommerceUpdateInventory: Array<EcomUpdateInventoryResult>;
   /** Update shop settings (agent-facing, flat params) */
   ecommerceUpdateShop: EcommerceUpdateShopResult;
   /** Enroll in a product module */
@@ -1459,8 +1481,7 @@ export interface MutationEcommerceSendMessageArgs {
 
 
 export interface MutationEcommerceUpdateInventoryArgs {
-  shopId: Scalars['String']['input'];
-  updates: Array<EcomUpdateInventoryInput>;
+  updates: Array<EcomShopUpdateInventoryInput>;
 }
 
 
