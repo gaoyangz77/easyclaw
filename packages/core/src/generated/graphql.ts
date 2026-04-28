@@ -1117,10 +1117,40 @@ export interface InitiateOAuthResponse {
   state: Scalars['String']['output'];
 }
 
+/** Shop backend's observed inventory quantity for a third-party WMS warehouse mapping. */
+export interface InventoryAnalysisInShopWarehouseQuantity {
+  /** Shop platform warehouse ID used for inventory updates, copied from ShopWarehouse.platformWarehouseId. */
+  platformWarehouseId?: Maybe<Scalars['String']['output']>;
+  /** Quantity recorded in the shop backend for this platform warehouse mapping. */
+  quantity: Scalars['Int']['output'];
+  /** Shop alias/name. */
+  shopAlias?: Maybe<Scalars['String']['output']>;
+  /** Shop Mongo ID. */
+  shopId: Scalars['ID']['output'];
+}
+
 /** Full current inventory facts for one seller SKU. */
 export interface InventoryAnalysisInventoryFacts {
-  /** Current inventory facts at concrete warehouse grain. */
-  byWarehouse: Array<InventoryAnalysisWarehouseStock>;
+  /** Platform official/seller warehouse quantities where the shop platform is the source of truth. */
+  officialPlatformWarehouses: Array<InventoryAnalysisOfficialPlatformWarehouseStock>;
+  /** Third-party WMS warehouse quantities plus mapped shop backend observations. */
+  thirdPartyWmsWarehouses: Array<InventoryAnalysisThirdPartyWmsWarehouseStock>;
+}
+
+/** Inventory quantity for a shop platform warehouse where the platform is the source of truth. */
+export interface InventoryAnalysisOfficialPlatformWarehouseStock {
+  /** Shop platform warehouse ID used for inventory updates, copied from ShopWarehouse.platformWarehouseId. */
+  platformWarehouseId?: Maybe<Scalars['String']['output']>;
+  /** Authoritative platform warehouse quantity. */
+  quantity: Scalars['Int']['output'];
+  /** Shop alias/name. */
+  shopAlias?: Maybe<Scalars['String']['output']>;
+  /** Shop Mongo ID. */
+  shopId: Scalars['ID']['output'];
+  /** Source system label, such as TIKTOK_FBT or TIKTOK_SHOP. */
+  sourceSystem: Scalars['String']['output'];
+  /** Warehouse display name when available. */
+  warehouseName?: Maybe<Scalars['String']['output']>;
 }
 
 /** Source-of-truth inventory and performance bundle for desktop agent analysis. */
@@ -1173,27 +1203,19 @@ export interface InventoryAnalysisShopDatePerformance {
   unitsSold?: Maybe<Scalars['Int']['output']>;
 }
 
-/** Warehouse-level stock rollup. quantity is the warehouse/source-of-truth value; inShopQuantity is only populated for third-party WMS warehouses to compare against the shop backend. */
-export interface InventoryAnalysisWarehouseStock {
-  /** Quantity recorded in the shop backend for this third-party WMS warehouse when available. */
-  inShopQuantity?: Maybe<Scalars['Int']['output']>;
-  /** Shop platform warehouse ID used for inventory updates, copied from ShopWarehouse.platformWarehouseId. */
-  platformWarehouseId?: Maybe<Scalars['String']['output']>;
-  /** Authoritative stock quantity for this warehouse/source when available. */
+/** Inventory quantity for a third-party WMS warehouse where WMS is the source of truth. */
+export interface InventoryAnalysisThirdPartyWmsWarehouseStock {
+  /** Shop backend observations mapped to this WMS warehouse. */
+  inShopQuantities: Array<InventoryAnalysisInShopWarehouseQuantity>;
+  /** Authoritative WMS warehouse quantity when available. */
   quantity?: Maybe<Scalars['Int']['output']>;
-  /** Shop alias/name when warehouseType is OFFICIAL_PLATFORM. */
-  shopAlias?: Maybe<Scalars['String']['output']>;
-  /** Shop Mongo ID when warehouseType is OFFICIAL_PLATFORM. */
-  shopId?: Maybe<Scalars['ID']['output']>;
-  /** Source system label, such as YEJOIN_WMS, TIKTOK_FBT, or TIKTOK_SHOP. */
+  /** Source system label, such as YEJOIN_WMS. */
   sourceSystem: Scalars['String']['output'];
   /** Warehouse display name when available. */
   warehouseName?: Maybe<Scalars['String']['output']>;
-  /** Warehouse business type, such as THIRD_PARTY_WMS or OFFICIAL_PLATFORM. */
-  warehouseType: WarehouseType;
-  /** WMS account Mongo ID when warehouseType is THIRD_PARTY_WMS. */
-  wmsAccountId?: Maybe<Scalars['ID']['output']>;
-  /** WMS account label when warehouseType is THIRD_PARTY_WMS. */
+  /** WMS account Mongo ID. */
+  wmsAccountId: Scalars['ID']['output'];
+  /** WMS account label. */
   wmsAccountLabel?: Maybe<Scalars['String']['output']>;
 }
 
