@@ -2928,6 +2928,8 @@ export type WarehouseType = typeof WarehouseType[keyof typeof WarehouseType];
 /** Third-party WMS API account connection */
 export interface WmsAccount {
   createdAt: Scalars['DateTimeISO']['output'];
+  /** Default currency for declared inventory goods values imported from this WMS when the provider does not return a currency. */
+  declaredValueCurrency?: Maybe<Currency>;
   endpoint: Scalars['String']['output'];
   id: Scalars['ID']['output'];
   label: Scalars['String']['output'];
@@ -3068,6 +3070,8 @@ export interface WriteWarehouseInput {
 export interface WriteWmsAccountInput {
   /** WMS API token/key. Stored write-only and never exposed by WmsAccount. */
   apiToken?: InputMaybe<Scalars['String']['input']>;
+  /** Default currency for declared inventory goods values imported from this WMS when the provider does not return a currency. Pass null to clear. */
+  declaredValueCurrency?: InputMaybe<Currency>;
   /** Base API endpoint for this WMS account. */
   endpoint?: InputMaybe<Scalars['String']['input']>;
   /** Existing WmsAccount ID to update. Omit to create a new account. */
