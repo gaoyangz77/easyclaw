@@ -1058,6 +1058,7 @@ export const EntitlementKey = {
   EcomCsRead: 'ECOM_CS_READ',
   EcomCsWrite: 'ECOM_CS_WRITE',
   EcomFulfillmentRead: 'ECOM_FULFILLMENT_READ',
+  EcomInventoryManagement: 'ECOM_INVENTORY_MANAGEMENT',
   EcomProductRead: 'ECOM_PRODUCT_READ',
   EcomProductWrite: 'ECOM_PRODUCT_WRITE',
   EcomReturnRefundRead: 'ECOM_RETURN_REFUND_READ',
@@ -1114,6 +1115,86 @@ export type ImageAssetStatus = typeof ImageAssetStatus[keyof typeof ImageAssetSt
 export interface InitiateOAuthResponse {
   authUrl: Scalars['String']['output'];
   state: Scalars['String']['output'];
+}
+
+/** Full current inventory facts for one seller SKU. */
+export interface InventoryAnalysisInventoryFacts {
+  /** Current inventory facts at concrete warehouse grain. */
+  byWarehouse: Array<InventoryAnalysisWarehouseStock>;
+}
+
+/** Source-of-truth inventory and performance bundle for desktop agent analysis. */
+export interface InventoryAnalysisPayload {
+  /** One row per seller SKU / canonical InventoryGood identity. */
+  rows: Array<InventoryAnalysisRow>;
+  /** Number of seller SKU rows returned. */
+  totalCount: Scalars['Int']['output'];
+}
+
+/** SKU performance facts for one seller SKU. */
+export interface InventoryAnalysisPerformanceFacts {
+  /** Raw daily performance facts: one row per shop/date/seller SKU. */
+  byShopDate: Array<InventoryAnalysisShopDatePerformance>;
+  /** End date exclusive in shop-local analytics date format (YYYY-MM-DD). */
+  endDateLt: Scalars['String']['output'];
+  /** Start date inclusive in shop-local analytics date format (YYYY-MM-DD). */
+  startDateGe: Scalars['String']['output'];
+}
+
+/** One seller SKU inventory analysis row. */
+export interface InventoryAnalysisRow {
+  /** Current inventory facts grouped for agent-side analysis. */
+  inventory: InventoryAnalysisInventoryFacts;
+  /** Best available display name for this seller SKU. */
+  name?: Maybe<Scalars['String']['output']>;
+  /** Historical SKU performance facts for the requested date range. */
+  performance: InventoryAnalysisPerformanceFacts;
+  /** Exact seller SKU / canonical merchant SKU for this row. */
+  sellerSku: Scalars['String']['output'];
+}
+
+/** Shop-date SKU performance facts for one seller SKU. */
+export interface InventoryAnalysisShopDatePerformance {
+  /** Shop-local analytics date (YYYY-MM-DD). */
+  dateKey: Scalars['String']['output'];
+  /** GMV for this shop/date/SKU row. */
+  gmv?: Maybe<EcomAnalyticsMoney>;
+  /** Platform product ID when available. */
+  productId?: Maybe<Scalars['String']['output']>;
+  /** Shop alias/name. */
+  shopAlias?: Maybe<Scalars['String']['output']>;
+  /** Shop Mongo ID. */
+  shopId: Scalars['ID']['output'];
+  /** Platform SKU ID when available. */
+  skuId?: Maybe<Scalars['String']['output']>;
+  /** Orders for this shop/date/SKU row. */
+  skuOrders?: Maybe<Scalars['Int']['output']>;
+  /** Units sold for this shop/date/SKU row. */
+  unitsSold?: Maybe<Scalars['Int']['output']>;
+}
+
+/** Warehouse-level stock rollup. quantity is the warehouse/source-of-truth value; inShopQuantity is only populated for third-party WMS warehouses to compare against the shop backend. */
+export interface InventoryAnalysisWarehouseStock {
+  /** Quantity recorded in the shop backend for this third-party WMS warehouse when available. */
+  inShopQuantity?: Maybe<Scalars['Int']['output']>;
+  /** Shop platform warehouse ID used for inventory updates, copied from ShopWarehouse.platformWarehouseId. */
+  platformWarehouseId?: Maybe<Scalars['String']['output']>;
+  /** Authoritative stock quantity for this warehouse/source when available. */
+  quantity?: Maybe<Scalars['Int']['output']>;
+  /** Shop alias/name when warehouseType is OFFICIAL_PLATFORM. */
+  shopAlias?: Maybe<Scalars['String']['output']>;
+  /** Shop Mongo ID when warehouseType is OFFICIAL_PLATFORM. */
+  shopId?: Maybe<Scalars['ID']['output']>;
+  /** Source system label, such as YEJOIN_WMS, TIKTOK_FBT, or TIKTOK_SHOP. */
+  sourceSystem: Scalars['String']['output'];
+  /** Warehouse display name when available. */
+  warehouseName?: Maybe<Scalars['String']['output']>;
+  /** Warehouse business type, such as THIRD_PARTY_WMS or OFFICIAL_PLATFORM. */
+  warehouseType: WarehouseType;
+  /** WMS account Mongo ID when warehouseType is THIRD_PARTY_WMS. */
+  wmsAccountId?: Maybe<Scalars['ID']['output']>;
+  /** WMS account label when warehouseType is THIRD_PARTY_WMS. */
+  wmsAccountLabel?: Maybe<Scalars['String']['output']>;
 }
 
 /** ISO 3166-1 alpha-2 country code for inventory goods */
@@ -1813,6 +1894,8 @@ export interface Query {
   platformApps: Array<PlatformApp>;
   /** Get pricing for all providers */
   pricing: Array<ProviderPricing>;
+  /** Read source-of-truth inventory and SKU performance facts for agent-side inventory and replenishment analysis. */
+  readInventoryAnalysis: InventoryAnalysisPayload;
   /** Read external SKU to InventoryGood mappings. Use input.id for one row, or filters for a list. */
   readInventoryGoodMappings: Array<InventoryGoodMapping>;
   /** Read canonical stockable inventory goods. Use input.id for one row, or filters for a list. */
@@ -2061,6 +2144,11 @@ export interface QueryPricingArgs {
 }
 
 
+export interface QueryReadInventoryAnalysisArgs {
+  input: ReadInventoryAnalysisInput;
+}
+
+
 export interface QueryReadInventoryGoodMappingsArgs {
   input: ReadInventoryGoodMappingsInput;
 }
@@ -2176,6 +2264,18 @@ export interface QueryWaitForPairingArgs {
 export interface QuotaCircleStatus {
   refreshAt: Scalars['DateTimeISO']['output'];
   remainingPercent: Scalars['Float']['output'];
+}
+
+/** Read source-of-truth inventory and SKU performance rows for inventory analysis. endDateLt is exclusive. */
+export interface ReadInventoryAnalysisInput {
+  /** End date exclusive in shop-local analytics date format (YYYY-MM-DD). */
+  endDateLt: Scalars['String']['input'];
+  /** Exact seller SKUs to analyze. Omit or pass an empty list to include seller SKUs that currently have stock or have sales in the requested date range. */
+  sellerSkus?: InputMaybe<Array<Scalars['String']['input']>>;
+  /** Shop Mongo IDs to include in the analysis. */
+  shopIds: Array<Scalars['ID']['input']>;
+  /** Start date inclusive in shop-local analytics date format (YYYY-MM-DD). */
+  startDateGe: Scalars['String']['input'];
 }
 
 /** Read external SKU to InventoryGood mappings. Pass id to read one mapping, or omit id to list by filters. */
@@ -2314,6 +2414,7 @@ export type ServiceCreditStatus = typeof ServiceCreditStatus[keyof typeof Servic
 /** Business service type identifiers */
 export const ServiceId = {
   CustomerService: 'CUSTOMER_SERVICE',
+  InventoryManagement: 'INVENTORY_MANAGEMENT',
   OrderManagement: 'ORDER_MANAGEMENT'
 } as const;
 
@@ -2668,6 +2769,7 @@ export const ToolId = {
   EcomGetConversationMessages: 'ECOM_GET_CONVERSATION_MESSAGES',
   EcomGetCsPerformance: 'ECOM_GET_CS_PERFORMANCE',
   EcomGetFulfillmentTracking: 'ECOM_GET_FULFILLMENT_TRACKING',
+  EcomGetInventoryAnalysis: 'ECOM_GET_INVENTORY_ANALYSIS',
   EcomGetOrder: 'ECOM_GET_ORDER',
   EcomGetPackageDetail: 'ECOM_GET_PACKAGE_DETAIL',
   EcomGetPendingConversations: 'ECOM_GET_PENDING_CONVERSATIONS',
