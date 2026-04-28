@@ -1589,6 +1589,9 @@ export default {
         // E-commerce Ops — Products
         ECOM_GET_PRODUCT: "Get Product",
         ECOM_SEARCH_PRODUCTS: "Search Products",
+        ECOM_GET_INVENTORY_ANALYSIS: "Get Inventory Analysis",
+        ECOM_GET_SHOP_SKU_PERFORMANCE_LIST: "Get Shop SKU Performance List",
+        ECOM_UPDATE_INVENTORY: "Update Inventory",
         // E-commerce Ops — Conversations (Write)
         ECOM_MARK_CONVERSATION_READ: "Mark Read",
         ECOM_CREATE_CONVERSATION: "Create Conversation",
@@ -1638,6 +1641,7 @@ export default {
         cs_start_session: "Start Session",
         // E-commerce Shop Management
         ECOM_LIST_SHOPS: "List Shops",
+        ECOM_GET_SHOP: "Get Shop",
         // System tools — Files
         read: "Read File",
         write: "Write File",

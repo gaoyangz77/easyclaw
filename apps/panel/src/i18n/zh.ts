@@ -1578,6 +1578,9 @@ export default {
         // 电商运营 — 商品
         ECOM_GET_PRODUCT: "获取商品",
         ECOM_SEARCH_PRODUCTS: "搜索商品",
+        ECOM_GET_INVENTORY_ANALYSIS: "获取库存分析",
+        ECOM_GET_SHOP_SKU_PERFORMANCE_LIST: "获取店铺 SKU 绩效列表",
+        ECOM_UPDATE_INVENTORY: "更新库存",
         // 电商运营 — 会话操作
         ECOM_MARK_CONVERSATION_READ: "标记已读",
         ECOM_CREATE_CONVERSATION: "创建会话",
@@ -1627,6 +1630,7 @@ export default {
         cs_start_session: "启动客服会话",
         // 电商店铺管理
         ECOM_LIST_SHOPS: "店铺列表",
+        ECOM_GET_SHOP: "获取店铺",
         // 系统工具 — 文件
         read: "读取文件",
         write: "写入文件",
