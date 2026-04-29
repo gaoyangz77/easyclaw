@@ -1139,6 +1139,8 @@ export interface InventoryAnalysisInventoryFacts {
 
 /** Inventory quantity for a shop platform warehouse where the platform is the source of truth. */
 export interface InventoryAnalysisOfficialPlatformWarehouseStock {
+  /** Units currently in transit to this platform warehouse when available. */
+  inTransitQuantity?: Maybe<Scalars['Int']['output']>;
   /** Shop platform warehouse ID used for inventory updates, copied from ShopWarehouse.platformWarehouseId. */
   platformWarehouseId?: Maybe<Scalars['String']['output']>;
   /** Authoritative platform warehouse quantity. */
@@ -1207,6 +1209,8 @@ export interface InventoryAnalysisShopDatePerformance {
 export interface InventoryAnalysisThirdPartyWmsWarehouseStock {
   /** Shop backend observations mapped to this WMS warehouse. */
   inShopQuantities: Array<InventoryAnalysisInShopWarehouseQuantity>;
+  /** Units currently in transit to this WMS warehouse when available. */
+  inTransitQuantity?: Maybe<Scalars['Int']['output']>;
   /** Authoritative WMS warehouse quantity when available. */
   quantity?: Maybe<Scalars['Int']['output']>;
   /** Source system label, such as YEJOIN_WMS. */
