@@ -21,6 +21,13 @@ const EXEC_COMPLETION_EVENT = [
   "Current time: Wednesday, April 29th, 2026 - 01:04 (America/Los_Angeles) / 2026-04-29 08:04 UTC",
 ].join("\n");
 
+const EXEC_COMPLETION_EVENT_GMT_OFFSET = [
+  "System (untrusted): [2026-04-30 20:05:30 GMT+8] Exec completed (quiet-lo, code 0) :: Requirement already satisfied: six>=1.5",
+  "System (untrusted): [2026-04-30 20:07:40 GMT+8] Exec completed (brisk-bi, code 0) :: {\"sellerSku\":\"14KGold-Rope-6-26\"}",
+  "",
+  "An async command you ran earlier has completed. The result is shown in the system messages above. Handle the result internally. Do not relay it to the user unless explicitly requested.",
+].join("\n");
+
 describe("parseRawMessages — stripped image handling", () => {
   it("appends expired placeholder when content has image blocks with empty data", () => {
     const raw = [
@@ -248,12 +255,20 @@ describe("chat-utils system event cleanup", () => {
     expect(cleanMessageText(EXEC_COMPLETION_EVENT)).toBe("");
   });
 
+  it("hides wrapped async exec completion events with GMT offset timestamps", () => {
+    expect(cleanMessageText(EXEC_COMPLETION_EVENT_GMT_OFFSET)).toBe("");
+  });
+
   it("detects wrapped async exec completion events as system events", () => {
     expect(isSystemEventMessage(EXEC_COMPLETION_EVENT)).toBe(true);
   });
 
-  it("marks wrapped async exec completion messages as external system-originated messages", () => {
-    const [message] = parseRawMessages([
+  it("detects wrapped async exec completion events with GMT offset timestamps", () => {
+    expect(isSystemEventMessage(EXEC_COMPLETION_EVENT_GMT_OFFSET)).toBe(true);
+  });
+
+  it("drops wrapped async exec completion messages with no visible payload", () => {
+    const result = parseRawMessages([
       {
         role: "user",
         content: [{ type: "text", text: EXEC_COMPLETION_EVENT }],
@@ -261,8 +276,19 @@ describe("chat-utils system event cleanup", () => {
       },
     ]);
 
-    expect(message?.isExternal).toBe(true);
-    expect(message?.channel).toBe("cron");
+    expect(result).toEqual([]);
+  });
+
+  it("drops wrapped async exec completion messages with GMT offset timestamps", () => {
+    const result = parseRawMessages([
+      {
+        role: "user",
+        content: [{ type: "text", text: EXEC_COMPLETION_EVENT_GMT_OFFSET }],
+        timestamp: 1,
+      },
+    ]);
+
+    expect(result).toEqual([]);
   });
 
   it("drops assistant NO_REPLY-only history messages", () => {

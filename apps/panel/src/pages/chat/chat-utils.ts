@@ -112,7 +112,7 @@ export const IMAGE_EXPIRED_PLACEHOLDER = "\u200B[__IMAGE_EXPIRED__]\u200B";
 export const STOP_COMMAND_PLACEHOLDER = "\u200B[__STOP_COMMAND__]\u200B";
 
 const SYSTEM_EVENT_LINE_RE =
-  /^System(?: \(untrusted\))?: \[\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})? [A-Z]{2,5}\].*$/gm;
+  /^System(?: \(untrusted\))?: \[\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})? [A-Z]{2,5}(?:[+-]\d{1,2}(?::?\d{2})?)?\].*$/gm;
 
 /**
  * Clean up raw gateway message text:
@@ -340,7 +340,10 @@ export function isSystemEventMessage(text: string): boolean {
     .trim()
     .replace(SYSTEM_EVENT_LINE_RE, "")
     .trim()
-    .replace(/^\[[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})? [A-Z]{2,5}\]\s*/, "");
+    .replace(
+      /^\[[A-Za-z]{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})? [A-Z]{2,5}(?:[+-]\d{1,2}(?::?\d{2})?)?\]\s*/,
+      "",
+    );
   return (
     CRON_EVENT_RE.test(trimmed) ||
     EXEC_EVENT_RE.test(trimmed) ||
@@ -605,6 +608,17 @@ export function parseRawMessages(
       const strippedImages = images.length === 0 && hasImageBlocks(msg.content);
       // Skip internal gateway maintenance prompts (e.g. pre-compaction memory flush)
       if (msg.role === "user" && isInternalPrompt(text)) continue;
+      // Drop system-generated exec/heartbeat scaffolding when it has no
+      // user-visible payload after cleanup. Keeping this out of the message
+      // list avoids leaks if a timestamp variant slips past render-time cleanup.
+      if (
+        msg.role === "user" &&
+        isSystemEventMessage(text) &&
+        !cleanMessageText(text).trim() &&
+        images.length === 0 &&
+        !strippedImages
+      )
+        continue;
       // Match OpenClaw's own web UI/gateway behavior: assistant NO_REPLY is a
       // control token, not a chat bubble.
       if (
