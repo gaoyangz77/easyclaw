@@ -1,6 +1,7 @@
 import { types, flow, getRoot, type Instance } from "mobx-state-tree";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { promises as fs } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import type { Storage } from "@rivonclaw/storage";
 import type { ChannelAccount } from "@rivonclaw/storage";
 import { readExistingConfig, writeChannelAccount, removeChannelAccount } from "@rivonclaw/gateway";
@@ -70,6 +71,14 @@ export interface ChannelAccountSnapshotForMst {
   status: {
     hasContextToken: boolean | null;
   };
+  recipients: ChannelRecipientsSnapshot;
+}
+
+export interface ChannelRecipientsSnapshot {
+  allowlist: string[];
+  labels: Record<string, string>;
+  owners: Record<string, boolean>;
+  pairingRequests: PairingRequest[];
 }
 
 function deriveRawWeixinAccountId(accountId: string): string | undefined {
@@ -108,10 +117,57 @@ async function readPairingRequests(channelId: string): Promise<PairingRequest[]>
   }
 }
 
+function requestMatchesAccountId(request: PairingRequest, accountId?: string): boolean {
+  if (!accountId) return true;
+  return (request.meta?.accountId ?? "default").trim().toLowerCase() === accountId.trim().toLowerCase();
+}
+
+function readPairingRequestsSync(channelId: string, accountId?: string): PairingRequest[] {
+  try {
+    const filePath = resolvePairingPath(channelId);
+    const content = readFileSync(filePath, "utf-8");
+    if (!content.trim()) return [];
+    const data: PairingStore = JSON.parse(content);
+    const requests = Array.isArray(data.requests) ? data.requests : [];
+    return requests.filter((request) => requestMatchesAccountId(request, accountId));
+  } catch (err: any) {
+    if (err.code === "ENOENT") return [];
+    if (err instanceof SyntaxError) return [];
+    throw err;
+  }
+}
+
 async function writePairingRequests(channelId: string, requests: PairingRequest[]): Promise<void> {
   const filePath = resolvePairingPath(channelId);
   const data: PairingStore = { version: 1, requests };
   await fs.writeFile(filePath, JSON.stringify(data, null, 2) + "\n", "utf-8");
+}
+
+function shouldIncludeLegacyAllowFromEntries(accountId?: string): boolean {
+  const normalized = accountId?.trim().toLowerCase() || "default";
+  return normalized === "default";
+}
+
+function readAllowFromListSyncForPath(filePath: string): string[] {
+  try {
+    if (!existsSync(filePath)) return [];
+    const raw = readFileSync(filePath, "utf-8");
+    if (!raw.trim()) return [];
+    const parsed = JSON.parse(raw) as AllowFromStore;
+    return Array.isArray(parsed.allowFrom) ? parsed.allowFrom.filter((entry) => typeof entry === "string" && entry.trim()) : [];
+  } catch {
+    return [];
+  }
+}
+
+function readAccountAllowFromListSync(channelId: string, accountId?: string): string[] {
+  if (shouldIncludeLegacyAllowFromEntries(accountId)) {
+    return [...new Set([
+      ...readAllowFromListSyncForPath(resolveAllowFromPathForChannel(channelId, "default")),
+      ...readAllowFromListSyncForPath(resolveAllowFromPathForChannel(channelId)),
+    ])];
+  }
+  return readAllowFromListSyncForPath(resolveAllowFromPathForChannel(channelId, accountId));
 }
 
 // ---------------------------------------------------------------------------
@@ -361,6 +417,7 @@ export const ChannelManagerModel = types
         name: account.name,
         config: account.config,
         status,
+        recipients: buildChannelRecipientsSnapshot(account.channelId, canonicalAccountId),
       };
     }
 
@@ -378,6 +435,55 @@ export const ChannelManagerModel = types
 
     function normalizeChannelAccountId(channelId: string, accountId: string): string {
       return channelId === WEIXIN_CHANNEL_ID ? normalizeWeixinAccountId(accountId) : accountId;
+    }
+
+    function buildChannelRecipientsSnapshot(channelId: string, accountId?: string): ChannelRecipientsSnapshot {
+      const { storage } = getEnv();
+      const entries = new Set<string>(readAccountAllowFromListSync(channelId, accountId));
+
+      if (channelId === WEIXIN_CHANNEL_ID && accountId) {
+        for (const recipientId of getWeixinContextTokens(accountId).keys()) {
+          entries.add(recipientId);
+        }
+      }
+
+      const meta = storage.channelRecipients.getRecipientMeta(channelId);
+      if (channelId === WEIXIN_CHANNEL_ID) {
+        for (const id of Object.keys(meta)) {
+          entries.add(id);
+        }
+      }
+
+      const labels: Record<string, string> = {};
+      const owners: Record<string, boolean> = {};
+      for (const id of entries) {
+        const data = meta[id];
+        if (!data) continue;
+        if (data.label) labels[id] = data.label;
+        owners[id] = data.isOwner;
+      }
+
+      return {
+        allowlist: [...entries],
+        labels,
+        owners,
+        pairingRequests: readPairingRequestsSync(channelId, accountId),
+      };
+    }
+
+    function updateChannelAccountRecipients(channelId: string, accountId: string): ChannelRecipientsSnapshot {
+      const recipients = buildChannelRecipientsSnapshot(channelId, accountId);
+      (getRoot(self) as any).updateChannelAccountRecipients(channelId, accountId, recipients);
+      return recipients;
+    }
+
+    function updateChannelRecipientsForAccounts(channelId: string, accountId?: string): void {
+      const root = getRoot(self) as any;
+      for (const account of root.channelAccounts as any[]) {
+        if (account.channelId !== channelId) continue;
+        if (accountId && account.accountId !== accountId) continue;
+        updateChannelAccountRecipients(channelId, account.accountId);
+      }
     }
 
     return {
@@ -461,6 +567,8 @@ export const ChannelManagerModel = types
         if (inserted) {
           syncOwnerAllowFrom(storage, configPath);
         }
+
+        updateChannelRecipientsForAccounts(params.channelId, accountId);
 
         return { inserted, membershipChanged };
       },
@@ -642,26 +750,33 @@ export const ChannelManagerModel = types
       // Pairing operations
       // -----------------------------------------------------------------------
 
-      /** Read pending pairing requests for a channel from its pairing state file. */
-      getPairingRequests: flow(function* (channelId: string) {
-        return (yield readPairingRequests(channelId)) as PairingRequest[];
+      /** Read pending pairing requests for a channel/account from its pairing state file. */
+      getPairingRequests: flow(function* (channelId: string, accountId?: string) {
+        const requests = (yield readPairingRequests(channelId)) as PairingRequest[];
+        const filtered = requests.filter((request) => requestMatchesAccountId(request, accountId));
+        if (accountId && channelId !== "mobile") {
+          updateChannelAccountRecipients(channelId, accountId);
+        }
+        return filtered;
       }),
 
       /**
        * Approve a pairing request: validate code, update allowlist, register recipient.
        * Returns the recipient ID and the matched pairing entry.
        */
-      approvePairing: flow(function* (params: { channelId: string; code: string }) {
+      approvePairing: flow(function* (params: { channelId: string; code: string; accountId?: string }) {
         const requests: PairingRequest[] = yield readPairingRequests(params.channelId);
         const codeUpper = params.code.trim().toUpperCase();
-        const requestIndex = requests.findIndex((r) => r.code.toUpperCase() === codeUpper);
+        const requestIndex = requests.findIndex((r) => (
+          r.code.toUpperCase() === codeUpper && requestMatchesAccountId(r, params.accountId)
+        ));
 
         if (requestIndex < 0) {
           throw new Error("Pairing code not found or expired");
         }
 
         const request = requests[requestIndex];
-        const accountId = request.meta?.accountId;
+        const accountId = request.meta?.accountId ?? params.accountId;
 
         // Remove from pairing requests
         requests.splice(requestIndex, 1);
@@ -680,6 +795,12 @@ export const ChannelManagerModel = types
         const inserted = storage.channelRecipients.ensureExists(params.channelId, request.id, true);
         if (inserted) {
           syncOwnerAllowFrom(storage, configPath);
+        }
+
+        if (accountId) {
+          updateChannelAccountRecipients(params.channelId, accountId);
+        } else {
+          updateChannelRecipientsForAccounts(params.channelId);
         }
 
         log.info(`Approved pairing for ${params.channelId}: ${request.id}`);
@@ -709,12 +830,12 @@ export const ChannelManagerModel = types
       getAllowlist: flow(function* (channelId: string, accountId?: string) {
         const { storage, stateDir } = getEnv();
 
+        if (accountId && channelId !== "mobile") {
+          return updateChannelAccountRecipients(channelId, accountId);
+        }
+
         const isWeixinScoped = channelId === WEIXIN_CHANNEL_ID && Boolean(accountId);
-        const entries = new Set<string>(
-          isWeixinScoped
-            ? yield readAllowFromList(channelId, accountId)
-            : yield readAllAllowFromLists(channelId),
-        );
+        const entries = new Set<string>(yield readAllAllowFromLists(channelId));
         if (isWeixinScoped && accountId) {
           for (const recipientId of yield readWeixinContextTokenRecipientIds(stateDir, accountId)) {
             entries.add(recipientId);
@@ -737,21 +858,23 @@ export const ChannelManagerModel = types
       }),
 
       /** Set a display label for a recipient. Empty label removes the recipient metadata. */
-      setRecipientLabel(channelId: string, recipientId: string, label: string) {
+      setRecipientLabel(channelId: string, recipientId: string, label: string, accountId?: string) {
         const { storage } = getEnv();
         if (label.trim()) {
           storage.channelRecipients.setLabel(channelId, recipientId, label.trim());
         } else {
           storage.channelRecipients.delete(channelId, recipientId);
         }
+        updateChannelRecipientsForAccounts(channelId, accountId);
       },
 
       /** Set or unset the owner flag for a recipient. Syncs ownerAllowFrom to config. */
-      setRecipientOwner(channelId: string, recipientId: string, isOwner: boolean) {
+      setRecipientOwner(channelId: string, recipientId: string, isOwner: boolean, accountId?: string) {
         const { storage, configPath } = getEnv();
         storage.channelRecipients.ensureExists(channelId, recipientId);
         storage.channelRecipients.setOwner(channelId, recipientId, isOwner);
         syncOwnerAllowFrom(storage, configPath);
+        updateChannelRecipientsForAccounts(channelId, accountId);
       },
 
       /**
@@ -759,7 +882,7 @@ export const ChannelManagerModel = types
        * For mobile channel, delegates to MobileManager.
        * Returns whether the allowlist was changed.
        */
-      removeFromAllowlist: flow(function* (channelId: string, entry: string) {
+      removeFromAllowlist: flow(function* (channelId: string, entry: string, accountId?: string) {
         const { storage, configPath } = getEnv();
 
         // Mobile channel: delegate full cleanup to MobileManager
@@ -777,18 +900,27 @@ export const ChannelManagerModel = types
           return { changed: false };
         }
 
-        // Generic channel: remove entry from all matching allowFrom files
+        // Generic channel: remove entry from the scoped allowFrom file when
+        // an account is provided; otherwise preserve the legacy channel-wide
+        // cleanup behavior.
         let changed = false;
         const credentialsDir = resolveCredentialsDir();
         const prefix = `${channelId}-`;
         const suffix = "-allowFrom.json";
 
         let files: string[];
-        try {
-          files = yield fs.readdir(credentialsDir);
-        } catch (err: any) {
-          if (err.code === "ENOENT") files = [];
-          else throw err;
+        if (accountId) {
+          files = [basename(resolveAllowFromPathForChannel(channelId, accountId))];
+          if (shouldIncludeLegacyAllowFromEntries(accountId)) {
+            files.push(basename(resolveAllowFromPathForChannel(channelId)));
+          }
+        } else {
+          try {
+            files = yield fs.readdir(credentialsDir);
+          } catch (err: any) {
+            if (err.code === "ENOENT") files = [];
+            else throw err;
+          }
         }
 
         for (const file of files) {
@@ -814,6 +946,7 @@ export const ChannelManagerModel = types
 
         storage.channelRecipients.delete(channelId, entry);
         syncOwnerAllowFrom(storage, configPath);
+        updateChannelRecipientsForAccounts(channelId, accountId);
 
         return { changed };
       }),

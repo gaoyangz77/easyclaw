@@ -225,13 +225,14 @@ const qrLoginWait: EndpointHandler = async (req, res, _url, _params, ctx: ApiCon
 
 // ── GET /api/pairing/requests/:channelId ──
 
-const pairingRequests: EndpointHandler = async (_req, res, _url, params, ctx: ApiContext) => {
+const pairingRequests: EndpointHandler = async (_req, res, url, params, ctx: ApiContext) => {
   const cm = requireChannelManager(ctx, res);
   if (!cm) return;
   const { channelId } = params;
+  const accountId = url.searchParams.get("accountId") || undefined;
 
   try {
-    const requests = await cm.getPairingRequests(channelId);
+    const requests = await cm.getPairingRequests(channelId, accountId);
     sendJson(res, 200, { requests });
   } catch (err) {
     log.error(`Failed to list pairing requests for ${channelId}:`, err);
@@ -258,10 +259,11 @@ const getAllowlist: EndpointHandler = async (_req, res, url, params, ctx: ApiCon
 
 // ── PUT /api/pairing/allowlist/:channelId/:recipientId/label ──
 
-const setLabel: EndpointHandler = async (req, res, _url, params, ctx: ApiContext) => {
+const setLabel: EndpointHandler = async (req, res, url, params, ctx: ApiContext) => {
   const cm = requireChannelManager(ctx, res);
   if (!cm) return;
   const { channelId, recipientId } = params;
+  const accountId = url.searchParams.get("accountId") || undefined;
   const body = (await parseBody(req)) as { label?: string };
 
   if (typeof body.label !== "string") {
@@ -270,7 +272,7 @@ const setLabel: EndpointHandler = async (req, res, _url, params, ctx: ApiContext
   }
 
   try {
-    cm.setRecipientLabel(channelId, recipientId, body.label);
+    cm.setRecipientLabel(channelId, recipientId, body.label, accountId);
     sendJson(res, 200, { ok: true });
   } catch (err) {
     log.error(`Failed to set recipient label:`, err);
@@ -280,10 +282,11 @@ const setLabel: EndpointHandler = async (req, res, _url, params, ctx: ApiContext
 
 // ── PUT /api/pairing/allowlist/:channelId/:recipientId/owner ──
 
-const setOwner: EndpointHandler = async (req, res, _url, params, ctx: ApiContext) => {
+const setOwner: EndpointHandler = async (req, res, url, params, ctx: ApiContext) => {
   const cm = requireChannelManager(ctx, res);
   if (!cm) return;
   const { channelId, recipientId } = params;
+  const accountId = url.searchParams.get("accountId") || undefined;
   const body = (await parseBody(req)) as { isOwner?: boolean };
 
   if (typeof body.isOwner !== "boolean") {
@@ -292,7 +295,7 @@ const setOwner: EndpointHandler = async (req, res, _url, params, ctx: ApiContext
   }
 
   try {
-    cm.setRecipientOwner(channelId, recipientId, body.isOwner);
+    cm.setRecipientOwner(channelId, recipientId, body.isOwner, accountId);
     sendJson(res, 200, { ok: true });
   } catch (err) {
     log.error(`Failed to set recipient owner:`, err);
@@ -308,6 +311,7 @@ const approve: EndpointHandler = async (req, res, _url, _params, ctx: ApiContext
 
   const body = (await parseBody(req)) as {
     channelId?: string;
+    accountId?: string;
     code?: string;
     locale?: string;
   };
@@ -318,7 +322,7 @@ const approve: EndpointHandler = async (req, res, _url, _params, ctx: ApiContext
   }
 
   try {
-    const result = await cm.approvePairing({ channelId: body.channelId, code: body.code });
+    const result = await cm.approvePairing({ channelId: body.channelId, accountId: body.accountId, code: body.code });
 
     sendJson(res, 200, { ok: true, id: result.recipientId, entry: result.entry });
 
@@ -341,15 +345,16 @@ const approve: EndpointHandler = async (req, res, _url, _params, ctx: ApiContext
 
 // ── DELETE /api/pairing/allowlist/:channelId/:recipientId ──
 
-const removeFromAllowlist: EndpointHandler = async (_req, res, _url, params, ctx: ApiContext) => {
+const removeFromAllowlist: EndpointHandler = async (_req, res, url, params, ctx: ApiContext) => {
   const cm = requireChannelManager(ctx, res);
   if (!cm) return;
   const { channelId, recipientId } = params;
+  const accountId = url.searchParams.get("accountId") || undefined;
 
   try {
-    const { changed } = await cm.removeFromAllowlist(channelId, recipientId);
+    const { changed } = await cm.removeFromAllowlist(channelId, recipientId, accountId);
     // Re-read the current allowlist for the response
-    const { allowlist } = await cm.getAllowlist(channelId);
+    const { allowlist } = await cm.getAllowlist(channelId, accountId);
     sendJson(res, 200, { ok: true, changed, allowFrom: allowlist });
   } catch (err) {
     log.error("Failed to remove from allowlist:", err);

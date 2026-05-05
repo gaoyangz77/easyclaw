@@ -27,12 +27,12 @@ const PAIRING_MESSAGES = {
   zh: [
     "💡 [RivonClaw] 您的配对请求已收到。",
     "",
-    "请前往管理面板 → 通道，选择要配对的通道并点击「白名单」完成配对。",
+    "请前往管理面板 → 通道，展开对应通道账号并点击「批准」完成配对。",
   ].join("\n"),
   en: [
     "💡 [RivonClaw] Your pairing request has been received.",
     "",
-    "Please go to the panel → Channels, find the channel you want to match and click the \"Whitelist\" button.",
+    "Please go to the panel → Channels, expand the matching channel account, and click \"Approve\".",
   ].join("\n"),
 };
 

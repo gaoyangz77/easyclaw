@@ -49,6 +49,18 @@ export type ChannelAccountSnapshot = {
   application?: unknown;
   /** WeChat-only: whether the bound userId has a cached context token for outbound sends. */
   contextTokenReady?: boolean | null;
+  recipients?: {
+    allowlist: string[];
+    labels: Record<string, string>;
+    owners: Record<string, boolean>;
+    pairingRequests: Array<{
+      id: string;
+      code: string;
+      createdAt: string;
+      lastSeenAt: string;
+      meta?: Record<string, string>;
+    }>;
+  };
 };
 
 export type ChannelsStatusSnapshot = {

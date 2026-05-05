@@ -119,7 +119,7 @@ export function ChannelAccountsTable({
   const [expandedAccounts, setExpandedAccounts] = useState<Set<string>>(new Set());
   const [recipientData, setRecipientData] = useState<Record<string, RecipientData>>({});
   const [processing, setProcessing] = useState<string | null>(null);
-  const [removeConfirm, setRemoveConfirm] = useState<{ compositeKey: string; channelId: string; entry: string } | null>(null);
+  const [removeConfirm, setRemoveConfirm] = useState<{ compositeKey: string; channelId: string; accountId?: string; entry: string } | null>(null);
   const [mobileDeviceStatus, setMobileDeviceStatus] = useState<MobileDeviceStatusResponse["devices"]>({});
   const [mobilePairings, setMobilePairings] = useState<MobilePairingInfo[]>([]);
 
@@ -155,7 +155,7 @@ export function ChannelAccountsTable({
     try {
       const [result, requests] = await Promise.all([
         fetchAllowlist(channelId, accountId),
-        fetchPairingRequests(channelId),
+        fetchPairingRequests(channelId, accountId),
       ]);
       setRecipientData(prev => ({
         ...prev,
@@ -206,7 +206,7 @@ export function ChannelAccountsTable({
     try {
       const [result, requests] = await Promise.all([
         fetchAllowlist(channelId, accountId),
-        fetchPairingRequests(channelId),
+        fetchPairingRequests(channelId, accountId),
       ]);
       setRecipientData(prev => ({
         ...prev,
@@ -248,10 +248,10 @@ export function ChannelAccountsTable({
     });
   }
 
-  async function handleApprove(compositeKey: string, channelId: string, code: string) {
+  async function handleApprove(compositeKey: string, channelId: string, accountId: string, code: string) {
     setProcessing(code);
     try {
-      const result = await approvePairing(channelId, code, i18nLang);
+      const result = await approvePairing(channelId, code, i18nLang, accountId);
       setRecipientData(prev => {
         const data = prev[compositeKey];
         if (!data) return prev;
@@ -260,7 +260,8 @@ export function ChannelAccountsTable({
           [compositeKey]: {
             ...data,
             pairingRequests: data.pairingRequests.filter(r => r.code !== code),
-            allowlist: [...data.allowlist, result.id],
+            allowlist: data.allowlist.includes(result.id) ? data.allowlist : [...data.allowlist, result.id],
+            owners: { ...data.owners, [result.id]: true },
           },
         };
       });
@@ -275,13 +276,13 @@ export function ChannelAccountsTable({
     }
   }
 
-  function requestRemove(compositeKey: string, channelId: string, entry: string) {
-    setRemoveConfirm({ compositeKey, channelId, entry });
+  function requestRemove(compositeKey: string, channelId: string, accountId: string, entry: string) {
+    setRemoveConfirm({ compositeKey, channelId, accountId, entry });
   }
 
   async function confirmRemove() {
     if (!removeConfirm) return;
-    const { compositeKey, channelId, entry } = removeConfirm;
+    const { compositeKey, channelId, accountId, entry } = removeConfirm;
     setRemoveConfirm(null);
     setProcessing(entry);
 
@@ -295,7 +296,7 @@ export function ChannelAccountsTable({
           await entityStore.mobileManager.disconnectOne(pairing.id);
         }
       } else {
-        await removeFromAllowlist(channelId, entry);
+        await removeFromAllowlist(channelId, entry, accountId);
       }
       setRecipientData(prev => {
         const data = prev[compositeKey];
@@ -327,7 +328,7 @@ export function ChannelAccountsTable({
     }
   }
 
-  async function handleOwnerToggle(compositeKey: string, channelId: string, recipientId: string, newValue: boolean) {
+  async function handleOwnerToggle(compositeKey: string, channelId: string, accountId: string, recipientId: string, newValue: boolean) {
     const data = recipientData[compositeKey];
     if (!data) return;
 
@@ -343,7 +344,7 @@ export function ChannelAccountsTable({
     }));
 
     try {
-      await setRecipientOwner(channelId, recipientId, newValue);
+      await setRecipientOwner(channelId, recipientId, newValue, accountId);
     } catch {
       // Revert on failure
       setRecipientData(prev => ({
@@ -356,7 +357,7 @@ export function ChannelAccountsTable({
     }
   }
 
-  async function handleLabelBlur(compositeKey: string, channelId: string, recipientId: string, newLabel: string) {
+  async function handleLabelBlur(compositeKey: string, channelId: string, accountId: string, recipientId: string, newLabel: string) {
     const data = recipientData[compositeKey];
     if (!data) return;
 
@@ -376,7 +377,7 @@ export function ChannelAccountsTable({
     }));
 
     try {
-      await setRecipientLabel(channelId, recipientId, newLabel);
+      await setRecipientLabel(channelId, recipientId, newLabel, accountId);
     } catch {
       // Revert on failure
       setRecipientData(prev => ({
@@ -407,7 +408,7 @@ export function ChannelAccountsTable({
     return t("pairing.timeDaysAgo", { count: diffDays });
   }
 
-  function renderExpandedRow(compositeKey: string, channelId: string) {
+  function renderExpandedRow(compositeKey: string, channelId: string, accountId: string) {
     const data = recipientData[compositeKey];
     if (!data) return null;
 
@@ -462,7 +463,7 @@ export function ChannelAccountsTable({
                         <td className="text-right">
                           <button
                             className="btn btn-primary btn-sm"
-                            onClick={() => handleApprove(compositeKey, channelId, request.code)}
+                            onClick={() => handleApprove(compositeKey, channelId, accountId, request.code)}
                             disabled={processing === request.code}
                           >
                             {processing === request.code ? t("pairing.approving") : t("pairing.approve")}
@@ -523,20 +524,20 @@ export function ChannelAccountsTable({
                               className="recipient-label-input"
                               defaultValue={data.labels[entry] || ""}
                               placeholder={t("pairing.labelPlaceholder")}
-                              onBlur={e => handleLabelBlur(compositeKey, channelId, entry, e.target.value.trim())}
+                              onBlur={e => handleLabelBlur(compositeKey, channelId, accountId, entry, e.target.value.trim())}
                             />
                           </td>
                           <td>
                             <div className="perm-switcher">
                               <button
                                 className={`perm-switcher-btn perm-switcher-btn-left ${isOwner ? "perm-switcher-btn-active" : "perm-switcher-btn-inactive"}`}
-                                onClick={() => !isOwner && handleOwnerToggle(compositeKey, channelId, entry, true)}
+                                onClick={() => !isOwner && handleOwnerToggle(compositeKey, channelId, accountId, entry, true)}
                               >
                                 {t("pairing.ownerBadge")}
                               </button>
                               <button
                                 className={`perm-switcher-btn perm-switcher-btn-right ${!isOwner ? "perm-switcher-btn-active" : "perm-switcher-btn-inactive"}`}
-                                onClick={() => isOwner && handleOwnerToggle(compositeKey, channelId, entry, false)}
+                                onClick={() => isOwner && handleOwnerToggle(compositeKey, channelId, accountId, entry, false)}
                               >
                                 {t("pairing.nonOwnerBadge")}
                               </button>
@@ -545,7 +546,7 @@ export function ChannelAccountsTable({
                           <td className="text-right">
                             <button
                               className="btn btn-danger btn-sm"
-                              onClick={() => requestRemove(compositeKey, channelId, entry)}
+                              onClick={() => requestRemove(compositeKey, channelId, accountId, entry)}
                               disabled={processing === entry}
                             >
                               {processing === entry ? t("pairing.removing") : t("common.remove")}
@@ -647,7 +648,7 @@ export function ChannelAccountsTable({
                         </div>
                       </td>
                     </tr>
-                    {isExpanded && canExpand && renderExpandedRow(compositeKey, channelId)}
+                    {isExpanded && canExpand && renderExpandedRow(compositeKey, channelId, account.accountId)}
                   </Fragment>
                 );
               })

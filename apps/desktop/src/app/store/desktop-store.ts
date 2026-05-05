@@ -337,6 +337,18 @@ const DesktopRootStoreModel = RootStoreModel.actions((self) => ({
     });
   },
 
+  /** Update account-scoped recipient state derived from pairing/allowFrom storage. */
+  updateChannelAccountRecipients(channelId: string, accountId: string, recipients: Record<string, unknown>) {
+    const account = self.channelAccounts.find(
+      (a) => a.channelId === channelId && a.accountId === accountId,
+    );
+    if (!account) return;
+    applySnapshot(account, {
+      ...getSnapshot(account),
+      recipients,
+    });
+  },
+
   /** Remove a channel account by composite key. */
   removeChannelAccount(channelId: string, accountId: string) {
     const idx = self.channelAccounts.findIndex(

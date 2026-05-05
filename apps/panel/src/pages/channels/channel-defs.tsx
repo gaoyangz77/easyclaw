@@ -33,6 +33,7 @@ export interface MstChannelAccountLike {
   accountId: string;
   name: string | null;
   config: Record<string, unknown>;
+  recipients?: ChannelAccountSnapshot["recipients"];
   status?: {
     hasContextToken?: boolean | null;
   };
@@ -177,6 +178,9 @@ function buildAccountWithRuntime(
   if (mst.status?.hasContextToken !== undefined) {
     merged.contextTokenReady = mst.status.hasContextToken;
   }
+  if (mst.recipients) {
+    merged.recipients = mst.recipients;
+  }
 
   return merged;
 }
@@ -216,6 +220,9 @@ function buildAccountWithoutRuntime(mst: MstChannelAccountLike): ChannelAccountS
   if (typeof cfg.webhookUrl === "string") account.webhookUrl = cfg.webhookUrl;
   if (mst.status?.hasContextToken !== undefined) {
     account.contextTokenReady = mst.status.hasContextToken;
+  }
+  if (mst.recipients) {
+    account.recipients = mst.recipients;
   }
 
   return account;

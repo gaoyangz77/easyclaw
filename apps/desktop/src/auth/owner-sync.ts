@@ -11,7 +11,7 @@ export function syncOwnerAllowFrom(storage: Storage, configPath?: string): void 
   const path = configPath ?? resolveOpenClawConfigPath();
   const config = readExistingConfig(path) as Record<string, unknown>;
 
-  const owners = storage.channelRecipients.getOwners();
+  const owners = filterActiveOwnerRecipients(storage);
   const ownerEntries = [
     "openclaw-control-ui",
     ...owners.map((o) => `${o.channelId}:${o.recipientId}`),
@@ -34,10 +34,19 @@ export function syncOwnerAllowFrom(storage: Storage, configPath?: string): void 
  * Build the ownerAllowFrom array from storage, for use in writeGatewayConfig().
  */
 export function buildOwnerAllowFrom(storage: Storage): string[] {
-  const owners = storage.channelRecipients.getOwners();
+  const owners = filterActiveOwnerRecipients(storage);
   const entries = [
     "openclaw-control-ui",
     ...owners.map((o) => `${o.channelId}:${o.recipientId}`),
   ];
   return [...new Set(entries)];
+}
+
+function filterActiveOwnerRecipients(storage: Storage): Array<{ channelId: string; recipientId: string }> {
+  const activeChannelIds = new Set(storage.channelAccounts.list().map((account) => account.channelId));
+  activeChannelIds.add("mobile");
+
+  return storage.channelRecipients.getOwners().filter(({ channelId, recipientId }) => (
+    activeChannelIds.has(channelId) && !recipientId.startsWith(`${channelId}:`)
+  ));
 }

@@ -37,8 +37,9 @@ export interface PairingRequest {
   meta?: Record<string, string>;
 }
 
-export async function fetchPairingRequests(channelId: string): Promise<PairingRequest[]> {
-  const data = await fetchJson<{ requests: PairingRequest[] }>(clientPath(API["pairing.requests"], { channelId }));
+export async function fetchPairingRequests(channelId: string, accountId?: string): Promise<PairingRequest[]> {
+  const qs = accountId ? `?accountId=${encodeURIComponent(accountId)}` : "";
+  const data = await fetchJson<{ requests: PairingRequest[] }>(clientPath(API["pairing.requests"], { channelId }) + qs);
   return data.requests;
 }
 
@@ -53,30 +54,33 @@ export async function fetchAllowlist(channelId: string, accountId?: string): Pro
   return fetchJson<AllowlistResult>(clientPath(API["pairing.allowlist.get"], { channelId }) + qs);
 }
 
-export async function setRecipientLabel(channelId: string, recipientId: string, label: string): Promise<void> {
-  await fetchJson(clientPath(API["pairing.allowlist.setLabel"], { channelId, recipientId }), {
+export async function setRecipientLabel(channelId: string, recipientId: string, label: string, accountId?: string): Promise<void> {
+  const qs = accountId ? `?accountId=${encodeURIComponent(accountId)}` : "";
+  await fetchJson(clientPath(API["pairing.allowlist.setLabel"], { channelId, recipientId }) + qs, {
     method: "PUT",
     body: JSON.stringify({ label }),
   });
 }
 
-export async function setRecipientOwner(channelId: string, recipientId: string, isOwner: boolean): Promise<void> {
-  await fetchJson(clientPath(API["pairing.allowlist.setOwner"], { channelId, recipientId }), {
+export async function setRecipientOwner(channelId: string, recipientId: string, isOwner: boolean, accountId?: string): Promise<void> {
+  const qs = accountId ? `?accountId=${encodeURIComponent(accountId)}` : "";
+  await fetchJson(clientPath(API["pairing.allowlist.setOwner"], { channelId, recipientId }) + qs, {
     method: "PUT",
     body: JSON.stringify({ isOwner }),
   });
 }
 
-export async function approvePairing(channelId: string, code: string, locale?: string): Promise<{ id: string }> {
+export async function approvePairing(channelId: string, code: string, locale?: string, accountId?: string): Promise<{ id: string }> {
   const data = await fetchJson<{ id: string }>(clientPath(API["pairing.approve"]), {
     method: "POST",
-    body: JSON.stringify({ channelId, code, locale }),
+    body: JSON.stringify({ channelId, accountId, code, locale }),
   });
   return data;
 }
 
-export async function removeFromAllowlist(channelId: string, entry: string): Promise<void> {
-  await fetchJson(clientPath(API["pairing.allowlist.remove"], { channelId, recipientId: entry }), {
+export async function removeFromAllowlist(channelId: string, entry: string, accountId?: string): Promise<void> {
+  const qs = accountId ? `?accountId=${encodeURIComponent(accountId)}` : "";
+  await fetchJson(clientPath(API["pairing.allowlist.remove"], { channelId, recipientId: entry }) + qs, {
     method: "DELETE",
   });
 }
