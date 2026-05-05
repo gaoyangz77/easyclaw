@@ -180,6 +180,7 @@ export interface OAuthCompletePayload {
 interface SubscriptionConfig {
   key: string;
   subscribe: () => () => void;
+  authRequired?: boolean;
 }
 
 /**
@@ -196,6 +197,12 @@ export class BackendSubscriptionClient {
 
   /** Stored configs for re-subscribing after reconnect. */
   private subscriptionConfigs = new Map<string, SubscriptionConfig>();
+
+  /** Whether authenticated subscription configs should be active. */
+  private authenticatedSubscriptionsEnabled = false;
+
+  /** Token used by the current authenticated subscription connection. */
+  private authenticatedSubscriptionToken: string | null = null;
 
   /** Monotonic per-subscription attempt counters for log correlation. */
   private subscriptionAttemptCounters = new Map<string, number>();
@@ -225,6 +232,41 @@ export class BackendSubscriptionClient {
   reconnect(): void {
     this.disconnect();
     this.doConnect();
+  }
+
+  enableAuthenticatedSubscriptions(): void {
+    const token = this.getToken?.() ?? null;
+    if (!token) {
+      this.disableAuthenticatedSubscriptions();
+      return;
+    }
+
+    const wasEnabled = this.authenticatedSubscriptionsEnabled;
+    const tokenChanged = this.authenticatedSubscriptionToken !== token;
+    this.authenticatedSubscriptionsEnabled = true;
+    this.authenticatedSubscriptionToken = token;
+
+    if (!this.client) {
+      this.doConnect();
+      return;
+    }
+
+    if (!wasEnabled || tokenChanged) {
+      this.reconnect();
+    }
+  }
+
+  disableAuthenticatedSubscriptions(): void {
+    if (!this.authenticatedSubscriptionsEnabled && !this.authenticatedSubscriptionToken) {
+      return;
+    }
+
+    this.authenticatedSubscriptionsEnabled = false;
+    this.authenticatedSubscriptionToken = null;
+
+    if (this.client) {
+      this.reconnect();
+    }
   }
 
   private nextAttempt(key: string): number {
@@ -280,6 +322,28 @@ export class BackendSubscriptionClient {
     });
   }
 
+  private shouldSubscribe(config: SubscriptionConfig): boolean {
+    return !config.authRequired || this.authenticatedSubscriptionsEnabled;
+  }
+
+  private startSubscription(config: SubscriptionConfig): void {
+    if (!this.client || !this.shouldSubscribe(config)) return;
+    this.activeUnsubscribes.get(config.key)?.();
+    const unsub = config.subscribe();
+    this.activeUnsubscribes.set(config.key, unsub);
+  }
+
+  private registerSubscription(config: SubscriptionConfig): () => void {
+    this.subscriptionConfigs.set(config.key, config);
+    this.startSubscription(config);
+
+    return () => {
+      this.activeUnsubscribes.get(config.key)?.();
+      this.activeUnsubscribes.delete(config.key);
+      this.subscriptionConfigs.delete(config.key);
+    };
+  }
+
   /**
    * Subscribe to update-available events. Returns an unsubscribe function.
    */
@@ -331,17 +395,7 @@ export class BackendSubscriptionClient {
       );
     };
 
-    const config: SubscriptionConfig = { key, subscribe };
-    this.subscriptionConfigs.set(key, config);
-
-    const unsub = subscribe();
-    this.activeUnsubscribes.set(key, unsub);
-
-    return () => {
-      this.activeUnsubscribes.get(key)?.();
-      this.activeUnsubscribes.delete(key);
-      this.subscriptionConfigs.delete(key);
-    };
+    return this.registerSubscription({ key, subscribe });
   }
 
   /**
@@ -388,17 +442,7 @@ export class BackendSubscriptionClient {
       );
     };
 
-    const config: SubscriptionConfig = { key, subscribe };
-    this.subscriptionConfigs.set(key, config);
-
-    const unsub = subscribe();
-    this.activeUnsubscribes.set(key, unsub);
-
-    return () => {
-      this.activeUnsubscribes.get(key)?.();
-      this.activeUnsubscribes.delete(key);
-      this.subscriptionConfigs.delete(key);
-    };
+    return this.registerSubscription({ key, subscribe });
   }
 
   /**
@@ -446,17 +490,7 @@ export class BackendSubscriptionClient {
       );
     };
 
-    const config: SubscriptionConfig = { key, subscribe };
-    this.subscriptionConfigs.set(key, config);
-
-    const unsub = subscribe();
-    this.activeUnsubscribes.set(key, unsub);
-
-    return () => {
-      this.activeUnsubscribes.get(key)?.();
-      this.activeUnsubscribes.delete(key);
-      this.subscriptionConfigs.delete(key);
-    };
+    return this.registerSubscription({ key, subscribe, authRequired: true });
   }
 
   /**
@@ -506,17 +540,7 @@ export class BackendSubscriptionClient {
       );
     };
 
-    const config: SubscriptionConfig = { key, subscribe };
-    this.subscriptionConfigs.set(key, config);
-
-    const unsub = subscribe();
-    this.activeUnsubscribes.set(key, unsub);
-
-    return () => {
-      this.activeUnsubscribes.get(key)?.();
-      this.activeUnsubscribes.delete(key);
-      this.subscriptionConfigs.delete(key);
-    };
+    return this.registerSubscription({ key, subscribe, authRequired: true });
   }
 
   private doConnect(): void {
@@ -546,8 +570,7 @@ export class BackendSubscriptionClient {
 
     // Establish previously registered subscriptions (e.g. after disconnect → connect cycle)
     for (const config of this.subscriptionConfigs.values()) {
-      const unsub = config.subscribe();
-      this.activeUnsubscribes.set(config.key, unsub);
+      this.startSubscription(config);
     }
   }
 }

@@ -364,11 +364,18 @@ app.whenReady().then(async () => {
   proxyNetwork.setProxyRouterPort(actualProxyRouterPort);
   log.info(`Proxy router bound to port ${actualProxyRouterPort}`);
 
-  // Now that proxy router is up, validate auth session and connect backend subscriptions.
-  bootstrapDesktopAuthState(authSession, rootStore).catch((err) => {
-    log.warn("Failed to bootstrap desktop auth state:", err);
-  });
+  // Public subscriptions may connect immediately; authenticated subscriptions
+  // are enabled only after auth bootstrap validates or refreshes the token.
   backendSubscription.connect(() => authSession.getAccessToken());
+  bootstrapDesktopAuthState(authSession, rootStore)
+    .then(() => {
+      if (authSession.getAccessToken()) {
+        backendSubscription.enableAuthenticatedSubscriptions();
+      }
+    })
+    .catch((err) => {
+      log.warn("Failed to bootstrap desktop auth state:", err);
+    });
 
   // Gateway port: use env override if set (nonzero), otherwise ask OS for a free port.
   const envGatewayPort = resolveGatewayPort();

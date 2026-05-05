@@ -21,6 +21,9 @@ const {
   },
   backendState: {
     connected: false,
+    connect: vi.fn(),
+    enableAuthenticatedSubscriptions: vi.fn(),
+    disableAuthenticatedSubscriptions: vi.fn(),
     reconnect: vi.fn(),
     disconnect: vi.fn(),
   },
@@ -54,6 +57,16 @@ vi.mock("../src/cloud/backend-subscription-client.js", () => ({
   BackendSubscriptionClient: class MockBackendSubscriptionClient {
     isConnected() {
       return backendState.connected;
+    }
+    connect() {
+      backendState.connect();
+      backendState.connected = true;
+    }
+    enableAuthenticatedSubscriptions() {
+      backendState.enableAuthenticatedSubscriptions();
+    }
+    disableAuthenticatedSubscriptions() {
+      backendState.disableAuthenticatedSubscriptions();
     }
     reconnect() {
       backendState.reconnect();
@@ -89,7 +102,7 @@ describe("setupAuth subscription lifecycle", () => {
     backendState.connected = false;
   });
 
-  it("does not reconnect when validate hydrates the initial user with the same token", async () => {
+  it("enables authenticated subscriptions when validate hydrates the initial user", async () => {
     await setupAuth({
       storage: {} as any,
       secretStore: {} as any,
@@ -102,11 +115,12 @@ describe("setupAuth subscription lifecycle", () => {
     backendState.connected = true;
     await emitUserChanged({ userId: "u1" });
 
+    expect(backendState.enableAuthenticatedSubscriptions).toHaveBeenCalledTimes(1);
     expect(backendState.reconnect).not.toHaveBeenCalled();
     expect(backendState.disconnect).not.toHaveBeenCalled();
   });
 
-  it("reconnects when the authenticated token changes", async () => {
+  it("enables authenticated subscriptions when the authenticated token changes", async () => {
     await setupAuth({
       storage: {} as any,
       secretStore: {} as any,
@@ -120,11 +134,11 @@ describe("setupAuth subscription lifecycle", () => {
     authState.token = "token-2";
     await emitUserChanged({ userId: "u1" });
 
-    expect(backendState.reconnect).toHaveBeenCalledTimes(1);
-    expect(backendState.disconnect).not.toHaveBeenCalled();
+    expect(backendState.enableAuthenticatedSubscriptions).toHaveBeenCalledTimes(1);
+    expect(backendState.disableAuthenticatedSubscriptions).not.toHaveBeenCalled();
   });
 
-  it("disconnects when the user logs out", async () => {
+  it("disables authenticated subscriptions when the user logs out", async () => {
     await setupAuth({
       storage: {} as any,
       secretStore: {} as any,
@@ -138,7 +152,25 @@ describe("setupAuth subscription lifecycle", () => {
     authState.token = null;
     await emitUserChanged(null);
 
-    expect(backendState.disconnect).toHaveBeenCalledTimes(1);
-    expect(backendState.reconnect).not.toHaveBeenCalled();
+    expect(backendState.disableAuthenticatedSubscriptions).toHaveBeenCalledTimes(1);
+    expect(backendState.enableAuthenticatedSubscriptions).not.toHaveBeenCalled();
+  });
+
+  it("enables authenticated subscriptions when a user logs in after startup", async () => {
+    authState.token = null;
+    await setupAuth({
+      storage: {} as any,
+      secretStore: {} as any,
+      locale: "en",
+      deviceId: "device-1",
+      proxyFetch: vi.fn() as any,
+      broadcastEvent: mockBroadcastEvent as any,
+    });
+
+    authState.token = "token-1";
+    await emitUserChanged({ userId: "u1" });
+
+    expect(backendState.enableAuthenticatedSubscriptions).toHaveBeenCalledTimes(1);
+    expect(backendState.disableAuthenticatedSubscriptions).not.toHaveBeenCalled();
   });
 });

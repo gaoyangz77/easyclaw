@@ -39,27 +39,14 @@ export async function setupAuth(deps: SetupAuthDeps): Promise<AuthRuntime> {
 
   // Initialize unified backend subscription client (single shared graphql-ws connection)
   const backendSubscription = new BackendSubscriptionClient(locale);
-  let lastSubscriptionToken = authSession.getAccessToken();
 
-  // Reconnect/disconnect on auth lifecycle changes (login/logout while app is running).
-  // The initial connect() is deferred until after proxy-router starts (main.ts),
-  // so we skip onUserChanged events that fire before then (e.g. during loadFromKeychain).
+  // Start/stop authenticated subscriptions on auth lifecycle changes. Public
+  // subscriptions are allowed to remain connected while signed out.
   authSession.onUserChanged((user) => {
-    const currentToken = authSession.getAccessToken();
-
-    if (!backendSubscription.isConnected()) {
-      lastSubscriptionToken = currentToken;
-      return; // not yet initialized by main.ts
-    }
-
     if (user) {
-      const tokenChanged = currentToken !== lastSubscriptionToken;
-      lastSubscriptionToken = currentToken;
-      if (!tokenChanged) return;
-      backendSubscription.reconnect();
+      backendSubscription.enableAuthenticatedSubscriptions();
     } else {
-      lastSubscriptionToken = currentToken;
-      backendSubscription.disconnect();
+      backendSubscription.disableAuthenticatedSubscriptions();
     }
   });
 
