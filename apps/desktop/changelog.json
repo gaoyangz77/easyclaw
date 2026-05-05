@@ -1,5 +1,19 @@
 [
   {
+    "version": "1.8.11",
+    "date": "2026-05-04",
+    "en": [
+      "Add affiliate inbound and ecommerce relay foundations to support upcoming creator collaboration and ecommerce automation workflows",
+      "Bundle local CLI launch support into the Windows installer and improve startup/runtime dependency staging for a smoother desktop setup",
+      "Improve chat polish by hiding internal exec completion noise and making preset skill package downloads/extraction work more reliably"
+    ],
+    "zh": [
+      "补上联盟达人与电商 relay 的底层能力，为后续达人合作、电商自动化等功能打基础",
+      "Windows 安装包整合本地 CLI 启动支持，并改进运行依赖准备流程，桌面端安装和启动更顺手",
+      "优化聊天体验，隐藏内部执行完成提示噪音，同时让预置技能包下载与解压更稳定"
+    ]
+  },
+  {
     "version": "1.8.10",
     "date": "2026-04-29",
     "en": [
