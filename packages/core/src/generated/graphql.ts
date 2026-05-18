@@ -3705,7 +3705,13 @@ export const PlatformAppStatus = {
 export type PlatformAppStatus = typeof PlatformAppStatus[keyof typeof PlatformAppStatus];
 /** Platform market region */
 export const PlatformMarket = {
+  De: 'DE',
+  Fr: 'FR',
+  Gb: 'GB',
   Id: 'ID',
+  Ie: 'IE',
+  It: 'IT',
+  Mx: 'MX',
   My: 'MY',
   Ph: 'PH',
   Row: 'ROW',
@@ -4932,8 +4938,13 @@ export const ShopPlatform = {
 export type ShopPlatform = typeof ShopPlatform[keyof typeof ShopPlatform];
 /** Country/region code for a connected shop */
 export const ShopRegion = {
+  De: 'DE',
+  Fr: 'FR',
   Gb: 'GB',
   Id: 'ID',
+  Ie: 'IE',
+  It: 'IT',
+  Mx: 'MX',
   My: 'MY',
   Ph: 'PH',
   Row: 'ROW',
