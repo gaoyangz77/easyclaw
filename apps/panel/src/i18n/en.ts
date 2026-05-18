@@ -2372,6 +2372,12 @@ export default {
     },
     market: {
       US: "United States",
+      GB: "United Kingdom",
+      MX: "Mexico",
+      FR: "France",
+      DE: "Germany",
+      IT: "Italy",
+      IE: "Ireland",
       MY: "Malaysia",
       TH: "Thailand",
       ID: "Indonesia",
