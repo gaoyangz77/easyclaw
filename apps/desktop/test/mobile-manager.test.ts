@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { types, applySnapshot } from "mobx-state-tree";
 import { MobilePairingModel } from "@rivonclaw/core/models";
-import { MobileManagerModel } from "../src/mobile/mobile-manager.js";
+import { MobileManagerModel, isLegacyZhuaZhuaRelayUrl } from "../src/mobile/mobile-manager.js";
 
 /**
  * Build a minimal MST tree that mirrors the desktop store structure
@@ -55,7 +55,12 @@ describe("MobileManagerModel", () => {
       channelRecipients: {
         delete: vi.fn(),
         ensureExists: vi.fn(),
+        getOwners: vi.fn().mockReturnValue([]),
         hasAnyOwner: vi.fn().mockReturnValue(false),
+      },
+      channelAccounts: {
+        get: vi.fn().mockReturnValue(null),
+        list: vi.fn().mockReturnValue([]),
       },
     };
 
@@ -180,5 +185,33 @@ describe("MobileManagerModel", () => {
 
     expect(mockStorage.mobilePairings.markPairingStale).toHaveBeenCalledWith("p1");
     expect(store.mobilePairings[0].status).toBe("stale");
+  });
+
+  it("detects legacy zhuazhua relay URLs", () => {
+    expect(isLegacyZhuaZhuaRelayUrl("wss://relay.zhuazhuaai.cn")).toBe(true);
+    expect(isLegacyZhuaZhuaRelayUrl("wss://relay.rivonclaw.com/ws")).toBe(false);
+  });
+
+  it("does not start sync for disabled legacy zhuazhua relay pairings", () => {
+    const request = vi.fn();
+    store.mobileManager.setEnv({
+      storage: mockStorage,
+      controlPlaneUrl: "http://mock-cp",
+      stateDir: "",
+      getRpcClient: () => ({
+        isConnected: () => true,
+        request,
+      }),
+    });
+
+    store.mobileManager.completePairing({
+      accessToken: "tok1",
+      relayUrl: "wss://relay.zhuazhuaai.cn",
+      pairingId: "legacy-pairing",
+      desktopDeviceId: "desktop-1",
+      mobileDeviceId: "mobile-1",
+    });
+
+    expect(request).not.toHaveBeenCalledWith("mobile_chat_start_sync", expect.anything());
   });
 });

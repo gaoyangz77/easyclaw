@@ -12,6 +12,17 @@ import { syncOwnerAllowFrom } from "../auth/owner-sync.js";
 import { createLogger } from "@rivonclaw/logger";
 
 const log = createLogger("mobile-manager");
+const LEGACY_ZHUAZHUA_RELAY_HOST = "relay.zhuazhuaai.cn";
+
+export function isLegacyZhuaZhuaRelayUrl(relayUrl: string | null | undefined): boolean {
+  if (!relayUrl) return false;
+
+  try {
+    return new URL(relayUrl).hostname.toLowerCase() === LEGACY_ZHUAZHUA_RELAY_HOST;
+  } catch {
+    return relayUrl.toLowerCase().includes(LEGACY_ZHUAZHUA_RELAY_HOST);
+  }
+}
 
 /** How long a pairing code stays valid (ms). Shared with panel via API response. */
 export const PAIRING_CODE_TTL_MS = DEFAULTS.desktop.pairingCodeTtlMs;
@@ -442,7 +453,9 @@ export const MobileManagerModel = types
 
         // Start sync engine via RPC
         const rpcClient = getRpcClient();
-        if (rpcClient?.isConnected()) {
+        if (isLegacyZhuaZhuaRelayUrl(status.relayUrl)) {
+          log.info("Skipping legacy mobile relay sync; service is disabled:", status.relayUrl);
+        } else if (rpcClient?.isConnected()) {
           log.info("Sending mobile_chat_start_sync RPC. relayUrl:", status.relayUrl);
           rpcClient.request("mobile_chat_start_sync", {
             pairingId: newPairing.pairingId || newPairing.id,

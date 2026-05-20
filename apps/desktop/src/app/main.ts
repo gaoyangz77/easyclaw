@@ -85,6 +85,7 @@ import { setupAuth } from "./auth-runtime.js";
 import { bootstrapDesktopAuthState } from "./bootstrap-auth-state.js";
 import { BROWSER_PROFILE_SESSION_STATE_POLICY_LITE_QUERY } from "../cloud/browser-profile-queries.js";
 import { fetchTelegramDebugOperatorUserIds } from "../channels/telegram-debug-relay.js";
+import { isLegacyZhuaZhuaRelayUrl } from "../mobile/mobile-manager.js";
 
 const log = createLogger("desktop");
 
@@ -1636,6 +1637,12 @@ app.whenReady().then(async () => {
           pairingId: pairing.pairingId || pairing.id,
           mobileDeviceId: pairing.mobileDeviceId,
         });
+        continue;
+      }
+      if (isLegacyZhuaZhuaRelayUrl(pairing.relayUrl)) {
+        log.info(
+          `Skipping legacy mobile relay sync for ${pairing.pairingId || pairing.mobileDeviceId || pairing.id}; service is disabled`,
+        );
         continue;
       }
       rpc.request("mobile_chat_start_sync", {
