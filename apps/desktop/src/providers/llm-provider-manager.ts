@@ -62,6 +62,22 @@ export interface SessionModelOverride {
   model: string;
 }
 
+export type SessionModelMode = "default" | "explicit" | "scope";
+
+/**
+ * EasyClaw-owned per-session model fact.
+ *
+ * For default-following sessions, provider/model intentionally stay null even
+ * when we patch OpenClaw with a concrete model ref to refresh its runtime state.
+ */
+export interface SessionModelFact {
+  mode: SessionModelMode;
+  provider: string | null;
+  model: string | null;
+  appliedProvider?: string;
+  appliedModel?: string;
+}
+
 /** Scope context for model resolution. */
 export interface ModelScope {
   type: ToolScopeType;  // e.g., ScopeType.CS_SESSION
@@ -76,6 +92,8 @@ export const LLMProviderManagerModel = types
   .volatile(() => ({
     /** Per-session model overrides. Key = session key, value = { provider, model }. */
     sessionOverrides: new Map<string, SessionModelOverride>(),
+    /** EasyClaw-owned session model facts. Key = session key. Volatile by design. */
+    sessionModelFacts: new Map<string, SessionModelFact>(),
     /** Sessions that have had activity since app startup. Only these are patched on global default change. */
     activeSessions: new Set<string>(),
     /** Cached model catalog for validation. Set of "provider/modelId" strings. */
@@ -89,19 +107,48 @@ export const LLMProviderManagerModel = types
     getSessionModel(sessionKey: string): SessionModelOverride | null {
       return self.sessionOverrides.get(sessionKey) ?? null;
     },
+    /** Get the EasyClaw-owned session model fact, or synthesize default-following. */
+    getSessionModelFact(sessionKey: string): SessionModelFact {
+      return self.sessionModelFacts.get(sessionKey) ?? { mode: "default", provider: null, model: null };
+    },
     /** Get the fully resolved model info for a session (override → global fallback). */
     getSessionModelInfo(sessionKey: string): {
-      provider: string; model: string; isOverridden: boolean;
+      provider: string; model: string; isOverridden: boolean; mode: SessionModelMode;
+      appliedProvider?: string; appliedModel?: string;
     } | null {
       const { storage } = (self as any)._env as LLMProviderManagerEnv;
       const activeKey = storage.providerKeys.getActive();
       if (!activeKey) return null;
 
-      const override = self.sessionOverrides.get(sessionKey);
-      if (override) {
-        return { provider: override.provider, model: override.model, isOverridden: true };
+      const fact = self.sessionModelFacts.get(sessionKey);
+      if (fact?.mode === "explicit" && fact.provider && fact.model) {
+        return {
+          provider: fact.provider,
+          model: fact.model,
+          isOverridden: true,
+          mode: fact.mode,
+          appliedProvider: fact.appliedProvider,
+          appliedModel: fact.appliedModel,
+        };
       }
-      return { provider: activeKey.provider, model: activeKey.model, isOverridden: false };
+      if (fact?.mode === "scope" && fact.provider && fact.model) {
+        return {
+          provider: fact.provider,
+          model: fact.model,
+          isOverridden: false,
+          mode: fact.mode,
+          appliedProvider: fact.appliedProvider,
+          appliedModel: fact.appliedModel,
+        };
+      }
+      return {
+        provider: activeKey.provider,
+        model: activeKey.model,
+        isOverridden: false,
+        mode: "default",
+        appliedProvider: fact?.appliedProvider,
+        appliedModel: fact?.appliedModel,
+      };
     },
   }))
   .actions((self) => {
@@ -122,6 +169,60 @@ export const LLMProviderManagerModel = types
       await rpc.request("sessions.patch", { key: sessionKey, model: modelRef });
     }
 
+    function getActiveDefaultModel(): (SessionModelOverride & { modelRef: string }) | null {
+      const { storage } = getEnvDeps();
+      const active = storage.providerKeys.getActive();
+      if (!active?.provider || !active.model) return null;
+      return {
+        provider: active.provider,
+        model: active.model,
+        modelRef: resolveModelRef(active.provider, active.model, active.authType),
+      };
+    }
+
+    function markDefaultFollowing(sessionKey: string, applied?: SessionModelOverride): void {
+      self.sessionModelFacts.set(sessionKey, {
+        mode: "default",
+        provider: null,
+        model: null,
+        appliedProvider: applied?.provider,
+        appliedModel: applied?.model,
+      });
+    }
+
+    function markExplicit(sessionKey: string, selection: SessionModelOverride): void {
+      self.sessionModelFacts.set(sessionKey, {
+        mode: "explicit",
+        provider: selection.provider,
+        model: selection.model,
+        appliedProvider: selection.provider,
+        appliedModel: selection.model,
+      });
+    }
+
+    function markScope(sessionKey: string, selection: SessionModelOverride): void {
+      self.sessionModelFacts.set(sessionKey, {
+        mode: "scope",
+        provider: selection.provider,
+        model: selection.model,
+        appliedProvider: selection.provider,
+        appliedModel: selection.model,
+      });
+    }
+
+    async function patchSessionToActiveDefault(sessionKey: string): Promise<SessionModelOverride | null> {
+      const active = getActiveDefaultModel();
+      if (!active) {
+        await patchSession(sessionKey, null);
+        markDefaultFollowing(sessionKey);
+        return null;
+      }
+      await patchSession(sessionKey, active.modelRef);
+      const applied = { provider: active.provider, model: active.model };
+      markDefaultFollowing(sessionKey, applied);
+      return applied;
+    }
+
     /**
      * Reset sessions that are "following default" (no explicit volatile override)
      * and had activity during this app process. Historical gateway/chat session
@@ -131,17 +232,21 @@ export const LLMProviderManagerModel = types
      */
     async function resetDefaultFollowingSessions(): Promise<void> {
       const sessionKeys = new Set(self.activeSessions);
-      const toReset = [...sessionKeys].filter((key) => !self.sessionOverrides.has(key));
+      const toReset = [...sessionKeys].filter((key) => {
+        if (self.sessionOverrides.has(key)) return false;
+        const fact = self.sessionModelFacts.get(key);
+        return !fact || fact.mode === "default";
+      });
       if (toReset.length === 0) return;
 
       await Promise.allSettled(
         toReset.map((key) =>
-          patchSession(key, null).catch((err: unknown) => {
-            log.warn(`Failed to reset session ${key} to default:`, err);
+          patchSessionToActiveDefault(key).catch((err: unknown) => {
+            log.warn(`Failed to apply active default to session ${key}:`, err);
           }),
         ),
       );
-      log.info(`Reset ${toReset.length} default-following session(s) to new global default`);
+      log.info(`Applied new global default to ${toReset.length} default-following session(s)`);
     }
 
     /** Check if a provider/model combo is available in the cached catalog. */
@@ -242,11 +347,15 @@ export const LLMProviderManagerModel = types
       /** Mark a session as active (had activity since app startup). */
       trackSessionActivity(sessionKey: string) {
         self.activeSessions.add(sessionKey);
+        if (!self.sessionModelFacts.has(sessionKey)) {
+          markDefaultFollowing(sessionKey);
+        }
       },
 
       /** Clear non-persisted session tracking state. Primarily useful for tests. */
       clearVolatileSessionState() {
         self.sessionOverrides.clear();
+        self.sessionModelFacts.clear();
         self.activeSessions.clear();
       },
 
@@ -258,6 +367,7 @@ export const LLMProviderManagerModel = types
         const modelRef = resolveModelRef(provider, model);
         yield patchSession(sessionKey, modelRef);
         self.sessionOverrides.set(sessionKey, { provider, model });
+        markExplicit(sessionKey, { provider, model });
         self.activeSessions.add(sessionKey);
         log.info(`Switched session ${sessionKey} to ${modelRef}`);
       }),
@@ -265,7 +375,8 @@ export const LLMProviderManagerModel = types
       /** Clear per-session override — session reverts to global default. */
       resetSessionModel: flow(function* (sessionKey: string) {
         self.sessionOverrides.delete(sessionKey);
-        yield patchSession(sessionKey, null);
+        yield patchSessionToActiveDefault(sessionKey);
+        self.activeSessions.add(sessionKey);
         log.info(`Reset session ${sessionKey} to global default`);
       }),
 
@@ -273,7 +384,7 @@ export const LLMProviderManagerModel = types
        * Resolve and apply the best model for a session based on the override chain:
        *   1. Session-level override (explicit per-session switch)
        *   2. Scope-level override (e.g., per-shop CS model from entity cache)
-       *   3. Global default (sessions.patch model: null)
+       *   3. Global default (EasyClaw fact stays null/default; OpenClaw gets the concrete active ref)
        *
        * If a resolved model is unavailable in the catalog, falls through to the next layer.
        */
@@ -286,6 +397,7 @@ export const LLMProviderManagerModel = types
           if (isModelAvailable(sessionOverride.provider, sessionOverride.model)) {
             const ref = resolveModelRef(sessionOverride.provider, sessionOverride.model);
             yield patchSession(sessionKey, ref);
+            markExplicit(sessionKey, sessionOverride);
             log.info(`Applied session override ${ref} to ${sessionKey}`);
             return sessionOverride;
           }
@@ -298,13 +410,14 @@ export const LLMProviderManagerModel = types
           if (scopeModel) {
             const ref = resolveModelRef(scopeModel.provider, scopeModel.model);
             yield patchSession(sessionKey, ref);
+            markScope(sessionKey, scopeModel);
             log.info(`Applied scope override ${ref} to ${sessionKey} (${scope.type}/${scope.shopId ?? ""})`);
             return scopeModel;
           }
         }
 
         // Layer 3: global default
-        yield patchSession(sessionKey, null);
+        yield patchSessionToActiveDefault(sessionKey);
         log.info(`Applied global default to ${sessionKey}`);
         return null;
       }),

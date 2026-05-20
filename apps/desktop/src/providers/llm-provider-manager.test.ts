@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import type { ProviderKeyEntry } from "@rivonclaw/core";
+import { ScopeType, type ProviderKeyEntry } from "@rivonclaw/core";
 import { initLLMProviderManagerEnv, rootStore } from "../app/store/desktop-store.js";
 import { allKeysToMstSnapshots, toMstSnapshot } from "./provider-key-utils.js";
 
@@ -13,6 +13,7 @@ const mockSecretStore = {
 afterEach(() => {
   rootStore.llmManager.clearVolatileSessionState();
   rootStore.loadProviderKeys([]);
+  rootStore.clearCloudEntities();
   secretMap.clear();
   vi.restoreAllMocks();
 });
@@ -82,7 +83,15 @@ describe("LLMProviderManager", () => {
     expect(writeDefaultModelToConfig).toHaveBeenCalledWith("rivonclaw-pro", "gpt-5.4");
     expect(rpcRequest).toHaveBeenCalledWith("sessions.patch", {
       key: "chat-session-1",
+      model: "rivonclaw-pro/gpt-5.4",
+    });
+    expect(rootStore.llmManager.getSessionModel("chat-session-1")).toBeNull();
+    expect(rootStore.llmManager.getSessionModelFact("chat-session-1")).toMatchObject({
+      mode: "default",
+      provider: null,
       model: null,
+      appliedProvider: "rivonclaw-pro",
+      appliedModel: "gpt-5.4",
     });
     expect(restartGateway).not.toHaveBeenCalled();
   });
@@ -165,7 +174,15 @@ describe("LLMProviderManager", () => {
     expect(writeDefaultModelToConfig).toHaveBeenCalledWith("rivonclaw-pro", "gpt-5.4");
     expect(rpcRequest).toHaveBeenCalledWith("sessions.patch", {
       key: "telegram-session-default",
+      model: "rivonclaw-pro/gpt-5.4",
+    });
+    expect(rootStore.llmManager.getSessionModel("telegram-session-default")).toBeNull();
+    expect(rootStore.llmManager.getSessionModelFact("telegram-session-default")).toMatchObject({
+      mode: "default",
+      provider: null,
       model: null,
+      appliedProvider: "rivonclaw-pro",
+      appliedModel: "gpt-5.4",
     });
     expect(rpcRequest).not.toHaveBeenCalledWith("sessions.list", expect.anything());
     expect(rpcRequest).not.toHaveBeenCalledWith("sessions.patch", {
@@ -238,8 +255,117 @@ describe("LLMProviderManager", () => {
     expect(writeDefaultModelToConfig).toHaveBeenCalledWith("rivonclaw-pro", "gpt-5.4");
     expect(rpcRequest).toHaveBeenCalledWith("sessions.patch", {
       key: "agent:main:telegram:default:direct:42",
+      model: "rivonclaw-pro/gpt-5.4",
+    });
+    expect(rootStore.llmManager.getSessionModelFact("agent:main:telegram:default:direct:42")).toMatchObject({
+      mode: "default",
+      provider: null,
       model: null,
+      appliedProvider: "rivonclaw-pro",
+      appliedModel: "gpt-5.4",
     });
     expect(restartGateway).not.toHaveBeenCalled();
+  });
+
+  it("does not overwrite customer-service scope model overrides on global default activation", async () => {
+    const rpcRequest = vi.fn().mockResolvedValue(true);
+    const writeDefaultModelToConfig = vi.fn();
+
+    let keys: ProviderKeyEntry[] = [
+      {
+        id: "key-kimi",
+        provider: "kimi",
+        label: "Kimi",
+        model: "moonshot-v1-8k",
+        isDefault: true,
+        authType: "api_key",
+        createdAt: "",
+        updatedAt: "",
+      },
+      {
+        id: "key-pro",
+        provider: "rivonclaw-pro",
+        label: "RivonClaw Pro",
+        model: "gpt-5.4",
+        isDefault: false,
+        authType: "custom",
+        baseUrl: "https://example.test/llm/v1",
+        customProtocol: "openai",
+        customModelsJson: JSON.stringify([{ id: "gpt-5.4" }]),
+        createdAt: "",
+        updatedAt: "",
+      },
+    ];
+    const storage = {
+      providerKeys: {
+        getActive: () => keys.find((k) => k.isDefault),
+        getById: (id: string) => keys.find((k) => k.id === id),
+        getAll: () => keys,
+        setDefault: (id: string) => {
+          keys = keys.map((k) => ({ ...k, isDefault: k.id === id }));
+        },
+      },
+      settings: {
+        set: vi.fn(),
+        get: vi.fn(),
+      },
+    };
+    rootStore.loadProviderKeys(await allKeysToMstSnapshots(keys, mockSecretStore as any));
+    rootStore.ingestGraphQLResponse({
+      shops: [{
+        id: "shop-cs-override",
+        platform: "TIKTOK_SHOP",
+        platformShopId: "platform-shop-cs-override",
+        shopName: "CS Override Shop",
+        services: {
+          customerService: {
+            enabled: true,
+            csProviderOverride: "zhipu",
+            csModelOverride: "glm-5",
+          },
+        },
+      }],
+    });
+
+    initLLMProviderManagerEnv({
+      storage: storage as any,
+      secretStore: mockSecretStore as any,
+      getRpcClient: () => ({ request: rpcRequest }) as any,
+      toMstSnapshot,
+      allKeysToMstSnapshots,
+      syncActiveKey: async () => {},
+      syncAllAuthProfiles: async () => {},
+      writeProxyRouterConfig: async () => {},
+      writeDefaultModelToConfig,
+      writeFullGatewayConfig: async () => {},
+      restartGateway: async () => {},
+      proxyFetch: globalThis.fetch,
+      stateDir: "/tmp/rivonclaw-llm-manager-test",
+      getLastSystemProxy: () => null,
+    });
+
+    await rootStore.llmManager.applyModelForSession("agent:main:cs:tiktok:conv-1", {
+      type: ScopeType.CS_SESSION,
+      shopId: "shop-cs-override",
+    });
+    expect(rpcRequest).toHaveBeenCalledWith("sessions.patch", {
+      key: "agent:main:cs:tiktok:conv-1",
+      model: "zhipu/glm-5",
+    });
+    expect(rootStore.llmManager.getSessionModelFact("agent:main:cs:tiktok:conv-1")).toMatchObject({
+      mode: "scope",
+      provider: "zhipu",
+      model: "glm-5",
+    });
+
+    rpcRequest.mockClear();
+
+    await rootStore.llmManager.activateProvider("key-pro");
+
+    expect(writeDefaultModelToConfig).toHaveBeenCalledWith("rivonclaw-pro", "gpt-5.4");
+    expect(rpcRequest).not.toHaveBeenCalledWith("sessions.patch", {
+      key: "agent:main:cs:tiktok:conv-1",
+      model: "rivonclaw-pro/gpt-5.4",
+    });
   });
 });
