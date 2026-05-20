@@ -207,7 +207,7 @@ const ChatPageInner = observer(function ChatPageInner({
   const showHistoryEnd = allFetched && visibleCount >= messages.length && messages.length > 0;
   const isStreaming = runId !== null;
   const totalTokens = session.totalTokens;
-  const contextWindow = modelControls.activeModel?.contextWindow ?? null;
+  const contextWindow = modelControls.activeModel?.contextWindow ?? session.contextTokens ?? null;
 
   return (
     <div className="chat-container">

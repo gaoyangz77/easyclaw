@@ -15,6 +15,7 @@ export interface CatalogModel {
   id: string;
   name: string;
   contextWindow?: number;
+  contextTokens?: number;
 }
 
 export interface KeyModelSelectorProps {
@@ -278,21 +279,24 @@ export function KeyModelSelector({
 
             {/* Right column: models for active provider */}
             <div className="key-model-selector-models">
-              {activeModels.map((m) => (
-                <button
-                  type="button"
-                  key={m.id}
-                  className={`key-model-selector-model${hasExplicitSelection && m.id === selectedModel && activeProvider === selectedProvider ? " key-model-selector-model-active" : ""}`}
-                  onClick={() => handleSelectModel(activeProvider, m.id)}
-                >
-                  <span className="key-model-selector-model-name">{m.name}</span>
-                  {m.contextWindow != null && m.contextWindow > 0 && (
-                    <span className="key-model-selector-model-ctx">
-                      {formatContextWindow(m.contextWindow)}
-                    </span>
-                  )}
-                </button>
-              ))}
+              {activeModels.map((m) => {
+                const effectiveContext = m.contextTokens ?? m.contextWindow;
+                return (
+                  <button
+                    type="button"
+                    key={m.id}
+                    className={`key-model-selector-model${hasExplicitSelection && m.id === selectedModel && activeProvider === selectedProvider ? " key-model-selector-model-active" : ""}`}
+                    onClick={() => handleSelectModel(activeProvider, m.id)}
+                  >
+                    <span className="key-model-selector-model-name">{m.name}</span>
+                    {effectiveContext != null && effectiveContext > 0 && (
+                      <span className="key-model-selector-model-ctx">
+                        {formatContextWindow(effectiveContext)}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
               {activeModels.length === 0 && (
                 <div className="key-model-selector-empty">
                   {search.trim()

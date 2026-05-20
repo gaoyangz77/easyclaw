@@ -50,6 +50,7 @@ export interface CatalogModelEntry {
   id: string;
   name: string;
   contextWindow?: number;
+  contextTokens?: number;
 }
 
 /**

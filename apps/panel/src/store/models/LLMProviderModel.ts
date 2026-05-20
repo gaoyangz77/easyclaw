@@ -13,6 +13,7 @@ export interface SessionModelInfo {
   modelName: string;
   isOverridden: boolean;
   contextWindow: number | null;
+  contextTokens: number | null;
 }
 
 /** Fired after any global model or provider change. */
@@ -120,7 +121,7 @@ export const LLMProviderModel = types
           yield fetchJson(clientPath(API["sessionModel.get"]) + `?sessionKey=${encodeURIComponent(sessionKey)}`);
         if (!info?.provider) return null;
 
-        // Catalog lookup stays client-side (display name + contextWindow).
+        // Catalog lookup stays client-side (display name + effective context budget).
         // Use the cached catalog if available, otherwise fetch fresh.
         let catalog = self.catalog;
         if (!self.catalogReady || Object.keys(catalog).length === 0) {
@@ -136,7 +137,8 @@ export const LLMProviderModel = types
           model: info.model,
           modelName: match?.name ?? info.model,
           isOverridden: info.isOverridden,
-          contextWindow: match?.contextWindow ?? null,
+          contextWindow: match?.contextTokens ?? match?.contextWindow ?? null,
+          contextTokens: match?.contextTokens ?? null,
         };
       }),
 

@@ -22,8 +22,8 @@ vi.mock("../vendor/vendor.js", () => ({
   resolveVendorDir: () => "/tmp/fake-vendor",
 }));
 
-function entry(id: string, name?: string): CatalogModelEntry {
-  return { id, name: name ?? id };
+function entry(id: string, name?: string, context?: Partial<CatalogModelEntry>): CatalogModelEntry {
+  return { id, name: name ?? id, ...context };
 }
 
 // Import after mocking
@@ -154,6 +154,23 @@ describe("normalizeCatalog", () => {
     const result = normalizeCatalog({});
     expect(Object.keys(result).length).toBe(0);
   });
+
+  it("should expose effective context metadata for GPT-5.4 family without vendor edits", () => {
+    const result = normalizeCatalog({
+      "rivonclaw-pro": [entry("gpt-5.4", "GPT-5.4", { contextWindow: 200_000 })],
+      codex: [entry("gpt-5.4", "GPT-5.4", { contextWindow: 200_000 })],
+    });
+
+    expect(result["rivonclaw-pro"]![0]).toMatchObject({
+      id: "gpt-5.4",
+      contextWindow: 272_000,
+    });
+    expect(result["openai-codex"]![0]).toMatchObject({
+      id: "gpt-5.4",
+      contextWindow: 1_050_000,
+      contextTokens: 272_000,
+    });
+  });
 });
 
 describe("readGatewayModelCatalog", () => {
@@ -175,7 +192,7 @@ describe("readGatewayModelCatalog", () => {
         openai: {
           models: [
             { id: "gpt-4o", name: "GPT-4o" },
-            { id: "gpt-4o-mini", name: "GPT-4o Mini" },
+            { id: "gpt-4o-mini", name: "GPT-4o Mini", contextWindow: 128000, contextTokens: 64000 },
           ],
         },
         anthropic: {
@@ -191,6 +208,10 @@ describe("readGatewayModelCatalog", () => {
     expect(Object.keys(result)).toContain("anthropic");
     expect(result.openai).toHaveLength(2);
     expect(result.anthropic).toHaveLength(1);
+    expect(result.openai![1]).toMatchObject({
+      contextWindow: 128000,
+      contextTokens: 64000,
+    });
   });
 
   it("should skip providers with empty model arrays", () => {

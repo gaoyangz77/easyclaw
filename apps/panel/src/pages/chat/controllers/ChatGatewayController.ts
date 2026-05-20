@@ -813,7 +813,7 @@ export class ChatGatewayController {
           this.clearPendingStopNotice(activeKey, chatRunId);
           rs.finalizeRun(chatRunId);
           this.markRunRecentlyCompleted(activeKey, chatRunId);
-          this.refreshSessions();
+          this.refreshSessions({ force: true });
           break;
         case "error":
           this.clearFallbackTimer(chatRunId);
@@ -1335,13 +1335,15 @@ export class ChatGatewayController {
     saveCustomOrder(this.customOrder);
   }
 
-  refreshSessions(options?: { includeDerivedTitles?: boolean }): void {
+  refreshSessions(options?: { includeDerivedTitles?: boolean; force?: boolean }): void {
     clearTimeout(this.refreshDebounceTimer);
     const includeDerivedTitles = options?.includeDerivedTitles ?? false;
+    const force = options?.force ?? false;
     this.refreshDebounceTimer = setTimeout(() => {
       void this.hydrateSessionMetadata(this.store.activeSessionKey, {
         includeDerivedTitles,
         includeLastMessage: false,
+        force,
       });
     }, REFRESH_DEBOUNCE);
   }
@@ -1380,7 +1382,7 @@ export class ChatGatewayController {
 
   private async hydrateSessionMetadata(
     key: string,
-    options?: { includeDerivedTitles?: boolean; includeLastMessage?: boolean },
+    options?: { includeDerivedTitles?: boolean; includeLastMessage?: boolean; force?: boolean },
   ): Promise<void> {
     if (!this.client || this.cancelled || isHiddenSession(key)) return;
     const session = this.store.getOrCreateSession(key);
@@ -1389,6 +1391,7 @@ export class ChatGatewayController {
       : SESSION_METADATA_TTL_MS;
     if (!session.beginMetadataHydration({
       includeDerivedTitles: options?.includeDerivedTitles,
+      force: options?.force,
       ttlMs,
     })) {
       return;
@@ -1416,6 +1419,7 @@ export class ChatGatewayController {
       kind: s.kind ?? null,
       pinned: meta?.pinned,
       totalTokens: s.totalTokensFresh !== false ? s.totalTokens : undefined,
+      contextTokens: s.contextTokens ?? null,
       includeDerivedTitles: options?.includeDerivedTitles,
     });
 

@@ -43,6 +43,8 @@ export type SessionTabInfo = {
   isLocal?: boolean;
   /** Total tokens consumed in this session — from lazy gateway session metadata. */
   totalTokens?: number;
+  /** Effective context window for this session — from lazy gateway session metadata. */
+  contextTokens?: number;
 };
 
 /** Per-session cached state for tab switching. */
@@ -74,6 +76,7 @@ export type SessionsListResult = {
     spawnedBy?: string;
     totalTokens?: number;
     totalTokensFresh?: boolean;
+    contextTokens?: number;
     chatType?: string;
   }>;
 };

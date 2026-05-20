@@ -12,6 +12,7 @@ export interface ActiveModelInfo {
   model: string;
   isOverridden: boolean;
   contextWindow: number | null;
+  contextTokens: number | null;
 }
 
 export interface UseChatModelControlsParams {
@@ -64,6 +65,7 @@ export function useChatModelControls({
         model: info.model,
         isOverridden: info.isOverridden,
         contextWindow: info.contextWindow,
+        contextTokens: info.contextTokens,
       });
       // Ensure catalog is populated (getSessionModelInfo already populates it
       // if not yet ready, but trigger a refresh for full coverage)
@@ -100,7 +102,8 @@ export function useChatModelControls({
       provider,
       model,
       isOverridden: true,
-      contextWindow: match?.contextWindow ?? null,
+      contextWindow: match?.contextTokens ?? match?.contextWindow ?? null,
+      contextTokens: match?.contextTokens ?? null,
     } : null);
 
     // Delegate the actual API call to llmManager
@@ -135,7 +138,10 @@ export function useChatModelControls({
       try {
         const providerModels = entityStore.llmManager.catalog[newProvider] ?? [];
         const newModelEntry = providerModels.find((m) => m.id === newModel);
-        const result = checkContextOverflow(currentTokens, newModelEntry?.contextWindow);
+        const result = checkContextOverflow(
+          currentTokens,
+          newModelEntry?.contextTokens ?? newModelEntry?.contextWindow,
+        );
         if (result.action === "block") {
           setPendingModelSwitch({
             provider: newProvider,

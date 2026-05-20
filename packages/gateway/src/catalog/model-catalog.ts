@@ -10,6 +10,7 @@ export interface CatalogModelEntry {
   id: string;
   name: string;
   contextWindow?: number;
+  contextTokens?: number;
 }
 
 function getSupplementalCatalogEntries(provider: LLMProvider): CatalogModelEntry[] {
@@ -21,10 +22,57 @@ function getSupplementalCatalogEntries(provider: LLMProvider): CatalogModelEntry
   for (const model of models) {
     if (seen.has(model.modelId)) continue;
     seen.add(model.modelId);
-    result.push({ id: model.modelId, name: model.displayName, contextWindow: model.contextWindow });
+    result.push({
+      id: model.modelId,
+      name: model.displayName,
+      contextWindow: model.contextWindow,
+      contextTokens: model.contextTokens,
+    });
   }
 
   return result;
+}
+
+function positiveInt(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.trunc(value)
+    : undefined;
+}
+
+const LOCAL_CONTEXT_OVERRIDES: Record<string, { contextWindow?: number; contextTokens?: number }> = {
+  "*/gpt-5.4": { contextWindow: 272_000 },
+  "*/gpt-5.4-pro": { contextWindow: 1_050_000 },
+  "*/gpt-5.4-mini": { contextWindow: 400_000 },
+  "openai/gpt-5.4": { contextWindow: 272_000 },
+  "openai/gpt-5.4-pro": { contextWindow: 1_050_000 },
+  "openai/gpt-5.4-mini": { contextWindow: 400_000 },
+  "openai-codex/gpt-5.5-pro": { contextWindow: 1_000_000, contextTokens: 272_000 },
+  "openai-codex/gpt-5.4": { contextWindow: 1_050_000, contextTokens: 272_000 },
+  "openai-codex/gpt-5.4-pro": { contextWindow: 1_050_000, contextTokens: 272_000 },
+  "openai-codex/gpt-5.4-mini": { contextWindow: 400_000, contextTokens: 272_000 },
+};
+
+export function applyCatalogContextMetadata(
+  provider: string,
+  entry: CatalogModelEntry,
+): CatalogModelEntry {
+  const override =
+    LOCAL_CONTEXT_OVERRIDES[`${provider}/${entry.id}`] ??
+    LOCAL_CONTEXT_OVERRIDES[`*/${entry.id}`];
+  return override ? { ...entry, ...override } : entry;
+}
+
+function mergeCatalogEntries(existing: CatalogModelEntry, incoming: CatalogModelEntry): CatalogModelEntry {
+  return {
+    ...existing,
+    name: existing.name || incoming.name,
+    contextWindow:
+      positiveInt(existing.contextWindow) ??
+      positiveInt(incoming.contextWindow),
+    contextTokens:
+      positiveInt(existing.contextTokens) ??
+      positiveInt(incoming.contextTokens),
+  };
 }
 
 /**
@@ -52,7 +100,7 @@ export function readGatewayModelCatalog(
     const data = JSON.parse(raw) as {
       providers?: Record<
         string,
-        { models?: Array<{ id?: string; name?: string; contextWindow?: number }> }
+        { models?: Array<{ id?: string; name?: string; contextWindow?: number; contextTokens?: number }> }
       >;
     };
 
@@ -70,7 +118,8 @@ export function readGatewayModelCatalog(
         entries.push({
           id,
           name: String(m.name ?? id).trim() || id,
-          contextWindow: typeof m.contextWindow === "number" && m.contextWindow > 0 ? m.contextWindow : undefined,
+          contextWindow: positiveInt(m.contextWindow),
+          contextTokens: positiveInt(m.contextTokens),
         });
       }
 
@@ -153,7 +202,9 @@ export function normalizeCatalog(
 
     if (entries.length === 0) continue;
 
-    const normalized = normalizeEntries(entries, modelIdAliases);
+    const normalized = normalizeEntries(entries, modelIdAliases).map((entry) =>
+      applyCatalogContextMetadata(mapped, entry)
+    );
 
     // Merge into existing key (alias target may already exist)
     if (result[mapped]) {
@@ -166,13 +217,14 @@ export function normalizeCatalog(
   // Deduplicate after provider alias merging, then sort each provider's models
   // in reverse alphabetical order by ID.
   for (const [provider, models] of Object.entries(result)) {
-    const seen = new Set<string>();
+    const byId = new Map<string, CatalogModelEntry>();
+    for (const model of models) {
+      const existing = byId.get(model.id);
+      byId.set(model.id, existing ? mergeCatalogEntries(existing, model) : model);
+    }
     result[provider] = models
-      .filter((model) => {
-        if (seen.has(model.id)) return false;
-        seen.add(model.id);
-        return true;
-      })
+      .map((model) => byId.get(model.id)!)
+      .filter((model, index, arr) => arr.findIndex((m) => m.id === model.id) === index)
       .sort((a, b) => b.id.localeCompare(a.id));
   }
 
@@ -230,7 +282,7 @@ export async function readVendorModelCatalog(
     )) as {
       MODELS?: Record<
         string,
-        Record<string, { id?: string; name?: string; contextWindow?: number }>
+        Record<string, { id?: string; name?: string; contextWindow?: number; contextTokens?: number }>
       >;
     };
 
@@ -252,7 +304,8 @@ export async function readVendorModelCatalog(
         entries.push({
           id,
           name: String(model?.name ?? id).trim() || id,
-          contextWindow: typeof model?.contextWindow === "number" && model.contextWindow > 0 ? model.contextWindow : undefined,
+          contextWindow: positiveInt(model?.contextWindow),
+          contextTokens: positiveInt(model?.contextTokens),
         });
       }
 

@@ -43,6 +43,7 @@ export {
   readVendorModelCatalog,
   readFullModelCatalog,
   normalizeCatalog,
+  applyCatalogContextMetadata,
 } from "./catalog/model-catalog.js";
 export type { CatalogModelEntry } from "./catalog/model-catalog.js";
 export {

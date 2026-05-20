@@ -1,11 +1,15 @@
 // @vitest-environment node
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 describe("ChatGatewayController run profile selection", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("waits for a pending runProfile write before dispatching chat.send", async () => {
@@ -104,5 +108,69 @@ describe("ChatGatewayController run profile selection", () => {
 
     expect(session.messages.map((msg) => msg.text)).toEqual(["hello", "reply after reconnect"]);
     expect(session.runState.isActive).toBe(false);
+  });
+
+  it("refreshes token metadata after a run final even when session metadata was just hydrated", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-05-19T12:00:00Z"));
+    vi.doMock("../../src/api/index.js", () => ({
+      fetchGatewayInfo: vi.fn(),
+      trackEvent: vi.fn(),
+    }));
+    vi.doMock("../../src/api/tool-registry.js", () => ({
+      setRunProfileForScope: vi.fn(),
+    }));
+
+    const [{ ChatGatewayController }, { createChatStore }] = await Promise.all([
+      import("../../src/pages/chat/controllers/ChatGatewayController.js"),
+      import("../../src/pages/chat/store/chat-store.js"),
+    ]);
+
+    const store = createChatStore();
+    store.setConnectionState("connected");
+    const controller = new ChatGatewayController(store);
+    const session = store.activeSession!;
+    session.beginMetadataHydration({ now: Date.now() });
+    session.completeMetadataHydration({ totalTokens: 0, now: Date.now() });
+
+    const request = vi.fn().mockImplementation((method: string) => {
+      if (method === "sessions.describe") {
+        return Promise.resolve({
+          session: {
+            key: store.activeSessionKey,
+            totalTokens: 42_000,
+            totalTokensFresh: true,
+            contextTokens: 200_000,
+          },
+        });
+      }
+      return Promise.resolve({});
+    });
+    (controller as any).client = { request };
+
+    session.runState.beginLocalRun("run-with-usage", store.activeSessionKey);
+    (controller as any).handleEvent({
+      event: "chat",
+      payload: {
+        runId: "run-with-usage",
+        sessionKey: store.activeSessionKey,
+        state: "final",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "done" }],
+          timestamp: Date.now(),
+        },
+      },
+    });
+
+    await vi.runAllTimersAsync();
+
+    expect(request).toHaveBeenCalledWith("sessions.describe", {
+      key: store.activeSessionKey,
+      includeDerivedTitles: false,
+      includeLastMessage: false,
+    });
+    expect(session.totalTokens).toBe(42_000);
+    expect(session.contextTokens).toBe(200_000);
   });
 });

@@ -1,6 +1,6 @@
 import type { LLMProvider } from "@rivonclaw/core";
 import { getDefaultModelForProvider, reconstructProxyUrl, formatError, isReauthSupportedProvider } from "@rivonclaw/core";
-import { readFullModelCatalog } from "@rivonclaw/gateway";
+import { applyCatalogContextMetadata, readFullModelCatalog } from "@rivonclaw/gateway";
 import { API } from "@rivonclaw/core/api-contract";
 import { createLogger } from "@rivonclaw/logger";
 import { validateProviderApiKey, validateCustomProviderApiKey, fetchCustomProviderModels } from "./provider-validator.js";
@@ -434,7 +434,7 @@ const modelCatalog: EndpointHandler = async (_req, res, _url, _params, ctx: ApiC
         const extras = rawModels
           .map((m) => typeof m === "string" ? m : m.id)
           .filter((id) => !existingIds.has(id))
-          .map((id) => ({ id, name: id }));
+          .map((id) => applyCatalogContextMetadata(key.provider, { id, name: id }));
         if (extras.length > 0) {
           catalog[key.provider] = [...existing, ...extras];
         }

@@ -56,6 +56,8 @@ export interface ModelConfig {
   supportsVision?: boolean;
   /** Context window size in tokens. Used by config-writer; falls back to 128000 if omitted. */
   contextWindow?: number;
+  /** Effective context budget when runtime caps usable context below the raw window. */
+  contextTokens?: number;
 }
 
 /** A subscription plan nested under a root provider. */
@@ -977,7 +979,7 @@ export let KNOWN_MODELS: Partial<Record<LLMProvider, ModelConfig[]>> =
  * catalog entries that don't overlap are appended after.
  */
 export function initKnownModels(
-  catalog: Record<string, Array<{ id: string; name: string }>>,
+  catalog: Record<string, Array<{ id: string; name: string; contextWindow?: number; contextTokens?: number }>>,
 ): void {
   const result: Partial<Record<LLMProvider, ModelConfig[]>> = {};
 
@@ -988,6 +990,8 @@ export function initKnownModels(
       provider: p,
       modelId: e.id,
       displayName: e.name,
+      contextWindow: e.contextWindow,
+      contextTokens: e.contextTokens,
     }));
     const meta = getProviderMeta(p);
     const extra = meta?.extraModels ?? [];

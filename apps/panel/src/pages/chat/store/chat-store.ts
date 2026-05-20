@@ -46,6 +46,7 @@ export const ChatStoreModel = types
           pinned: session.pinned,
           isLocal: session.isLocal,
           totalTokens: session.totalTokens,
+          contextTokens: session.contextTokens ?? undefined,
         });
       }
 
@@ -110,6 +111,7 @@ export const ChatStoreModel = types
       pinned?: boolean;
       isLocal?: boolean;
       totalTokens?: number;
+      contextTokens?: number | null;
     }): Instance<typeof ChatSessionModel> {
       let session = self.sessions.get(key);
       if (!session) {
@@ -125,6 +127,7 @@ export const ChatStoreModel = types
           pinned: defaults?.pinned ?? false,
           isLocal: defaults?.isLocal ?? false,
           totalTokens: defaults?.totalTokens ?? 0,
+          contextTokens: defaults?.contextTokens ?? null,
           visibleCount: INITIAL_VISIBLE,
         });
         session = self.sessions.get(key)!;
@@ -156,6 +159,7 @@ export const ChatStoreModel = types
             kind: tab.kind ?? null,
             pinned: tab.pinned,
             totalTokens: tab.totalTokens,
+            contextTokens: tab.contextTokens,
             isLocal: tab.isLocal,
           });
         } else {
@@ -171,6 +175,7 @@ export const ChatStoreModel = types
             pinned: tab.pinned ?? false,
             isLocal: tab.isLocal ?? false,
             totalTokens: tab.totalTokens ?? 0,
+            contextTokens: tab.contextTokens ?? null,
             visibleCount: INITIAL_VISIBLE,
           });
         }

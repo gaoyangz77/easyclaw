@@ -35,6 +35,7 @@ export const ChatSessionModel = types
     unread: false,
     isLocal: false,
     totalTokens: 0,
+    contextTokens: types.maybeNull(types.number),
     /** True while this tab owns an in-flight sessions.describe metadata request. */
     metadataHydrating: false,
     /** Timestamp of the last completed/failed metadata hydration attempt. */
@@ -149,6 +150,9 @@ export const ChatSessionModel = types
     setTotalTokens(n: number) {
       self.totalTokens = n;
     },
+    setContextTokens(n: number | null) {
+      self.contextTokens = n;
+    },
     setChannel(c: string | null) {
       self.channel = c;
     },
@@ -201,6 +205,7 @@ export const ChatSessionModel = types
       kind?: string | null;
       pinned?: boolean;
       totalTokens?: number;
+      contextTokens?: number | null;
       isLocal?: boolean;
       customTitle?: string | null;
       includeDerivedTitles?: boolean;
@@ -225,6 +230,7 @@ export const ChatSessionModel = types
       kind?: string | null;
       pinned?: boolean;
       totalTokens?: number;
+      contextTokens?: number | null;
       isLocal?: boolean;
       customTitle?: string | null;
     }) {
@@ -236,6 +242,7 @@ export const ChatSessionModel = types
       if (fields.kind !== undefined) self.kind = fields.kind;
       if (fields.pinned !== undefined) self.pinned = fields.pinned;
       if (fields.totalTokens !== undefined) self.totalTokens = fields.totalTokens;
+      if (fields.contextTokens !== undefined) self.contextTokens = fields.contextTokens;
       if (fields.isLocal !== undefined) self.isLocal = fields.isLocal;
       if (fields.customTitle !== undefined) self.customTitle = fields.customTitle;
     },
