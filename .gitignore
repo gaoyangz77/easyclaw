@@ -1,5 +1,6 @@
 client/
 docs/
+docs/DATA_SECURITY/upload_artifacts/
 vendor/openclaw/
 node_modules/
 dist/

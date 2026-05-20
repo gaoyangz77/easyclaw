@@ -123,21 +123,14 @@ export const LLMProviderManagerModel = types
     }
 
     /**
-     * Reset active sessions that are "following default" (no explicit volatile override)
-     * to pick up a new global default. Only sessions with activity since app startup
-     * are patched — avoids touching hundreds of dormant sessions.
+     * Reset sessions that are "following default" (no explicit volatile override)
+     * and had activity during this app process. Historical gateway/chat session
+     * stores may contain hundreds of dormant channel sessions, so the switch path
+     * must stay bounded to the sessions this desktop process actually observed.
      * Best-effort: failures are logged but do not propagate.
      */
     async function resetDefaultFollowingSessions(): Promise<void> {
-      const { storage } = getEnvDeps();
       const sessionKeys = new Set(self.activeSessions);
-      const storedSessions = (storage as Storage & {
-        chatSessions?: { list?: () => Array<{ key: string }> };
-      }).chatSessions?.list?.() ?? [];
-      for (const session of storedSessions) {
-        if (session.key) sessionKeys.add(session.key);
-      }
-
       const toReset = [...sessionKeys].filter((key) => !self.sessionOverrides.has(key));
       if (toReset.length === 0) return;
 
@@ -182,7 +175,6 @@ export const LLMProviderManagerModel = types
 
     /**
      * Write ONLY agents.defaults.model.primary to the config file.
-     * Chokidar detects this as a hot-reload (restart-heartbeat), NOT a full restart.
      */
     function writeDefaultModel(provider: string, modelId: string, authType?: string): void {
       const { writeDefaultModelToConfig } = getEnvDeps();
@@ -250,6 +242,12 @@ export const LLMProviderManagerModel = types
       /** Mark a session as active (had activity since app startup). */
       trackSessionActivity(sessionKey: string) {
         self.activeSessions.add(sessionKey);
+      },
+
+      /** Clear non-persisted session tracking state. Primarily useful for tests. */
+      clearVolatileSessionState() {
+        self.sessionOverrides.clear();
+        self.activeSessions.clear();
       },
 
       /**
@@ -328,7 +326,7 @@ export const LLMProviderManagerModel = types
           self.root.upsertProviderKey(mstEntry);
         }
 
-        // Update OpenClaw config default (chokidar hot-reload, no restart)
+        // Update OpenClaw config default.
         if (entry.isDefault) {
           writeDefaultModel(entry.provider, newModel, entry.authType);
           // Reset sessions following default so they pick up the new model
@@ -371,7 +369,7 @@ export const LLMProviderManagerModel = types
         // Sync auth profiles and proxy config (so new provider's key is prioritized)
         yield syncAuthAndProxy();
 
-        // Update OpenClaw config default (chokidar hot-reload, no restart)
+        // Update OpenClaw config default.
         writeDefaultModel(entry.provider, entry.model, entry.authType);
         // Reset sessions following default so they pick up the new provider/model
         yield resetDefaultFollowingSessions();
@@ -586,6 +584,10 @@ export const LLMProviderManagerModel = types
 
         // Sync auth profiles and proxy config (provider stays in config until restart)
         yield syncAuthAndProxy();
+        if (promotedKey) {
+          writeDefaultModel(promotedKey.provider, promotedKey.model, promotedKey.authType);
+          yield resetDefaultFollowingSessions();
+        }
 
         return { existing, promotedKey };
       }),
@@ -639,6 +641,7 @@ export const LLMProviderManagerModel = types
                 storage.settings.set("llm-provider", remaining[0].provider);
                 yield syncActiveKey(remaining[0].provider, storage, secretStore);
                 self.activeKeyId = remaining[0].id;
+                writeDefaultModel(remaining[0].provider, remaining[0].model, remaining[0].authType);
               } else {
                 storage.settings.set("llm-provider", "");
                 self.activeKeyId = null;
@@ -655,6 +658,9 @@ export const LLMProviderManagerModel = types
 
             // Sync auth + proxy + full config (cloud provider removed)
             yield syncAuthProxyAndConfig();
+            if (wasDefault) {
+              yield resetDefaultFollowingSessions();
+            }
 
             log.info("Removed cloud provider key (user logged out or key absent)");
           }
@@ -713,6 +719,10 @@ export const LLMProviderManagerModel = types
 
           // Sync auth profiles + config (model capabilities may have changed)
           yield syncAuthProxyAndConfig();
+          if (freshEntry.isDefault) {
+            writeDefaultModel(freshEntry.provider, freshEntry.model, freshEntry.authType);
+            yield resetDefaultFollowingSessions();
+          }
 
           log.info("Synced cloud provider (key/baseUrl/models refreshed)");
           return;
@@ -770,16 +780,9 @@ export const LLMProviderManagerModel = types
 
         // Sync auth + proxy + full config (new cloud provider added)
         yield syncAuthProxyAndConfig();
-
-        // Full gateway restart — plugins (including cloud-tools) need to re-initialize
-        // to discover the new provider and fetch dynamic tools from backend.
-        // Await the restart so callers (e.g. store-tokens) know the gateway is
-        // ready before responding to the client.
-        const { restartGateway } = getEnvDeps();
-        try {
-          yield restartGateway();
-        } catch (err) {
-          log.warn("Gateway restart after cloud key creation failed (best-effort):", err);
+        if (shouldActivate) {
+          writeDefaultModel(entry.provider, entry.model, entry.authType);
+          yield resetDefaultFollowingSessions();
         }
 
         log.info(`Created cloud provider key (activated: ${shouldActivate})`);

@@ -11,6 +11,7 @@ const mockSecretStore = {
 };
 
 afterEach(() => {
+  rootStore.llmManager.clearVolatileSessionState();
   rootStore.loadProviderKeys([]);
   secretMap.clear();
   vi.restoreAllMocks();
@@ -20,6 +21,7 @@ describe("LLMProviderManager", () => {
   it("updates gateway default and resets default-following sessions when the active key model changes", async () => {
     const rpcRequest = vi.fn().mockResolvedValue(true);
     const writeDefaultModelToConfig = vi.fn();
+    const restartGateway = vi.fn();
 
     let entry: ProviderKeyEntry = {
       id: "key-default",
@@ -66,7 +68,7 @@ describe("LLMProviderManager", () => {
       writeProxyRouterConfig: async () => {},
       writeDefaultModelToConfig,
       writeFullGatewayConfig: async () => {},
-      restartGateway: async () => {},
+      restartGateway,
       proxyFetch: globalThis.fetch,
       stateDir: "/tmp/rivonclaw-llm-manager-test",
       getLastSystemProxy: () => null,
@@ -82,11 +84,13 @@ describe("LLMProviderManager", () => {
       key: "chat-session-1",
       model: null,
     });
+    expect(restartGateway).not.toHaveBeenCalled();
   });
 
-  it("resets stored chat/channel sessions on default provider activation unless they have an explicit override", async () => {
+  it("resets only sessions active in this app process on default provider activation", async () => {
     const rpcRequest = vi.fn().mockResolvedValue(true);
     const writeDefaultModelToConfig = vi.fn();
+    const restartGateway = vi.fn();
 
     let keys: ProviderKeyEntry[] = [
       {
@@ -128,7 +132,7 @@ describe("LLMProviderManager", () => {
       },
       chatSessions: {
         list: () => [
-          { key: "telegram-session-default" },
+          { key: "historical-session-default" },
           { key: "chat-session-explicit" },
         ],
       },
@@ -146,13 +150,14 @@ describe("LLMProviderManager", () => {
       writeProxyRouterConfig: async () => {},
       writeDefaultModelToConfig,
       writeFullGatewayConfig: async () => {},
-      restartGateway: async () => {},
+      restartGateway,
       proxyFetch: globalThis.fetch,
       stateDir: "/tmp/rivonclaw-llm-manager-test",
       getLastSystemProxy: () => null,
     });
 
     await rootStore.llmManager.switchModelForSession("chat-session-explicit", "kimi", "moonshot-v1-8k");
+    rootStore.llmManager.trackSessionActivity("telegram-session-default");
     rpcRequest.mockClear();
 
     await rootStore.llmManager.activateProvider("key-pro");
@@ -162,9 +167,79 @@ describe("LLMProviderManager", () => {
       key: "telegram-session-default",
       model: null,
     });
+    expect(rpcRequest).not.toHaveBeenCalledWith("sessions.list", expect.anything());
     expect(rpcRequest).not.toHaveBeenCalledWith("sessions.patch", {
       key: "chat-session-explicit",
       model: null,
     });
+    expect(rpcRequest).not.toHaveBeenCalledWith("sessions.patch", {
+      key: "historical-session-default",
+      model: null,
+    });
+    expect(restartGateway).not.toHaveBeenCalled();
+  });
+
+  it("resets active channel sessions when a new cloud provider becomes the default", async () => {
+    const rpcRequest = vi.fn().mockResolvedValue(true);
+    const writeDefaultModelToConfig = vi.fn();
+    const writeFullGatewayConfig = vi.fn();
+    const restartGateway = vi.fn();
+
+    let keys: ProviderKeyEntry[] = [];
+    const storage = {
+      providerKeys: {
+        getActive: () => keys.find((k) => k.isDefault),
+        getById: (id: string) => keys.find((k) => k.id === id),
+        getAll: () => keys,
+        create: (entry: ProviderKeyEntry) => {
+          keys = [...keys, entry];
+          return entry;
+        },
+      },
+      settings: {
+        set: vi.fn(),
+        get: vi.fn(),
+      },
+      chatSessions: {
+        list: () => [],
+      },
+    };
+    rootStore.loadProviderKeys([]);
+
+    initLLMProviderManagerEnv({
+      storage: storage as any,
+      secretStore: mockSecretStore as any,
+      getRpcClient: () => ({ request: rpcRequest }) as any,
+      toMstSnapshot,
+      allKeysToMstSnapshots,
+      syncActiveKey: async () => {},
+      syncAllAuthProfiles: async () => {},
+      writeProxyRouterConfig: async () => {},
+      writeDefaultModelToConfig,
+      writeFullGatewayConfig,
+      restartGateway,
+      proxyFetch: vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ data: [{ id: "gpt-5.4" }] }),
+      }) as any,
+      stateDir: "/tmp/rivonclaw-llm-manager-test",
+      getLastSystemProxy: () => null,
+    });
+
+    rootStore.llmManager.trackSessionActivity("agent:main:telegram:default:direct:42");
+    await rootStore.llmManager.syncCloud({ llmKey: { key: "cloud-token" } });
+
+    expect(keys[0]).toMatchObject({
+      provider: "rivonclaw-pro",
+      model: "gpt-5.4",
+      isDefault: true,
+    });
+    expect(writeFullGatewayConfig).toHaveBeenCalled();
+    expect(writeDefaultModelToConfig).toHaveBeenCalledWith("rivonclaw-pro", "gpt-5.4");
+    expect(rpcRequest).toHaveBeenCalledWith("sessions.patch", {
+      key: "agent:main:telegram:default:direct:42",
+      model: null,
+    });
+    expect(restartGateway).not.toHaveBeenCalled();
   });
 });
